@@ -42,5 +42,22 @@ served via jsDelivr so the per-page paste stays tiny.
 - **Tabs / routing / styling:** edit `efm-portal.js` / `efm-portal.css`, push, then bump
   the two `@COMMIT` refs in the page's embed block to the new commit SHA.
 
+## efm-faculty — faculty roster
+
+`efm-faculty.css` + `efm-faculty.js`, referenced from the faculty page:
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@COMMIT/efm-faculty.css">
+<div id="efm-faculty" class="efmf">…markup…</div>
+<script src="https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@COMMIT/efm-faculty.js"></script>
+```
+
+Reads the faculty Google Sheet (gviz CSV) by **header name** — each column is
+matched against a wide alias list, so you can add / remove / reorder / rename
+columns freely. Columns: `Name · Role · Section · Photo · Link · Bio ·
+Affiliations · Website`. Falls back to a built-in roster if the sheet can't
+load, so the page is never blank. Edit code → push → bump the two `@COMMIT`
+refs in the embed.
+
 jsDelivr URLs are pinned to an immutable commit SHA, so a bad edit can never
 silently change the live page.

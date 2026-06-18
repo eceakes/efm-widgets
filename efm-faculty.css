@@ -1,0 +1,176 @@
+#efm-faculty.efmf{
+  /* ---- tweak these ---- */
+  --efmf-ink:#0E178E;           /* names + section headings (the festival brand blue) */
+  --efmf-role:#5b6473;          /* instrument / title line (muted slate) */
+  --efmf-rule:#e4e6ef;          /* divider under each section heading */
+  --efmf-hover:#6C82FA;         /* link hover (periwinkle accent) */
+  --efmf-avatar:clamp(109px,11.7vw,146px);  /* headshot diameter (fluid) — 30% larger */
+  --efmf-avatar-radius:50%;     /* 50% = circle (Aspen look). Use 14px for a rounded square. */
+  --efmf-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmf-role-font:"arbeit-regular-italic","arbeit-regular","Source Sans Pro",Georgia,serif;
+  --efmf-head-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  /* (To make the section headings match the big "EFM FACULTY" title instead,
+     set --efmf-head-font to: "PPPangaia-Medium", Georgia, serif;) */
+  max-width:1080px;
+  margin:0 auto;
+  padding:6px 16px 40px;
+  box-sizing:border-box;
+  font-family:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+#efm-faculty.efmf *{ box-sizing:border-box; }
+#efm-faculty .efmf__status{
+  text-align:center; color:var(--efmf-role); font-size:16px; padding:30px 0;
+}
+#efm-faculty .efmf__status[hidden]{ display:none; }
+/* The grid measures itself against THIS element's width (the widget's own width),
+   so it reflows correctly in Duda's desktop / tablet / mobile views — it responds
+   to the column it sits in, not just the raw viewport. */
+#efm-faculty .efmf__sections{ container-type:inline-size; container-name:efmf; }
+#efm-faculty .efmf-section{ margin:0 0 clamp(34px,4vw,50px); }
+#efm-faculty .efmf-section:last-child{ margin-bottom:0; }
+/* Headings are role=heading <div>s (not <h2>) + !important, because the site's
+   global heading theme lives in a high-priority stylesheet that would otherwise
+   recolor them gold/serif. Same reason for the !important guards on names below. */
+#efm-faculty .efmf-section__head{
+  font-family:var(--efmf-head-font)!important;
+  color:var(--efmf-ink)!important;
+  font-size:23px!important;                              /* fallback for old browsers */
+  font-size:clamp(20px,1.2cqi + 16px,24px)!important;
+  font-weight:400!important;
+  line-height:1.2!important;
+  letter-spacing:.005em!important;
+  text-transform:none!important;
+  margin:0 0 22px!important;
+  padding:0 0 11px!important;
+  border-bottom:2px solid var(--efmf-rule);
+}
+#efm-faculty .efmf-grid{
+  display:grid;
+  grid-template-columns:1fr;                 /* one column by default (narrow widget) */
+  column-gap:clamp(22px,4cqi,48px);
+  row-gap:clamp(24px,3.2cqi,36px);
+}
+/* two columns once the widget itself is wide enough (Aspen-style). 600px (not
+   760) so tablet-portrait — where the widget is ~620px after page padding — still
+   gets two columns; phones stay single-column. */
+@container efmf (min-width:600px){
+  #efm-faculty .efmf-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+/* fallback for the rare browser without container queries */
+@supports not (container-type:inline-size){
+  @media (min-width:600px){
+    #efm-faculty .efmf-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+}
+/* Hard floor: on phones / narrow windows (viewport ≤600px) force a single column,
+   even if the widget's container is held wider by a page template min-width
+   (Duda's desktop template pins dmInner to 768px, so the container can't shrink
+   below ~624px on a narrowed desktop window — this keeps that case 1-column). */
+@media (max-width:600px){
+  #efm-faculty .efmf-grid{ grid-template-columns:1fr!important; }
+}
+#efm-faculty .efmf-person{
+  display:flex;
+  align-items:center;
+  gap:clamp(14px,2cqi,20px);
+  min-width:0;
+}
+#efm-faculty .efmf-person__avatar{
+  flex:0 0 auto;
+  width:var(--efmf-avatar);
+  height:var(--efmf-avatar);
+  border-radius:var(--efmf-avatar-radius);
+  overflow:hidden;
+  background:#eef0f7;
+  display:block;
+  text-decoration:none;
+}
+#efm-faculty .efmf-person__avatar img{
+  width:100%; height:100%;
+  object-fit:cover;
+  object-position:center 18%;   /* bias toward faces in portrait headshots */
+  display:block;
+  border-radius:inherit;
+  transition:transform .35s ease;
+}
+#efm-faculty a.efmf-person__avatar:hover img{ transform:scale(1.05); }
+#efm-faculty .efmf-person__initials{
+  width:100%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--efmf-name-font);
+  color:var(--efmf-ink);
+  font-size:39px;                                       /* fallback for old browsers */
+  font-size:clamp(31px,3.9cqi,42px);
+  background:#e7eaf6;
+}
+#efm-faculty .efmf-person__body{ min-width:0; }
+#efm-faculty .efmf-person__name{
+  display:inline-block;
+  font-family:var(--efmf-name-font)!important;
+  color:var(--efmf-ink)!important;
+  font-size:19px;                                       /* fallback for old browsers */
+  font-size:clamp(17px,0.8cqi + 14px,20px);
+  font-weight:400;
+  line-height:1.22;
+  margin:0 0 4px;
+}
+#efm-faculty a.efmf-person__name{ text-decoration:none!important; }
+#efm-faculty a.efmf-person__name:hover{ color:var(--efmf-hover)!important; text-decoration:underline!important; }
+#efm-faculty .efmf-person__role{
+  font-family:var(--efmf-role-font);
+  color:var(--efmf-role)!important;
+  font-size:15px;                                       /* fallback for old browsers */
+  font-size:clamp(14px,0.6cqi + 11px,15.5px);
+  font-style:italic!important;
+  line-height:1.35;
+  margin:0;
+}
+#efm-faculty [data-efmf-bio]{ cursor:pointer; }
+/* ---- bio popup ---- */
+#efm-faculty .efmf-modal[hidden]{ display:none; }
+#efm-faculty .efmf-modal{
+  position:fixed; inset:0; z-index:2147483000;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#efm-faculty .efmf-modal__backdrop{ position:absolute; inset:0; background:rgba(9,12,38,.55); }
+#efm-faculty .efmf-modal__panel{
+  position:relative; z-index:1; background:#fff; width:100%; max-width:560px; max-height:86vh;
+  overflow:auto; border-radius:14px; padding:30px 32px 32px;
+  box-shadow:0 24px 70px rgba(9,12,38,.38); text-align:left;
+}
+#efm-faculty .efmf-modal__close{
+  position:absolute; top:10px; right:14px; border:0; background:transparent;
+  font-size:28px; line-height:1; cursor:pointer; color:#9aa0b4; padding:4px;
+}
+#efm-faculty .efmf-modal__close:hover{ color:var(--efmf-ink); }
+#efm-faculty .efmf-modal__head{ display:flex; gap:18px; align-items:center; margin:0 0 18px; }
+#efm-faculty .efmf-modal__avatar{
+  flex:0 0 auto; width:86px; height:86px; border-radius:50%; overflow:hidden; background:#eef0f7;
+}
+#efm-faculty .efmf-modal__avatar img{ width:100%; height:100%; object-fit:cover; object-position:center 18%; display:block; }
+#efm-faculty .efmf-modal__name{
+  font-family:var(--efmf-name-font); color:var(--efmf-ink)!important; font-size:23px; line-height:1.15;
+}
+#efm-faculty .efmf-modal__role{
+  font-family:var(--efmf-role-font); color:var(--efmf-role)!important; font-style:italic; font-size:15px; margin-top:3px;
+}
+#efm-faculty .efmf-modal__bio{ color:#2b3042; font-size:16px; line-height:1.62; }
+#efm-faculty .efmf-modal__bio p{ margin:0 0 14px; }
+#efm-faculty .efmf-modal__bio p:last-child{ margin-bottom:0; }
+#efm-faculty .efmf-modal__bio ul{ margin:0 0 14px; padding-left:20px; }
+#efm-faculty .efmf-modal__bio a{ color:var(--efmf-ink); text-decoration:underline; }
+#efm-faculty .efmf-modal__bio a:hover{ color:var(--efmf-hover); }
+#efm-faculty .efmf-modal__label{
+  font-family:var(--efmf-name-font); color:var(--efmf-ink)!important;
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase; margin:18px 0 6px;
+}
+#efm-faculty .efmf-modal__affil-item{ color:#2b3042; font-size:15px; line-height:1.5; }
+#efm-faculty .efmf-modal__weblink{ color:var(--efmf-ink)!important; font-size:15px; text-decoration:underline; word-break:break-word; }
+#efm-faculty .efmf-modal__weblink:hover{ color:var(--efmf-hover)!important; }
+#efm-faculty .efmf-modal__link{
+  display:inline-block; margin-top:18px; font-family:var(--efmf-name-font);
+  color:var(--efmf-ink)!important; text-decoration:none;
+}
+#efm-faculty .efmf-modal__link:hover{ color:var(--efmf-hover)!important; text-decoration:underline; }
+#efm-faculty .efmf-title{ font-family:"PPPangaia-Medium",Georgia,serif; color:var(--efmf-ink); font-size:38px; font-size:clamp(28px,3cqi + 18px,46px); font-weight:400; line-height:1.08; letter-spacing:.005em; margin:0 0 30px; }
