@@ -85,8 +85,6 @@
       { label: "Room Schedule", kind: "jump", target: "rooms" } ] },
     { id: "lessons", label: "Lesson Schedules", subs: [
       { label: "By Faculty", kind: "lessons" } ] },
-    { id: "announcements", label: "Announcements", subs: [
-      { label: "All", kind: "announcements" } ] },
     { id: "info", label: "General Information", subs: [
       { label: "Overview", kind: "info" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
@@ -399,23 +397,6 @@
     finishList(html, shown, "", "No matches.");
   }
 
-  function renderAnnouncements() {
-    var q = searchBox.value.trim().toLowerCase();
-    var tk = todayKey();
-    var items = announcements.filter(function (a) { return a.text; }).slice();
-    items.sort(function (a, b) { var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key; return ka - kb; });
-    var html = "", shown = 0;
-    items.forEach(function (a) {
-      if (q && a.text.toLowerCase().indexOf(q) === -1) return;
-      var today = a.key !== null && a.key === tk;
-      html += '<div class="efmp-ann' + (today ? " efmp-ann--today" : "") + '">' +
-        '<span class="efmp-ann__date">' + esc(a.dateRaw || "") + (today ? " &#183; Today" : "") + "</span>" +
-        '<span class="efmp-ann__text">' + esc(a.text) + "</span></div>";
-      shown++;
-    });
-    finishList(html, shown, "", "No announcements yet.");
-  }
-
   function renderInfo() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -449,7 +430,6 @@
     var sub = top.subs[subSel[top.id]] || top.subs[0];
     modalData = [];
     if (sub.kind === "info") return renderInfo();
-    if (sub.kind === "announcements") return renderAnnouncements();
     if (sub.kind === "lessons") return renderLessons();
     if (sub.kind === "table") return renderTable(sub);
     renderAgenda(rowsForSub(sub));
@@ -459,10 +439,21 @@
   function renderTicker() {
     if (!ticker) return;
     var tk = todayKey();
-    var overrides = announcements.filter(function (a) { return a.text && /today\s*override/i.test(a.logic); });
-    var items = overrides.length
-      ? overrides
-      : announcements.filter(function (a) { return a.text && a.key !== null && a.key === tk; });
+    var withText = announcements.filter(function (a) { return a.text; });
+    // Priority: Today Override rows win; else today's date-matched rows; else
+    // fall forward to all upcoming announcements so the bar is never blank
+    // when something is on the way.
+    var overrides = withText.filter(function (a) { return /today\s*override/i.test(a.logic); });
+    var items;
+    if (overrides.length) {
+      items = overrides;
+    } else {
+      var todays = withText.filter(function (a) { return a.key !== null && a.key === tk; });
+      items = todays.length
+        ? todays
+        : withText.filter(function (a) { return a.key !== null && tk !== null && a.key >= tk; })
+            .sort(function (a, b) { return a.key - b.key; });
+    }
     if (!items.length) { ticker.hidden = true; ticker.innerHTML = ""; return; }
     var seq = items.map(function (a) { return '<span class="efmp-ticker__item">' + esc(a.text) + "</span>"; }).join("");
     ticker.innerHTML =
