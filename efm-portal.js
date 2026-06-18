@@ -9,20 +9,13 @@
    Tabs are resolved by NAME from the published /pubhtml directory,
    so the widget keeps working after the sheet is rebuilt (gids change).
 
-   Optional "Config" tab drives the audience tabs (the top nav). When
-   present, it replaces the built-in DEFAULT_NAV below. Columns:
-       TabId | TabLabel | SubLabel | Kind | Args
-     - TabId .... stable id for the top tab (blank row = continue previous tab)
-     - TabLabel . display label for the top tab (read from its first row)
-     - SubLabel . display label for the sub-tab (view)
-     - Kind ..... today | ensemble | allEnsembles | type | jump | roomsToday
-     - Args ..... today -> comma-separated ensemble codes (blank = everyone)
-                  ensemble -> a single code (e.g. ESO)
-                  type -> the exact Type value (e.g. Meeting / Admin)
-                  jump -> the TabId to jump to (e.g. rooms)
-                  allEnsembles / roomsToday -> leave blank
-   Per-room sub-tabs are appended automatically to whichever tab holds a
-   "roomsToday" view, so they never need to be listed in Config.
+   ALL tab structure and routing lives here, in this hosted file — the
+   spreadsheet stays a plain, human-friendly calendar. The NAV model below
+   defines which tabs exist; the filtering in rowsForSub()/todayRows()
+   distributes each calendar row to the right tab, driven by the calendar's
+   own Ensemble / Type / Room columns (no config tab needed). To change the
+   tabs, edit NAV here and push a new commit, then bump the @<sha> in the
+   page's embed block.
    ============================================================ */
 (function () {
   var PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQg7mhQsWCaOdsg1k_z-TkSHRqNDTuAQE7NEXr6xzCBR-psxMoQGExmVlINpF-xu_3FIgbE4qSK1aAJ";
@@ -30,7 +23,6 @@
   var PUBHTML = PUB + "/pubhtml";        // published tab directory: maps tab name -> gid
   var TAB_CALENDAR = "Master Calendar";  // looked up by NAME (gids change on rebuild)
   var TAB_LEGEND = "Legend";
-  var TAB_CONFIG = "Config";             // optional; drives the audience tabs
   var YEAR = 2026;
 
   // Fallback room names if the Legend sheet can't be fetched/parsed.
@@ -44,8 +36,8 @@
     "July", "August", "September", "October", "November", "December"];
 
   // ---- navigation model -------------------------------------------------
-  // Used only if there's no Config tab in the sheet (or it can't be parsed).
-  var DEFAULT_NAV = [
+  // The tabs and how each one filters the calendar. Edit here to change tabs.
+  var NAV = [
     { id: "students", label: "Students", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
@@ -138,57 +130,15 @@
 
   // ---- state --------------------------------------------------------------
   var allRows = [];
-  var NAV = DEFAULT_NAV;
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
+  NAV.forEach(function (t) { subSel[t.id] = 0; });
 
   var topnav, subnav, list, status, banner, searchBox;  // assigned in boot()
-
-  // Swap in a nav model and reset selection state for it.
-  function setNav(nav) {
-    NAV = (nav && nav.length) ? nav : DEFAULT_NAV;
-    topSel = NAV[0].id;
-    subSel = {};
-    NAV.forEach(function (t) { subSel[t.id] = 0; });
-  }
 
   function currentTop() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i];
     return NAV[0];
-  }
-
-  // ---- config -> nav ------------------------------------------------------
-  // Build the nav model from the optional "Config" tab. Returns null when the
-  // tab is absent/empty/headerless, so the caller falls back to DEFAULT_NAV.
-  function parseConfig(rows) {
-    if (!rows || !rows.length) return null;
-    var nav = [], byId = {}, started = false;
-    rows.forEach(function (r) {
-      var id = (r[0] || "").trim(), tabLabel = (r[1] || "").trim(),
-          subLabel = (r[2] || "").trim(), kind = (r[3] || "").trim(),
-          args = (r[4] || "").trim();
-      if (!started) {                              // skip until the header row
-        if (/^TabId$/i.test(id)) started = true;
-        return;
-      }
-      if (!id && !subLabel) return;                // blank spacer row
-      var tab;
-      if (id) {
-        tab = byId[id];
-        if (!tab) { tab = { id: id, label: tabLabel || id, subs: [] }; byId[id] = tab; nav.push(tab); }
-        else if (tabLabel) tab.label = tabLabel;
-      } else {
-        tab = nav[nav.length - 1];                 // blank id = continue previous tab
-      }
-      if (!tab || !subLabel || !kind) return;
-      var sub = { label: subLabel, kind: kind };
-      if (kind === "today") sub.codes = args ? args.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : null;
-      else if (kind === "ensemble" || kind === "room") sub.code = args;
-      else if (kind === "type") sub.value = args;
-      else if (kind === "jump") sub.target = args;
-      tab.subs.push(sub);
-    });
-    return nav.length ? nav : null;
   }
 
   // ---- filtering ------------------------------------------------------------
@@ -332,10 +282,10 @@
   // Resolve each tab's gid by NAME from the published tab directory (pubhtml),
   // so the calendar survives sheet rebuilds. Google's CSV endpoint ignores
   // &sheet=NAME, so gid is the only per-tab selector — but a recreated tab gets
-  // a brand-new gid. The tab NAMES ("Master Calendar", "Legend", "Config") stay
-  // stable, so we look the current gids up at load time instead of hardcoding
-  // them. The pubhtml endpoint returns CORS for the requesting origin, so this
-  // fetch works from the live site.
+  // a brand-new gid. The tab NAMES ("Master Calendar", "Legend") stay stable, so
+  // we look the current gids up at load time instead of hardcoding them. The
+  // pubhtml endpoint returns CORS for the requesting origin, so this fetch works
+  // from the live site.
   function resolveTabGids() {
     return fetch(PUBHTML, { cache: "no-store" }).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -354,7 +304,6 @@
   function build(results) {
     var rows = results[0];
     if (results[1]) applyLegend(results[1]);
-    setNav(parseConfig(results[2]));   // Config tab -> nav, else DEFAULT_NAV
 
     var headerIdx = -1;
     for (var i = 0; i < rows.length; i++) {
@@ -425,24 +374,22 @@
     console.error("EFM schedule load failed:", err);
   }
 
-  // Resolve gids by name, then load calendar + legend + config. If the tab
-  // directory can't be read (network blip or a Google format change), degrade
-  // gracefully to the bare CSV (always the first tab = Master Calendar), the
-  // built-in room names, and DEFAULT_NAV — so the schedule still renders.
+  // Resolve gids by name, then load calendar + legend. If the tab directory
+  // can't be read (network blip or a Google format change), degrade gracefully
+  // to the bare CSV (always the first tab = Master Calendar) plus the built-in
+  // room names, so the schedule still renders.
   function run() {
     resolveTabGids().then(function (map) {
       return [
         map[TAB_CALENDAR] ? CSV + "&gid=" + map[TAB_CALENDAR] : CSV,
-        map[TAB_LEGEND] ? CSV + "&gid=" + map[TAB_LEGEND] : null,
-        map[TAB_CONFIG] ? CSV + "&gid=" + map[TAB_CONFIG] : null
+        map[TAB_LEGEND] ? CSV + "&gid=" + map[TAB_LEGEND] : null
       ];
     }, function () {
-      return [CSV, null, null];
+      return [CSV, null];
     }).then(function (urls) {
       return Promise.all([
         loadCSV(urls[0]),
-        urls[1] ? loadCSV(urls[1]).catch(function () { return null; }) : null,  // legend optional
-        urls[2] ? loadCSV(urls[2]).catch(function () { return null; }) : null   // config optional
+        urls[1] ? loadCSV(urls[1]).catch(function () { return null; }) : null  // legend optional
       ]);
     }).then(build).catch(fail);
   }
@@ -460,12 +407,6 @@
     searchBox = document.getElementById("efmp-search");
     run();
   }
-  if (typeof document !== "undefined") {
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-    else boot();
-  }
-  // Exposed for tests in a non-DOM (Node) environment; harmless in the browser.
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = { parseConfig: parseConfig, startMinutes: startMinutes, dateKey: dateKey };
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })();

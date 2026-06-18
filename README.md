@@ -13,32 +13,20 @@ served via jsDelivr so the per-page paste stays tiny.
 <script src="https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@COMMIT/efm-portal.js"></script>
 ```
 
-Data loads live from the published "DRAFT Master Calendar" Google Sheet. Tabs are
-resolved by **name** from the published `/pubhtml` directory, so the widget keeps
-working when the sheet is rebuilt (tab gids change on rebuild; names don't).
+### Where things live
+- **The Google Sheet stays a plain calendar.** It holds only the schedule
+  (Date, Day, Time, Room, Location, Ensemble, Conductor/Soloist, Type, Event)
+  plus a `Legend` tab. No config or logic in the sheet.
+- **All tab structure and routing live in `efm-portal.js`** (this hosted file).
+  The `NAV` array defines the tabs; the filtering distributes each calendar row
+  to the right tab using the calendar's own `Ensemble` / `Type` / `Room` columns.
+- Tabs are resolved by **name** from the published `/pubhtml` directory, so the
+  widget keeps working when the sheet is rebuilt (tab gids change; names don't).
 
-### Optional `Config` tab (drives the audience tabs without code changes)
+### Editing
+- **Schedule content:** edit the calendar rows in the sheet — appears live.
+- **Tabs / routing:** edit the `NAV` array in `efm-portal.js`, push, then bump
+  the two `@COMMIT` refs in the page's embed block to the new commit SHA.
 
-Add a tab named **Config** to the same spreadsheet. Header row, then one row per
-sub-tab:
-
-| TabId | TabLabel | SubLabel | Kind | Args |
-|-------|----------|----------|------|------|
-| students | Students | Today | today | ESO,GSO |
-|  |  | ESO Schedule | ensemble | ESO |
-
-- **TabId** — stable id for the top tab; leave blank to continue the previous tab.
-- **TabLabel** — shown on the top tab (read from its first row).
-- **SubLabel** — shown on the sub-tab.
-- **Kind** — `today` | `ensemble` | `allEnsembles` | `type` | `jump` | `roomsToday`.
-- **Args** — `today`: comma-separated ensemble codes (blank = everyone); `ensemble`:
-  one code; `type`: the exact Type value; `jump`: the TabId to jump to. Blank for
-  `allEnsembles` / `roomsToday`.
-
-Per-room sub-tabs are appended automatically to whichever tab has a `roomsToday`
-view. If the Config tab is absent or unparseable, the widget uses its built-in nav.
-
-### Updating the code
-jsDelivr URLs are pinned to a commit SHA (immutable). After pushing a change, bump
-the `@COMMIT` in the embed to the new SHA. Schedule content and the nav (Config tab)
-live in the sheet, so code edits should be rare.
+jsDelivr URLs are pinned to an immutable commit SHA, so a bad edit can never
+silently change the live page.
