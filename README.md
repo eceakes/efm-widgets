@@ -59,5 +59,22 @@ Affiliations · Website`. Falls back to a built-in roster if the sheet can't
 load, so the page is never blank. Edit code → push → bump the two `@COMMIT`
 refs in the embed.
 
+## efm-events — events calendar
+
+`efm-events.css` + `efm-events.js`, referenced from the events page:
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@COMMIT/efm-events.css">
+<div id="efm-events" class="efme">…markup…</div>
+<script src="https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@COMMIT/efm-events.js"></script>
+```
+
+Reads events from the Google Sheet (gviz CSV) by **header name** — wide column
+aliases, so columns can be added / reordered / renamed freely. Two views (Event
+Calendar + List View) plus Upcoming Events cards, with an accessible details
+modal per event. Master-class etc. rows come from the `Masterclasses` tab
+(calendar/list only). Built-in event fallback so the page is never blank. Edit
+code → push → bump the two `@COMMIT` refs in the embed.
+
 jsDelivr URLs are pinned to an immutable commit SHA, so a bad edit can never
 silently change the live page.
