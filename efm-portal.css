@@ -1,0 +1,154 @@
+  #efm-portal.efmp {
+    --efmp-ink: #0E178E;
+    --efmp-role: #5b6473;
+    --efmp-rule: #e4e6ef;
+    --efmp-hover: #6C82FA;
+    --efmp-soft: #f4f6fc;
+    --efmp-name-font: "arbeit-semi-bold", "Source Sans Pro", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --efmp-body-font: "Source Sans Pro", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --efmp-title-font: "PPPangaia-Medium", Georgia, serif;
+    max-width: 920px; margin: 0 auto; padding: 6px 16px 40px;
+    box-sizing: border-box; font-family: var(--efmp-body-font);
+    color: #2b3042; -webkit-font-smoothing: antialiased;
+  }
+  #efm-portal.efmp * { box-sizing: border-box; }
+
+  /* --- title: same treatment as the public Events page heading --- */
+  #efm-portal .efmp__title {
+    font-family: var(--efmp-title-font); color: var(--efmp-ink);
+    font-size: clamp(28px, 3vw + 18px, 46px); font-weight: 400;
+    line-height: 1.08; letter-spacing: .005em;
+    text-align: center; margin: 0 0 18px;
+  }
+
+  /* --- top-level tabs: underline style, like the Events page --- */
+  #efm-portal .efmp__tabs {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: clamp(14px, 3.5vw, 36px);
+    border-bottom: 2px solid var(--efmp-rule); margin: 0 0 18px;
+  }
+  #efm-portal .efmp__tabs button {
+    appearance: none; background: transparent; border: 0; cursor: pointer;
+    font-family: var(--efmp-name-font); color: var(--efmp-role);
+    font-size: clamp(15px, 12px + 1vw, 20px); font-weight: 400;
+    letter-spacing: .005em; line-height: 1.2;
+    padding: 13px 2px 12px; margin-bottom: -2px;
+    border-bottom: 3px solid transparent;
+    transition: color .18s, border-color .18s; white-space: nowrap;
+  }
+  #efm-portal .efmp__tabs button:hover { color: var(--efmp-hover); }
+  #efm-portal .efmp__tabs button.efmp-active { color: var(--efmp-ink); border-bottom-color: var(--efmp-ink); }
+  #efm-portal .efmp__tabs button:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 3px; border-radius: 3px; }
+
+  /* --- sub-tabs: soft pills --- */
+  #efm-portal .efmp__subtabs {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 8px; margin: 0 0 18px;
+  }
+  #efm-portal .efmp__subtabs button {
+    appearance: none; cursor: pointer; border: 1px solid var(--efmp-rule);
+    background: var(--efmp-soft); color: var(--efmp-ink);
+    font-family: var(--efmp-name-font); font-size: 13.5px; line-height: 1.2;
+    padding: 8px 16px; border-radius: 999px;
+    transition: background .18s, color .18s, border-color .18s;
+  }
+  #efm-portal .efmp__subtabs button:hover { border-color: var(--efmp-hover); color: var(--efmp-hover); }
+  #efm-portal .efmp__subtabs button.efmp-active {
+    background: var(--efmp-ink); border-color: var(--efmp-ink); color: #fff;
+  }
+  #efm-portal .efmp__subtabs button:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+
+  /* --- search --- */
+  #efm-portal .efmp__controls { display: flex; justify-content: center; margin: 0 0 16px; }
+  #efm-portal #efmp-search {
+    width: 100%; max-width: 440px; padding: 10px 18px;
+    font-family: var(--efmp-body-font); font-size: 15px; color: #2b3042;
+    border: 1px solid var(--efmp-rule); border-radius: 999px; background: #fff;
+    transition: border-color .18s;
+  }
+  #efm-portal #efmp-search:focus { outline: none; border-color: var(--efmp-ink); }
+  #efm-portal #efmp-search::placeholder { color: var(--efmp-role); }
+
+  /* --- banner + status --- */
+  #efm-portal .efmp__banner {
+    background: var(--efmp-soft); border: 1px solid var(--efmp-rule);
+    color: var(--efmp-ink); font-family: var(--efmp-name-font); font-size: 14px;
+    border-radius: 12px; padding: 11px 16px; text-align: center; margin: 0 0 14px;
+  }
+  #efm-portal .efmp__banner[hidden] { display: none; }
+  #efm-portal .efmp__status { color: var(--efmp-role); font-size: 16px; text-align: center; padding: 26px 2px; }
+  #efm-portal .efmp__status[hidden] { display: none; }
+
+  /* --- list: month + room group headers --- */
+  #efm-portal .efmp__list { max-width: 760px; margin: 0 auto; }
+  #efm-portal .efmp-month {
+    font-family: var(--efmp-title-font); color: var(--efmp-ink);
+    font-size: clamp(19px, 2vw + 12px, 24px); font-weight: 400; line-height: 1.1;
+    text-align: center; margin: 26px 0 14px;
+  }
+  #efm-portal .efmp-month:first-child { margin-top: 4px; }
+  #efm-portal .efmp-group {
+    font-family: var(--efmp-title-font); color: var(--efmp-ink);
+    font-size: clamp(18px, 1.6vw + 12px, 22px); font-weight: 400; line-height: 1.1;
+    margin: 24px 0 12px; padding-bottom: 7px;
+    border-bottom: 2px solid var(--efmp-rule);
+  }
+  #efm-portal .efmp-group:first-child { margin-top: 4px; }
+
+  /* --- agenda rows, matching .efme-agenda-row on the Events page --- */
+  #efm-portal .efmp-row {
+    display: flex; align-items: center; gap: 14px;
+    background: #fff; border: 1px solid var(--efmp-rule); border-radius: 12px;
+    padding: 11px 14px; margin: 0 0 9px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #efm-portal .efmp-row:hover { border-color: var(--efmp-ink); box-shadow: 0 6px 18px rgba(9, 12, 38, .08); }
+  #efm-portal .efmp-row__date {
+    flex: 0 0 auto; width: 46px; text-align: center;
+    color: var(--efmp-ink); font-family: var(--efmp-name-font); line-height: 1;
+  }
+  #efm-portal .efmp-row__date b { display: block; font-size: 22px; font-weight: 400; }
+  #efm-portal .efmp-row__date span {
+    display: block; font-size: 11px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--efmp-role); margin-top: 3px;
+  }
+  #efm-portal .efmp-row__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  #efm-portal .efmp-row__title { font-family: var(--efmp-name-font); color: var(--efmp-ink); font-size: 15.5px; line-height: 1.22; }
+  #efm-portal .efmp-row__when { color: var(--efmp-role); font-size: 13px; line-height: 1.45; }
+  #efm-portal .efmp-row__meta {
+    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px;
+    align-items: center; justify-content: flex-end; max-width: 38%;
+  }
+  #efm-portal .efmp-chip {
+    font-family: var(--efmp-name-font); font-size: 11px; line-height: 1;
+    letter-spacing: .05em; text-transform: uppercase;
+    background: var(--efmp-soft); color: var(--efmp-ink);
+    border-radius: 999px; padding: 6px 10px 5px; white-space: nowrap;
+  }
+  #efm-portal .efmp-chip--ens { background: var(--efmp-ink); color: #fff; }
+
+  #efm-portal .efmp__note { color: var(--efmp-role); font-size: 12.5px; text-align: center; margin: 22px 0 0; }
+
+  /* --- tablet --- */
+  @media (max-width: 720px) {
+    #efm-portal .efmp-row { flex-wrap: wrap; row-gap: 8px; padding: 11px 12px; }
+    #efm-portal .efmp-row__info { flex: 1 1 0; }
+    #efm-portal .efmp-row__meta {
+      flex: 1 1 100%; max-width: none; justify-content: flex-start;
+      margin-left: 60px; /* aligns chips under the title, past the date block */
+    }
+  }
+
+  /* --- phone --- */
+  @media (max-width: 480px) {
+    #efm-portal.efmp { padding: 4px 10px 32px; }
+    #efm-portal .efmp__tabs { gap: 4px 14px; }
+    #efm-portal .efmp__tabs button { font-size: 14.5px; padding: 10px 2px 9px; }
+    #efm-portal .efmp__subtabs button { font-size: 12.5px; padding: 7px 13px; }
+    #efm-portal .efmp-row { gap: 11px; }
+    #efm-portal .efmp-row__date { width: 40px; }
+    #efm-portal .efmp-row__date b { font-size: 19px; }
+    #efm-portal .efmp-row__title { font-size: 14.5px; }
+    #efm-portal .efmp-row__when { font-size: 12.5px; }
+    #efm-portal .efmp-row__meta { margin-left: 51px; }
+  }
