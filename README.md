@@ -14,18 +14,32 @@ served via jsDelivr so the per-page paste stays tiny.
 ```
 
 ### Where things live
-- **The Google Sheet stays a plain calendar.** It holds only the schedule
-  (Date, Day, Time, Room, Location, Ensemble, Conductor/Soloist, Type, Event)
-  plus a `Legend` tab. No config or logic in the sheet.
-- **All tab structure and routing live in `efm-portal.js`** (this hosted file).
-  The `NAV` array defines the tabs; the filtering distributes each calendar row
-  to the right tab using the calendar's own `Ensemble` / `Type` / `Room` columns.
-- Tabs are resolved by **name** from the published `/pubhtml` directory, so the
-  widget keeps working when the sheet is rebuilt (tab gids change; names don't).
+- **The Google Sheet stays a plain set of calendars/tables.** All tab structure
+  and routing live in `efm-portal.js` (the `NAV` and `SOURCES` arrays). Tabs are
+  resolved by **name** from the published `/pubhtml` directory, so the widget keeps
+  working when the sheet is rebuilt (gids change; names don't).
+- **A scrolling announcements banner** sits under the search box. It shows the
+  announcement whose `Date` matches today; any row whose `Logic` = `Today Override`
+  replaces it. Pause-on-hover + a pause button + a reduced-motion fallback.
+- **Every schedule row opens an accessible details modal** (focus-trapped, Esc to
+  close) showing its fields plus the `Details` column.
+
+### Sheet tabs read (all optional except Master Calendar; missing/empty = graceful)
+| Tab | Used for |
+|-----|----------|
+| `Master Calendar` | the schedule (add a rightmost `Details` column for modal text) |
+| `Legend` | ensemble + room code names |
+| `Announcements` | `Announcement Text · Date · Logic` (Logic dropdown incl. `Today Override`) → banner + Announcements tab |
+| `General Information` | free-form text → General Information tab (rendered as headings/paragraphs) |
+| `Counselors` | `Name · Title · Phone · Email` → listed on the General Information tab |
+| `Outreach Concerts` | `Concert Title · Location · Date · Time · Details` → Fellows ▸ Outreach Concerts |
+| `Student Chamber Rehearsal Schedules` | `Group Name · Date · Time · Location · Details` → Students ▸ Chamber Music |
+| `Fellow Chamber Music Rehearsal Schedules` | same shape → Fellows ▸ Chamber Music |
+| `Lesson Schedules` | `Faculty · Day · Time · Location · Details` → Lesson Schedules tab (grouped by faculty) |
 
 ### Editing
-- **Schedule content:** edit the calendar rows in the sheet — appears live.
-- **Tabs / routing:** edit the `NAV` array in `efm-portal.js`, push, then bump
+- **Content:** edit the relevant sheet tab — appears live.
+- **Tabs / routing / styling:** edit `efm-portal.js` / `efm-portal.css`, push, then bump
   the two `@COMMIT` refs in the page's embed block to the new commit SHA.
 
 jsDelivr URLs are pinned to an immutable commit SHA, so a bad edit can never

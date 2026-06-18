@@ -151,4 +151,107 @@
     #efm-portal .efmp-row__title { font-size: 14.5px; }
     #efm-portal .efmp-row__when { font-size: 12.5px; }
     #efm-portal .efmp-row__meta { margin-left: 51px; }
+    #efm-portal .efmp-ticker__item { font-size: 13px; padding: 0 18px; }
+    #efm-portal .efmp-ticker__item::after { margin-left: 18px; }
+    #efm-portal .efmp-ticker__label { display: none; }
   }
+
+  /* --- announcements ticker: side-scrolling, pinned under the search box --- */
+  #efm-portal .efmp__ticker {
+    display: flex; align-items: stretch; overflow: hidden; position: relative;
+    background: var(--efmp-ink); color: #fff; border-radius: 999px; margin: 0 0 16px;
+  }
+  #efm-portal .efmp__ticker[hidden] { display: none; }
+  #efm-portal .efmp-ticker__label {
+    flex: 0 0 auto; display: flex; align-items: center; white-space: nowrap;
+    font-family: var(--efmp-name-font); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; background: rgba(255, 255, 255, .16); padding: 0 13px;
+  }
+  #efm-portal .efmp-ticker__viewport { flex: 1 1 auto; overflow: hidden; }
+  #efm-portal .efmp-ticker__track {
+    display: inline-flex; align-items: center; white-space: nowrap;
+    padding: 9px 0; will-change: transform; animation: efmp-marquee 32s linear infinite;
+  }
+  #efm-portal .efmp__ticker:hover .efmp-ticker__track,
+  #efm-portal .efmp__ticker.efmp-paused .efmp-ticker__track { animation-play-state: paused; }
+  #efm-portal .efmp-ticker__item { font-family: var(--efmp-name-font); font-size: 14px; padding: 0 26px; }
+  #efm-portal .efmp-ticker__item::after { content: "\25C6"; opacity: .5; margin-left: 26px; }
+  #efm-portal .efmp-ticker__pause {
+    flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; line-height: 1;
+    background: rgba(255, 255, 255, .16); color: #fff; font-size: 13px; padding: 0 13px;
+  }
+  #efm-portal .efmp-ticker__pause:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  @keyframes efmp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) {
+    #efm-portal .efmp-ticker__track { animation: none; padding-left: 14px; }
+    #efm-portal .efmp-ticker__viewport { overflow-x: auto; }
+    #efm-portal .efmp-ticker__pause { display: none; }
+  }
+
+  /* --- clickable agenda rows (open a details modal) --- */
+  #efm-portal .efmp-row--clickable { cursor: pointer; }
+  #efm-portal .efmp-row--clickable:focus-visible {
+    outline: 2px solid var(--efmp-hover); outline-offset: 2px; border-color: var(--efmp-ink);
+  }
+  #efm-portal .efmp-row__more { flex: 0 0 auto; color: var(--efmp-role); font-size: 18px; line-height: 1; align-self: center; }
+
+  /* --- general information + counselors --- */
+  #efm-portal .efmp-info { max-width: 680px; margin: 0 auto; }
+  #efm-portal .efmp-info h4 {
+    font-family: var(--efmp-name-font); color: var(--efmp-ink); font-weight: 400;
+    font-size: 16px; letter-spacing: .02em; margin: 20px 0 6px;
+  }
+  #efm-portal .efmp-info h4:first-child { margin-top: 0; }
+  #efm-portal .efmp-info p { color: #2b3042; font-size: 14.5px; line-height: 1.5; margin: 0 0 5px; }
+  #efm-portal .efmp-info a { color: var(--efmp-ink); }
+  #efm-portal .efmp-people { list-style: none; margin: 8px 0 0; padding: 0; }
+  #efm-portal .efmp-people li { border: 1px solid var(--efmp-rule); border-radius: 12px; padding: 10px 14px; margin: 0 0 8px; }
+  #efm-portal .efmp-people b { font-family: var(--efmp-name-font); font-weight: 400; color: var(--efmp-ink); }
+  #efm-portal .efmp-people span { color: var(--efmp-role); font-size: 13.5px; }
+
+  /* --- announcements tab list --- */
+  #efm-portal .efmp-ann {
+    display: flex; gap: 12px; align-items: baseline;
+    border: 1px solid var(--efmp-rule); border-radius: 12px; padding: 11px 14px; margin: 0 0 9px;
+  }
+  #efm-portal .efmp-ann--today { border-color: var(--efmp-ink); background: var(--efmp-soft); }
+  #efm-portal .efmp-ann__date {
+    flex: 0 0 auto; font-family: var(--efmp-name-font); font-size: 12px; white-space: nowrap;
+    letter-spacing: .04em; text-transform: uppercase; color: var(--efmp-role);
+  }
+  #efm-portal .efmp-ann__text { color: #2b3042; font-size: 14.5px; line-height: 1.4; }
+
+  /* --- details modal --- */
+  #efm-portal .efmp-modal {
+    position: fixed; inset: 0; z-index: 99999; padding: 18px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(9, 12, 38, .55);
+  }
+  #efm-portal .efmp-modal[hidden] { display: none; }
+  #efm-portal .efmp-modal__box {
+    background: #fff; border-radius: 16px; max-width: 520px; width: 100%;
+    max-height: 86vh; overflow: auto; padding: 22px 24px 24px; position: relative;
+    box-shadow: 0 24px 60px rgba(9, 12, 38, .3);
+  }
+  #efm-portal .efmp-modal__close {
+    position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
+    appearance: none; border: 0; border-radius: 999px; cursor: pointer; line-height: 1;
+    background: var(--efmp-soft); color: var(--efmp-ink); font-size: 20px;
+  }
+  #efm-portal .efmp-modal__close:hover { background: var(--efmp-ink); color: #fff; }
+  #efm-portal .efmp-modal__close:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+  #efm-portal .efmp-modal__title {
+    font-family: var(--efmp-title-font); color: var(--efmp-ink); font-weight: 400;
+    font-size: 22px; line-height: 1.15; margin: 0 40px 14px 0;
+  }
+  #efm-portal .efmp-modal dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+  #efm-portal .efmp-modal dt {
+    font-family: var(--efmp-name-font); color: var(--efmp-role); font-size: 12px;
+    letter-spacing: .05em; text-transform: uppercase; padding-top: 2px;
+  }
+  #efm-portal .efmp-modal dd { margin: 0; color: #2b3042; font-size: 14.5px; line-height: 1.45; }
+  #efm-portal .efmp-modal__details {
+    margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--efmp-rule);
+    color: #2b3042; font-size: 14.5px; line-height: 1.5; white-space: pre-wrap;
+  }
+  body.efmp-modal-open { overflow: hidden; }
