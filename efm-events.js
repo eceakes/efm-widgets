@@ -320,22 +320,34 @@
     p.appendChild(hint);
   }
 
-  /* LIST VIEW tab — month agenda (every size) */
+  /* LIST VIEW tab — the whole season in one list (no month paging): every
+     date, split into Upcoming (today onward) and Past (dimmed). */
   function renderAgenda(){
-    var p=panels.list; p.innerHTML=""; p.appendChild(buildHead());
+    var p=panels.list; p.innerHTML="";
+    var all=calState.events.slice().sort(function(a,b){ return (a.start-b.start) || String(a.time||"").localeCompare(String(b.time||"")); });
+    if(!all.length){ var em=document.createElement("p"); em.className="efme-cal__empty"; em.textContent="No events to display yet."; p.appendChild(em); return; }
+    var t=today();
+    var upcoming=all.filter(function(e){ return e.end>=t; });
+    var past=all.filter(function(e){ return e.end<t; });
     var agenda=document.createElement("div"); agenda.className="efme-cal__agenda";
-    var evs=monthEventsList();
-    if(!evs.length){ var em=document.createElement("p"); em.className="efme-cal__empty"; em.textContent="No events in "+MONTHS[calState.mo]+" "+calState.y+"."; agenda.appendChild(em); }
-    else evs.forEach(function(e){
-      var meta=[]; if(e.time) meta.push(escapeHtml(e.time)); var v=venueOf(e.address); if(v) meta.push(escapeHtml(v));
-      var row=document.createElement("button"); row.type="button"; row.className="efme-agenda-row";
-      row.innerHTML='<span class="efme-agenda-date"><b>'+e.start.getDate()+'</b><span>'+DOW[e.start.getDay()]+'</span></span>'+
-        '<span class="efme-agenda-info"><span class="efme-agenda-title">'+escapeHtml(e.title)+'</span>'+
-        (meta.length?'<span class="efme-agenda-time">'+meta.join(" · ")+'</span>':'')+'</span>'+
-        '<span class="efme-agenda-arrow" aria-hidden="true">›</span>';
-      row.addEventListener("click",function(){ openModal(e); });
-      agenda.appendChild(row);
-    });
+    function addGroup(label,list,isPast){
+      if(!list.length) return;
+      var h=document.createElement("div"); h.className="efme-agenda-group"+(isPast?" efme-agenda-group--past":"");
+      h.setAttribute("role","heading"); h.setAttribute("aria-level","3"); h.textContent=label;
+      agenda.appendChild(h);
+      list.forEach(function(e){
+        var meta=[DOWFULL[e.start.getDay()]]; if(e.time) meta.push(escapeHtml(e.time)); var v=venueOf(e.address); if(v) meta.push(escapeHtml(v));
+        var row=document.createElement("button"); row.type="button"; row.className="efme-agenda-row"+(isPast?" efme-agenda-row--past":"");
+        row.innerHTML='<span class="efme-agenda-date"><b>'+e.start.getDate()+'</b><span>'+MON3[e.start.getMonth()].toUpperCase()+'</span></span>'+
+          '<span class="efme-agenda-info"><span class="efme-agenda-title">'+escapeHtml(e.title)+'</span>'+
+          '<span class="efme-agenda-time">'+meta.join(" · ")+'</span></span>'+
+          '<span class="efme-agenda-arrow" aria-hidden="true">›</span>';
+        row.addEventListener("click",function(){ openModal(e); });
+        agenda.appendChild(row);
+      });
+    }
+    addGroup("Upcoming",upcoming,false);
+    addGroup("Past",past,true);
     p.appendChild(agenda);
   }
 

@@ -120,6 +120,12 @@
 #efm-events .efme-agenda-title{ font-family:var(--efme-name-font); color:var(--efme-ink); font-size:15.5px; line-height:1.22; }
 #efm-events .efme-agenda-time{ color:var(--efme-role); font-size:13px; }
 #efm-events .efme-agenda-arrow{ flex:0 0 auto; color:var(--efme-rule); font-size:22px; line-height:1; }
+/* List View group headings (Upcoming / Past) + dimmed past rows */
+#efm-events .efme-agenda-group{ font-family:var(--efme-name-font); color:var(--efme-ink); font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; margin:22px 0 12px; padding-bottom:7px; border-bottom:1px solid var(--efme-rule); }
+#efm-events .efme-agenda-group:first-child{ margin-top:0; }
+#efm-events .efme-agenda-group--past{ color:var(--efme-role); margin-top:30px; }
+#efm-events .efme-agenda-row--past{ opacity:.5; }
+#efm-events .efme-agenda-row--past:hover{ opacity:1; }
 
 /* ====================== EVENT MODAL ====================== */
 #efm-events .efme-modal[hidden]{ display:none; }
