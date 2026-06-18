@@ -440,13 +440,16 @@
     if (!ticker) return;
     var tk = todayKey();
     var withText = announcements.filter(function (a) { return a.text; });
-    // Priority: Today Override rows win; else today's date-matched rows; else
-    // fall forward to all upcoming announcements so the bar is never blank
-    // when something is on the way.
-    var overrides = withText.filter(function (a) { return /today\s*override/i.test(a.logic); });
+    // Priority: any "Override" row wins and shows EXCLUSIVELY (multiple overrides
+    // are shown together, in chronological order); else today's date-matched
+    // rows; else fall forward to all upcoming announcements so the bar is never
+    // blank when something is on the way.
+    var overrides = withText.filter(function (a) { return /override/i.test(a.logic); });
     var items;
     if (overrides.length) {
-      items = overrides;
+      items = overrides.slice().sort(function (a, b) {
+        return (a.key === null ? 99999 : a.key) - (b.key === null ? 99999 : b.key);
+      });
     } else {
       var todays = withText.filter(function (a) { return a.key !== null && a.key === tk; });
       items = todays.length
