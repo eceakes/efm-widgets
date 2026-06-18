@@ -1,0 +1,134 @@
+/* EFM Tickets / Subscribe CTA — hosted styles (eceakes/efm-widgets)
+   Pure CSS, no JS. Scoped under #efm-tickets so nothing leaks to the page.
+   Shares the EFM widget design system (efm-portal / efm-events / efm-faculty). */
+#efm-tickets.efmt{
+  /* ---- shared EFM design tokens ---- */
+  --efmt-ink:#0E178E;        /* brand blue */
+  --efmt-ink-deep:#0A1170;   /* darker blue for the gradient floor */
+  --efmt-hover:#6C82FA;      /* periwinkle accent (focus rings) */
+  --efmt-cream:#F7F7F7;      /* off-white text + primary button fill */
+  --efmt-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmt-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmt-title-font:"PPPangaia-Medium",Georgia,"Times New Roman",serif;
+
+  box-sizing:border-box;
+  width:100%;
+  max-width:920px;          /* matches the portal/events widget width */
+  height:auto;              /* never a fixed height */
+  margin:0 auto;
+  padding:clamp(40px,5vw,60px) clamp(24px,4vw,48px);
+  background:linear-gradient(135deg, var(--efmt-ink) 0%, var(--efmt-ink-deep) 100%);
+  border-radius:24px;
+  text-align:center;
+  font-family:var(--efmt-body-font);
+  color:var(--efmt-cream);
+  -webkit-font-smoothing:antialiased;
+  container-type:inline-size;   /* reflow to the widget's own column, not the raw viewport */
+  container-name:efmt;
+}
+#efm-tickets.efmt *,
+#efm-tickets.efmt *::before,
+#efm-tickets.efmt *::after{ box-sizing:border-box; }
+
+/* ---- eyebrow ---- */
+#efm-tickets .efmt__eyebrow{
+  margin:0 0 14px;
+  font-family:var(--efmt-name-font);
+  color:var(--efmt-cream);
+  opacity:.78;
+  font-size:13px;
+  font-weight:400;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  line-height:1.4;
+}
+
+/* ---- title (role=heading div so Duda's gold/serif heading theme can't recolor it) ---- */
+#efm-tickets .efmt__title{
+  margin:0 0 12px !important;
+  font-family:var(--efmt-title-font) !important;
+  color:var(--efmt-cream) !important;
+  font-weight:400 !important;
+  font-size:44px !important;                       /* fallback for old browsers */
+  font-size:clamp(30px, 3cqi + 18px, 46px) !important;
+  line-height:1.08 !important;
+  letter-spacing:.005em !important;
+}
+
+/* ---- supporting copy ---- */
+#efm-tickets .efmt__copy{
+  margin:0 auto 30px;
+  max-width:540px;
+  color:var(--efmt-cream);
+  opacity:.88;
+  font-size:17px;
+  font-weight:400;
+  line-height:1.55;
+}
+
+/* ---- actions ---- */
+#efm-tickets .efmt__actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:14px;
+}
+
+/* ---- pill buttons (repo convention: 999px radius, arbeit labels) ---- */
+#efm-tickets a.efmt-btn{
+  display:inline-block;
+  font-family:var(--efmt-name-font);
+  font-size:16px;
+  font-weight:400;
+  line-height:1.2;
+  letter-spacing:.01em;
+  padding:14px 34px;
+  border-radius:999px;
+  text-decoration:none !important;   /* beats Duda's global .dmWidget link underline */
+  transition:background-color .18s ease, color .18s ease,
+             border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+#efm-tickets a.efmt-btn:hover{ box-shadow:0 10px 24px rgba(9,12,38,.30); }
+#efm-tickets a.efmt-btn:active{ transform:translateY(1px); }
+#efm-tickets a.efmt-btn:focus-visible{
+  outline:2px solid var(--efmt-cream);
+  outline-offset:3px;
+}
+
+/* primary = cream fill, ink text */
+#efm-tickets a.efmt-btn--primary{
+  background:var(--efmt-cream) !important;
+  color:var(--efmt-ink) !important;
+}
+#efm-tickets a.efmt-btn--primary:hover{ background:#ffffff !important; }
+
+/* ghost = cream outline, cream text */
+#efm-tickets a.efmt-btn--ghost{
+  background:transparent !important;
+  color:var(--efmt-cream) !important;
+  border:2px solid rgba(247,247,247,.7);
+}
+#efm-tickets a.efmt-btn--ghost:hover{
+  border-color:var(--efmt-cream);
+  background:rgba(247,247,247,.12) !important;
+}
+
+/* ---- narrow column: stack full-width buttons (responds to the widget, not the screen) ---- */
+@container efmt (max-width: 460px){
+  #efm-tickets a.efmt-btn{ width:100%; }
+}
+/* fallback for browsers without container queries */
+@supports not (container-type: inline-size){
+  @media (max-width: 540px){
+    #efm-tickets a.efmt-btn{ width:100%; }
+  }
+}
+@media (max-width: 540px){
+  #efm-tickets.efmt{ border-radius:18px; }
+}
+
+/* ---- respect reduced-motion preferences ---- */
+@media (prefers-reduced-motion: reduce){
+  #efm-tickets a.efmt-btn{ transition:none; }
+  #efm-tickets a.efmt-btn:active{ transform:none; }
+}
