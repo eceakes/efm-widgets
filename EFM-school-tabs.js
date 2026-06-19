@@ -480,4 +480,220 @@ var msg = "The roster couldn&rsquo;t load right now. Please refresh the page, " 
 scholarsStatus.innerHTML = msg; fellowsStatus.innerHTML = msg;
 if (window.console) console.error("EFM school fellows load failed:", err);
 });
+var CONTENT_PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOPyJQPSuQ4pMh7SjYClTiVeFz0L0Pszbm0vTBoPO35GXVHt_t7xq3hsl8znwVCX4hQajPr1yv2W-o/pub";
+var CONTENT_GIDS = {
+settings: "1591152503", introText: "464272698", cards: "972858453",
+repertoire: "534050850", positions: "8880545", tuition: "1356521809",
+lists: "457392491", auditions: "1745013024"
+};
+function contentUrl(gid) { return CONTENT_PUB + "?output=csv&single=true&gid=" + gid; }
+function logc(e) { if (window.console) console.warn("EFM content binding:", e); }
+function rowsToObjects(rows, firstHeader) {
+var hi = -1;
+for (var i = 0; i < rows.length; i++) {
+if ((rows[i][0] || "").trim().toLowerCase() === firstHeader) { hi = i; break; }
+}
+if (hi === -1) return [];
+var hdr = rows[hi].map(function (c) { return (c || "").trim().toLowerCase(); });
+var out = [];
+for (var j = hi + 1; j < rows.length; j++) {
+var r = rows[j];
+if (!r.length || r.every(function (c) { return !(c || "").trim(); })) continue;
+var o = {};
+hdr.forEach(function (h, idx) { if (h) o[h] = (r[idx] || "").trim(); });
+out.push(o);
+}
+return out;
+}
+function applyTokens(text, s) {
+return String(text == null ? "" : text).replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, function (m, k) {
+return (s[k] != null && s[k] !== "") ? s[k] : m;
+});
+}
+function rich(text, s) { return mdInline(esc(applyTokens(text, s))); }
+function afterHeading(scope, text, tag) {
+var hs = scope.querySelectorAll(".efmsc-h3");
+for (var i = 0; i < hs.length; i++) {
+if (hs[i].textContent.trim() === text) {
+var n = hs[i].nextElementSibling;
+while (n && n.tagName.toLowerCase() !== tag) n = n.nextElementSibling;
+return n;
+}
+}
+return null;
+}
+function renderRep(ul, items) {
+if (items.some(function (it) { return it.piece; })) {
+ul.classList.remove("efmsc-chips"); ul.classList.add("efmsc-rep--titled");
+ul.innerHTML = items.map(function (it) {
+return "<li><span class=\"efmsc-rep__c\">" + esc(it.composer) + "</span>" +
+(it.piece ? "<span class=\"efmsc-rep__p\">" + esc(it.piece) + "</span>" : "") + "</li>";
+}).join("");
+} else {
+ul.classList.add("efmsc-chips"); ul.classList.remove("efmsc-rep--titled");
+ul.innerHTML = items.map(function (it) { return "<li>" + esc(it.composer) + "</li>"; }).join("");
+}
+}
+var contentSettings = {};
+function bindSettings(s) {
+var FACTS = { "dates": "festival_dates", "location": "festival_location", "student programs": "student_age_range", "apply by": "application_deadline" };
+Array.prototype.forEach.call(root.querySelectorAll(".efmsc__facts li"), function (li) {
+var b = li.querySelector("b"), span = li.querySelector("span");
+if (!b || !span) return;
+var key = FACTS[b.textContent.trim().toLowerCase()];
+if (key && s[key]) span.textContent = applyTokens(s[key], s);
+});
+var fn = root.querySelector(".efmsc__footnote");
+if (fn && s.page_footnote) fn.innerHTML = rich(s.page_footnote, s);
+if (s.acceptd_url) Array.prototype.forEach.call(root.querySelectorAll('a[href*="getacceptd"]'), function (a) { a.setAttribute("href", s.acceptd_url); });
+var qp = afterHeading(root, "Questions?", "p");
+if (qp && s.contact_org) {
+qp.innerHTML = esc(s.contact_org) + "<br>" + esc(s.contact_address || "") + "<br>" +
+'<a href="mailto:' + esc(s.contact_email || "") + '">' + esc(s.contact_email || "") + "</a>";
+}
+}
+var INTRO_MAP = {
+"Overview|lede": "#efmsc-panel-overview p.efmsc-lede",
+"Orchestral Program|paragraph 1": "#efmsc-panel-orchestral p.efmsc-lede",
+"Orchestral Program|paragraph 2": "#efmsc-panel-orchestral p.efmsc-lede + p",
+"Conducting Institute|paragraph 1": "#efmsc-panel-conducting p.efmsc-lede",
+"Conducting Institute|paragraph 2": "#efmsc-panel-conducting p.efmsc-lede + p",
+"Piano Academy|paragraph 1": "#efmsc-panel-piano p.efmsc-lede",
+"Piano Academy|paragraph 2": "#efmsc-panel-piano p.efmsc-lede + p",
+"Fellowships|lede": "#efmsc-panel-fellowships p.efmsc-lede"
+};
+function bindIntro(rows, s) {
+rows.forEach(function (o) {
+var k = (o["tab / section"] || "") + "|" + (o["slot"] || "");
+var text = o["text"];
+if (!text) return;
+if (k === "Tuition & Applying|Alexander Technique") {
+var ax = afterHeading(root, "Alexander Technique Lessons", "p");
+if (ax) ax.innerHTML = rich(text, s);
+return;
+}
+var sel = INTRO_MAP[k];
+if (sel) { var el = root.querySelector(sel); if (el) el.innerHTML = rich(text, s); }
+});
+}
+function bindCards(rows, s) {
+var ov = document.getElementById("efmsc-panel-overview"); if (!ov) return;
+var groups = {}, order = [];
+rows.forEach(function (o) { var g = o["group"]; if (!g) return; if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(o); });
+order.forEach(function (g) {
+var container = afterHeading(ov, g, "div"); if (!container) return;
+container.innerHTML = groups[g].map(function (o) {
+return '<a class="efmsc-card" href="' + esc(o["opens tab"] || "#") + '">' +
+"<h4>" + esc(o["title"] || "") + "</h4>" +
+'<p class="efmsc-card__meta">' + esc(o["ages"] || "") + "</p>" +
+"<p>" + rich(o["description"] || "", s) + "</p>" +
+'<span class="efmsc-card__go">Explore <span aria-hidden="true">&rarr;</span></span></a>';
+}).join("");
+});
+}
+function bindRepertoire(rows) {
+var ul = document.getElementById("efmsc-rep"); if (!ul) return;
+var items = rows.map(function (o) { return { composer: o["composer"] || "", piece: o["piece (optional)"] || "" }; })
+.filter(function (it) { return it.composer; });
+if (items.length) renderRep(ul, items);
+}
+function bindPositions(rows) {
+var ul = root.querySelector("#efmsc-panel-fellowships .efmsc-chips--link"); if (!ul) return;
+var items = rows.filter(function (o) { return o["position"]; });
+if (!items.length) return;
+ul.innerHTML = items.map(function (o) {
+var slug = (o["jumps to audition section (key)"] || "").trim();
+return '<li><a href="#fellowships/' + esc(slug) + '">' + esc(o["position"]) + "</a></li>";
+}).join("");
+}
+function bindTuition(rows) {
+var tbody = root.querySelector("#efmsc-panel-apply .efmsc-table tbody"); if (!tbody) return;
+var items = rows.filter(function (o) { return o["item"]; });
+if (!items.length) return;
+tbody.innerHTML = items.map(function (o) {
+var isTotal = (o["item"] || "").trim().toLowerCase() === "total";
+var detail = (o["detail"] || "").trim();
+return "<tr" + (isTotal ? ' class="efmsc-table__total"' : "") + ">" +
+'<th scope="row">' + esc(o["item"]) + (detail ? " <small>" + esc(detail) + "</small>" : "") + "</th>" +
+"<td>" + esc(o["amount"] || "") + "</td></tr>";
+}).join("");
+}
+var LIST_MAP = {
+"Every fellowship includes": "Every fellowship includes",
+"Applying (Fellowships)": "Applying",
+"Curriculum (Conducting Institute)": "Curriculum",
+"The summer includes (Tuition)": "The summer includes",
+"How to Apply (Tuition)": "How to Apply"
+};
+function bindLists(rows, s) {
+var groups = {};
+rows.forEach(function (o) { var l = o["list"]; if (!l) return; (groups[l] = groups[l] || []).push(o["item"] || ""); });
+Object.keys(groups).forEach(function (l) {
+var heading = LIST_MAP[l]; if (!heading) return;
+var ul = afterHeading(root, heading, "ul"); if (!ul) return;
+ul.innerHTML = groups[l].map(function (item) { return "<li>" + rich(item, s) + "</li>"; }).join("");
+});
+}
+function bindAuditions(rows, s) {
+var groups = {};
+rows.forEach(function (o) {
+var key = (o["program"] || "") + "::" + (o["section"] || "");
+(groups[key] = groups[key] || []).push({ kind: (o["kind"] || "Bullet"), text: o["text"] || "" });
+});
+function buildBody(items) {
+var html = "", bullets = [];
+function flush() { if (bullets.length) { html += "<ul>" + bullets.map(function (b) { return "<li>" + rich(b, s) + "</li>"; }).join("") + "</ul>"; bullets = []; } }
+items.forEach(function (it) {
+if (it.kind.toLowerCase() === "intro") { flush(); html += "<p>" + rich(it.text, s) + "</p>"; }
+else bullets.push(it.text);
+});
+flush();
+return html;
+}
+Array.prototype.forEach.call(root.querySelectorAll(".efmsc-acc__item"), function (item) {
+var group = item.parentNode.getAttribute("data-acc-group");
+var program = group === "orchestral" ? "Orchestral" : (group === "fellowships" ? "Fellowship" : null);
+if (!program) return;
+var acc = item.getAttribute("data-acc");
+var headEl = item.querySelector(".efmsc-acc__head span");
+var headText = headEl ? headEl.textContent.trim() : "";
+var items = groups[program + "::" + acc] || groups[program + "::" + headText];
+if (!items) return;
+var body = item.querySelector(".efmsc-acc__body");
+var fac = body.querySelector(".efmsc-fac");
+Array.prototype.slice.call(body.children).forEach(function (ch) { if (ch !== fac) body.removeChild(ch); });
+var tmp = document.createElement("div"); tmp.innerHTML = buildBody(items);
+Array.prototype.slice.call(tmp.childNodes).forEach(function (n) { body.insertBefore(n, fac); });
+});
+[["Conducting Institute", "efmsc-panel-conducting"], ["Piano Academy", "efmsc-panel-piano"]].forEach(function (pair) {
+var program = pair[0], panel = document.getElementById(pair[1]); if (!panel) return;
+var bullets = [];
+Object.keys(groups).forEach(function (k) {
+if (k.indexOf(program + "::") === 0) groups[k].forEach(function (it) { if (it.kind.toLowerCase() !== "intro") bullets.push(it.text); });
+});
+if (!bullets.length) return;
+var ul = afterHeading(panel, "Audition Requirements", "ul"); if (!ul) return;
+ul.innerHTML = bullets.map(function (b) { return "<li>" + rich(b, s) + "</li>"; }).join("");
+});
+}
+function fetchBind(gid, firstHeader, fn) {
+loadCSV(contentUrl(gid)).then(function (t) {
+try { fn(rowsToObjects(parseCSV(t), firstHeader), contentSettings); } catch (e) { logc(e); }
+}).catch(function (e) { logc(e); });
+}
+loadCSV(contentUrl(CONTENT_GIDS.settings))
+.then(function (t) {
+rowsToObjects(parseCSV(t), "key").forEach(function (o) { if (o.key != null) contentSettings[o.key] = o.value; });
+try { bindSettings(contentSettings); } catch (e) { logc(e); }
+})
+.catch(function (e) { logc(e); })
+.then(function () {
+fetchBind(CONTENT_GIDS.introText, "tab / section", bindIntro);
+fetchBind(CONTENT_GIDS.cards, "group", bindCards);
+fetchBind(CONTENT_GIDS.repertoire, "composer", bindRepertoire);
+fetchBind(CONTENT_GIDS.positions, "position", bindPositions);
+fetchBind(CONTENT_GIDS.tuition, "item", bindTuition);
+fetchBind(CONTENT_GIDS.lists, "list", bindLists);
+fetchBind(CONTENT_GIDS.auditions, "program", bindAuditions);
+});
 })();
