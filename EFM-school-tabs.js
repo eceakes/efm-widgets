@@ -85,6 +85,25 @@ if (item.className.indexOf("efmsc-open") !== -1 && history.replaceState)
 history.replaceState(null, "", "#" + group + "/" + item.getAttribute("data-acc"));
 };
 });
+(function () {
+var rep = document.getElementById("efmsc-rep");
+if (!rep) return;
+var items = Array.prototype.slice.call(rep.querySelectorAll("li"));
+var titled = items.some(function (li) { return li.textContent.indexOf(":") !== -1; });
+if (!titled) return;
+rep.classList.remove("efmsc-chips");
+rep.classList.add("efmsc-rep--titled");
+items.forEach(function (li) {
+var t = li.textContent.trim();
+var i = t.indexOf(":");
+if (i === -1) {
+li.innerHTML = '<span class="efmsc-rep__c">' + esc(t) + "</span>";
+} else {
+li.innerHTML = '<span class="efmsc-rep__c">' + esc(t.slice(0, i).trim()) + "</span>" +
+'<span class="efmsc-rep__p">' + esc(t.slice(i + 1).trim()) + "</span>";
+}
+});
+})();
 function applyHash() {
 var h = location.hash.replace(/^#/, "");
 if (!h) return;
