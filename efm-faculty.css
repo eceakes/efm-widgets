@@ -23,6 +23,24 @@
   text-align:center; color:var(--efmf-role); font-size:16px; padding:30px 0;
 }
 #efm-faculty .efmf__status[hidden]{ display:none; }
+/* ---- tabs (2026 Faculty / 2026 Guest Artists) — mirrors the Events widget ---- */
+#efm-faculty .efmf__tabs{
+  display:flex; flex-wrap:wrap; justify-content:center;
+  gap:clamp(18px,4vw,40px);
+  border-bottom:2px solid var(--efmf-rule);
+  margin:0 0 26px;
+}
+#efm-faculty .efmf-tab{
+  appearance:none; -webkit-appearance:none; background:transparent; border:0; cursor:pointer;
+  font-family:var(--efmf-head-font)!important; color:var(--efmf-role)!important;
+  font-size:18px; font-size:clamp(16px,1vw + 13px,21px); font-weight:400; letter-spacing:.005em; line-height:1.2;
+  padding:14px 2px 13px; margin-bottom:-2px; border-bottom:3px solid transparent;
+  transition:color .18s ease, border-color .18s ease; white-space:nowrap;
+}
+#efm-faculty .efmf-tab:hover{ color:var(--efmf-hover)!important; }
+#efm-faculty .efmf-tab[aria-selected="true"]{ color:var(--efmf-ink)!important; border-bottom-color:var(--efmf-ink); }
+#efm-faculty .efmf-tab:focus-visible{ outline:2px solid var(--efmf-hover); outline-offset:3px; border-radius:3px; }
+#efm-faculty .efmf__panel[hidden]{ display:none; }
 /* The grid measures itself against THIS element's width (the widget's own width),
    so it reflows correctly in Duda's desktop / tablet / mobile views — it responds
    to the column it sits in, not just the raw viewport. */
@@ -173,4 +191,5 @@
   color:var(--efmf-ink)!important; text-decoration:none;
 }
 #efm-faculty .efmf-modal__link:hover{ color:var(--efmf-hover)!important; text-decoration:underline; }
-#efm-faculty .efmf-title{ font-family:"PPPangaia-Medium",Georgia,serif; color:var(--efmf-ink); font-size:38px; font-size:clamp(28px,3cqi + 18px,46px); font-weight:400; line-height:1.08; letter-spacing:.005em; margin:0 0 30px; }
+#efm-faculty .efmf-title{ font-family:"PPPangaia-Medium",Georgia,serif; color:var(--efmf-ink); font-size:38px; font-size:clamp(28px,3cqi + 18px,46px); font-weight:400; line-height:1.08; letter-spacing:.005em; margin:0 0 22px; text-align:center; }
+#efm-faculty .efmf-title[hidden]{ display:none; }

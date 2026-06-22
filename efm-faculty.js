@@ -1,22 +1,32 @@
 (function(){
   "use strict";
   /* ====================== CONFIG ====================== */
-  /* The roster is read live from your Google Sheet. Primary = the gviz CSV
+  /* Both rosters are read live from your Google Sheet. Primary = the gviz CSV
      endpoint (reliable + CORS-clean from the live site); the publish-to-web CSV
-     is kept as an automatic backup. The block tries them in order, then falls
-     back to the built-in list so the page is never blank. */
+     is kept as an automatic backup. Each tab tries its sources in order, then
+     falls back to the built-in list so the page is never blank. */
+  /* --- 2026 Faculty (existing tab "EFM 2026 Faculty", gid 1338599143) --- */
   var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1PuagTf2lB19eRNRmbaUdYzKytzoLCQ6PsRrgBAxvPTw/gviz/tq?tqx=out:csv&gid=1338599143";
   var SHEET_CSV_FALLBACKS = ["https://docs.google.com/spreadsheets/d/e/2PACX-1vRlBTW1VcRV6-cDZfm9ibRqo23_c1BAvMRfC3eoTj502VrUaxov7OsDY6anYA7a8akD8bz9IfCCDJ3i/pub?gid=1338599143&single=true&output=csv"];
-  /* Heading shown at the top of the module. Set to "" to hide it. */
+  /* --- 2026 Guest Artists (sheet tab "EFM 2026 Guest Artists") --- */
+  /* Queried by sheet NAME (not gid): works on a link-shared sheet, survives a gid
+     change, and is self-documenting. Columns on that tab: Name, Headshot, Bio. */
+  var GUEST_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1PuagTf2lB19eRNRmbaUdYzKytzoLCQ6PsRrgBAxvPTw/gviz/tq?tqx=out:csv&sheet=EFM%202026%20Guest%20Artists";
+  var GUEST_SHEET_CSV_FALLBACKS = [];
+  /* Heading shown at the top of the module (above the tabs). Set to "" to hide it. */
   var MODULE_TITLE = "Eastern Festival of Music Faculty";
-  /* Section heading order. Sections found in the data but not listed here are
-     appended afterward in the order they first appear. */
+  /* Tab labels. */
+  var FACULTY_TAB_LABEL = "2026 Faculty";
+  var GUEST_TAB_LABEL = "2026 Guest Artists";
+  /* Section heading order (Faculty tab). Sections found in the data but not listed
+     here are appended afterward in the order they first appear. */
   var SECTION_ORDER = ["Conductors","Flute","Oboe","Clarinet","Bassoon",
     "French Horn","Trumpet","Trombone","Tuba","Percussion & Timpani","Harp",
     "Piano","Violin","Viola","Cello","Double Bass"];
-  /* Built-in roster (used until SHEET_CSV_URL is set, and as a safety net if the
-     sheet ever fails to load). Columns mirror the sheet: name, role, section,
-     photo, link, bio, affiliations, website. */
+  /* Built-in faculty roster (used until SHEET_CSV_URL is set, and as a safety net
+     if the sheet ever fails to load). Columns mirror the sheet: name, role,
+     section, photo, link, bio, affiliations, website. Kept LEAN on purpose (no
+     bios) — the live sheet is the source of truth for the rich fields. */
   var FALLBACK_DATA = [
     {name:"Gerard Schwarz",role:"Music Director & Conductor",section:"Conductors",photo:"https://lirp.cdn-website.com/1e6f3c7e/dms3rep/multi/opt/gerard-home-1920w.jpg",link:"/gerard-schwarz"},
     {name:"José-Luis Novo",role:"Resident Conductor",section:"Conductors",photo:"https://lirp.cdn-website.com/1e6f3c7e/dms3rep/multi/opt/Jose--Luis+Novo+by+Richar+Brown+4+Shoot_1518+4x5-1920w.jpg",link:"/jose-luis-novo"},
@@ -77,12 +87,20 @@
     {name:"Marc Facci",role:"Double Bass",section:"Double Bass"},
     {name:"Richard Ostrovsky",role:"Double Bass",section:"Double Bass"}
   ];
+  /* Built-in guest-artist roster (safety net for the Guest Artists tab). Kept LEAN
+     (name + photo only) — the long bios live in the sheet and load live. */
+  var GUEST_FALLBACK_DATA = [
+    {name:"Misha Dichter",photo:"https://irp.cdn-website.com/1e6f3c7e/dms3rep/multi/Misha-Dichter-Headshot.webp"},
+    {name:"Pinchas Zukerman",photo:"https://irp.cdn-website.com/1e6f3c7e/dms3rep/multi/Pinchas-Zukerman-headshot.jpg"},
+    {name:"Leonidas Kavakos",photo:"https://irp.cdn-website.com/1e6f3c7e/dms3rep/multi/Leonidas+Kavakos_credit+Marco+Borggreve+8.jpg"}
+  ];
   /* ====================== ENGINE (no need to edit below) ====================== */
-  var root, statusEl;
-  function setStatus(msg){
-    if(!statusEl) return;
-    if(msg){ statusEl.textContent = msg; statusEl.hidden = false; }
-    else { statusEl.hidden = true; }
+  var host, titleEl, tabsBar, panels;
+  var facultyRoot, facultyStatus, guestRoot, guestStatus;
+  function setStatus(el, msg){
+    if(!el) return;
+    if(msg){ el.textContent = msg; el.hidden = false; }
+    else { el.hidden = true; }
   }
   /* RFC-4180-ish CSV parser: handles quoted fields, commas & newlines inside
      quotes, and "" escaped quotes. Returns an array of string arrays. */
@@ -132,11 +150,11 @@
     return map;
   }
   function cell(row, idx){ return idx === undefined ? "" : String(row[idx] == null ? "" : row[idx]).trim(); }
-  function toObj(map, row){
+  function toObj(map, row, defSection){
     return {
       name: cell(row, map.name),
       role: cell(row, map.role),
-      section: cell(row, map.section) || "Faculty",
+      section: cell(row, map.section) || defSection,
       photo: cell(row, map.photo),
       link: cell(row, map.link),
       bio: cell(row, map.bio),
@@ -144,7 +162,7 @@
       website: cell(row, map.website)
     };
   }
-  function rowsToData(rows){
+  function rowsToData(rows, defSection){
     if(!rows.length) return [];
     var map = headerMap(rows[0]);
     var body = rows.slice(1);
@@ -153,7 +171,7 @@
       map = { name:0, role:1, section:2, photo:3, link:4, bio:5, affiliations:6, website:7 };
       body = rows;
     }
-    return body.map(function(r){ return toObj(map, r); }).filter(function(o){ return o.name; });
+    return body.map(function(r){ return toObj(map, r, defSection || "Faculty"); }).filter(function(o){ return o.name; });
   }
   /* ---- tiny, SAFE Markdown -> HTML (for bios from the sheet) ----
      Escapes all HTML first, then re-introduces only **bold**, *italic*,
@@ -203,7 +221,6 @@
   var modal, modalAvatar, modalName, modalRole, modalBio, modalAffilWrap, modalAffilItems, modalWebWrap, modalWebLink, modalLink, modalClose, lastFocus;
   function buildModal(){
     if(modal) return;
-    var host = document.getElementById("efm-faculty");   // NOT inside .efmf__sections (that's a query container)
     modal = document.createElement("div");
     modal.className = "efmf-modal"; modal.hidden = true;
     modal.setAttribute("role","dialog"); modal.setAttribute("aria-modal","true"); modal.setAttribute("aria-labelledby","efmf-modal-name");
@@ -236,6 +253,8 @@
       if(e.key === "Escape"){ closeModal(); return; }
       if(e.key === "Tab"){
         var f = modal.querySelectorAll('a[href],button:not([disabled])');
+        // only the visible (displayed) focusables participate in the trap
+        f = Array.prototype.filter.call(f, function(n){ return n.offsetParent !== null || n === modalClose; });
         if(!f.length) return;
         var first = f[0], last = f[f.length-1];
         if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
@@ -339,7 +358,7 @@
      entrance animation can otherwise leave JS-rendered content stuck invisible
      until a hover repaints it. */
   function defuseAnimations(){
-    for(var el = document.getElementById("efm-faculty"); el && el !== document.body; el = el.parentElement){
+    for(var el = host; el && el !== document.body; el = el.parentElement){
       try{
         var cs = getComputedStyle(el);
         if(parseFloat(cs.opacity) < 1) el.style.setProperty("opacity","1","important");
@@ -349,13 +368,13 @@
     }
   }
   /* Keep the Duda widget box matched to our responsive content height, so the
-     desktop <-> tablet <-> mobile reflow never leaves a fixed-height gap and —
-     importantly — never CLIPS the lower part of the grid. Releases any ancestor
-     that is shorter than its content (fixed height + hidden overflow), whether
-     that height came from an inline style or a CSS class, and if Duda embedded us
-     in a same-origin iframe, grows that iframe to fit. */
+     desktop <-> tablet <-> mobile reflow (and the tab switch) never leaves a
+     fixed-height gap and — importantly — never CLIPS the lower part of the grid.
+     Releases any ancestor that is shorter than its content (fixed height + hidden
+     overflow), whether that height came from an inline style or a CSS class, and
+     if Duda embedded us in a same-origin iframe, grows that iframe to fit. */
   function autoHeight(){
-    var node = document.getElementById("efm-faculty");
+    var node = host;
     if(!node) return;
     for(var el = node.parentElement; el && el !== document.body; el = el.parentElement){
       try{
@@ -383,15 +402,15 @@
   function wireBox(){
     if(_wired) return; _wired = true;
     window.addEventListener("resize", syncBox);
-    if(window.ResizeObserver){ try{ new ResizeObserver(syncBox).observe(document.getElementById("efm-faculty")); }catch(e){} }
+    if(window.ResizeObserver){ try{ new ResizeObserver(syncBox).observe(host); }catch(e){} }
     // keep re-asserting for ~4s so Duda can't re-pin the box height after we open it
     var n = 0, iv = setInterval(function(){ syncBox(); if(++n >= 16) clearInterval(iv); }, 250);
   }
-  function render(people){
-    root.textContent = "";
-    if(!people.length){ setStatus("No faculty to display yet."); return; }
-    setStatus("");
-    if(MODULE_TITLE){ var ttl=document.createElement("div"); ttl.className="efmf-title"; ttl.setAttribute("role","heading"); ttl.setAttribute("aria-level","1"); ttl.textContent=MODULE_TITLE; root.appendChild(ttl); }
+  /* ---- render: Faculty tab (sectioned, Aspen-style) ---- */
+  function renderFaculty(people){
+    facultyRoot.textContent = "";
+    if(!people.length){ setStatus(facultyStatus, "No faculty to display yet."); return; }
+    setStatus(facultyStatus, "");
     var groups = {}, order = [];
     people.forEach(function(p){
       var s = p.section || "Faculty";
@@ -421,27 +440,104 @@
       sec.appendChild(grid);
       frag.appendChild(sec);
     });
-    root.appendChild(frag);
+    facultyRoot.appendChild(frag);
     syncBox();
-    wireBox();
   }
-  function start(){
-    var urls = [SHEET_CSV_URL].concat(SHEET_CSV_FALLBACKS || [])
-      .filter(function(u){ return u && !/PASTE|YOUR_|^\s*$/.test(u); });
-    if(!urls.length){ render(FALLBACK_DATA); return; }
-    setStatus("Loading faculty…");
+  /* ---- render: Guest Artists tab (one flat grid, name + headshot, bio on click) ---- */
+  function renderGuests(people){
+    guestRoot.textContent = "";
+    if(!people.length){ setStatus(guestStatus, "Guest artists will be announced soon."); return; }
+    setStatus(guestStatus, "");
+    var sec = document.createElement("section");
+    sec.className = "efmf-section";
+    var grid = document.createElement("div");
+    grid.className = "efmf-grid efmf-grid--guests";
+    people.forEach(function(p){ grid.appendChild(personEl(p)); });
+    sec.appendChild(grid);
+    guestRoot.appendChild(sec);
+    syncBox();
+  }
+  /* ---- tabs ---- */
+  var TABS = [{key:"faculty",label:FACULTY_TAB_LABEL},{key:"guests",label:GUEST_TAB_LABEL}];
+  var DEFAULT_TAB = "faculty";
+  var buttons = {}, active = null;
+  function buildTabs(){
+    tabsBar.textContent = "";
+    TABS.forEach(function(t){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "efmf-tab"; b.id = "efmf-tab-" + t.key;
+      b.textContent = t.label;
+      b.setAttribute("role","tab"); b.setAttribute("aria-selected","false");
+      b.setAttribute("aria-controls","efmf-panel-" + t.key);
+      b.addEventListener("click", function(){ activate(t.key, true); });
+      b.addEventListener("keydown", onTabKey);
+      tabsBar.appendChild(b); buttons[t.key] = b;
+    });
+  }
+  function onTabKey(e){
+    var keys = TABS.map(function(t){ return t.key; });
+    var i = keys.indexOf(active);
+    if(e.key === "ArrowRight" || e.key === "ArrowDown"){ e.preventDefault(); activate(keys[(i+1)%keys.length], true); buttons[active].focus(); }
+    else if(e.key === "ArrowLeft" || e.key === "ArrowUp"){ e.preventDefault(); activate(keys[(i-1+keys.length)%keys.length], true); buttons[active].focus(); }
+    else if(e.key === "Home"){ e.preventDefault(); activate(keys[0], true); buttons[active].focus(); }
+    else if(e.key === "End"){ e.preventDefault(); activate(keys[keys.length-1], true); buttons[active].focus(); }
+  }
+  function activate(key, hash){
+    if(!buttons[key]) key = DEFAULT_TAB;
+    active = key;
+    TABS.forEach(function(t){
+      var on = t.key === key;
+      if(buttons[t.key]){ buttons[t.key].setAttribute("aria-selected", on ? "true" : "false"); buttons[t.key].tabIndex = on ? 0 : -1; }
+      if(panels[t.key]) panels[t.key].hidden = !on;
+    });
+    if(hash){ try{ history.replaceState(null,"","#"+key); }catch(e){} }
+    syncBox();
+  }
+  /* ---- fetch ---- */
+  function urlOk(u){ return u && !/PASTE|YOUR_|^\s*$/.test(u); }
+  function loadInto(urls, defSection, statusEl, loadingMsg, fallback, renderFn){
+    var list = (urls || []).filter(urlOk);
+    if(!list.length){ renderFn(fallback); return; }
+    setStatus(statusEl, loadingMsg);
     (function tryNext(i){
-      if(i >= urls.length){ render(FALLBACK_DATA); return; }   // every source failed → built-in roster
-      fetch(urls[i], { cache:"no-store" })
+      if(i >= list.length){ renderFn(fallback); return; }   // every source failed → built-in roster
+      fetch(list[i], { cache:"no-store" })
         .then(function(r){ if(!r.ok) throw 0; return r.text(); })
-        .then(function(t){ var data = rowsToData(parseCSV(t)); if(!data.length) throw 0; render(data); })
+        .then(function(t){ var data = rowsToData(parseCSV(t), defSection); if(!data.length) throw 0; renderFn(data); })
         .catch(function(){ tryNext(i + 1); });
     })(0);
   }
+  function start(){
+    // Each tab loads independently, so a failure in one never blanks the other.
+    loadInto([SHEET_CSV_URL].concat(SHEET_CSV_FALLBACKS || []), "Faculty",
+             facultyStatus, "Loading faculty…", FALLBACK_DATA, renderFaculty);
+    loadInto([GUEST_SHEET_CSV_URL].concat(GUEST_SHEET_CSV_FALLBACKS || []), "Guest Artists",
+             guestStatus, "Loading guest artists…", GUEST_FALLBACK_DATA, renderGuests);
+  }
+  function setup(){
+    if(MODULE_TITLE && titleEl){ titleEl.textContent = MODULE_TITLE; titleEl.hidden = false; }
+    buildTabs();
+    var fromHash = (location.hash || "").replace("#","").toLowerCase();
+    activate(buttons[fromHash] ? fromHash : DEFAULT_TAB, false);
+    window.addEventListener("hashchange", function(){
+      var k = (location.hash || "").replace("#","").toLowerCase();
+      if(buttons[k]) activate(k, false);
+    });
+    wireBox();
+  }
   function boot(){
-    root = document.querySelector('#efm-faculty [data-efmf-root]');
-    statusEl = document.querySelector('#efm-faculty [data-efmf-status]');
-    if(!root) return;   // widget not on this page -> no-op (paste order irrelevant)
+    host = document.getElementById("efm-faculty");
+    if(!host) return;   // widget not on this page -> no-op (paste order irrelevant)
+    titleEl       = host.querySelector("[data-efmf-title]");
+    tabsBar       = host.querySelector("[data-efmf-tabs]");
+    panels        = { faculty: host.querySelector('[data-efmf-panel="faculty"]'),
+                      guests:  host.querySelector('[data-efmf-panel="guests"]') };
+    facultyRoot   = host.querySelector('[data-efmf-root="faculty"]');
+    facultyStatus = host.querySelector('[data-efmf-status="faculty"]');
+    guestRoot     = host.querySelector('[data-efmf-root="guests"]');
+    guestStatus   = host.querySelector('[data-efmf-status="guests"]');
+    if(!facultyRoot || !tabsBar) return;   // expected tabbed markup not present -> no-op
+    setup();
     start();
   }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
