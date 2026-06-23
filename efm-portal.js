@@ -17,8 +17,7 @@
 
    Tabs read (all optional except Master Calendar; missing/empty -> graceful):
      Master Calendar, Legend, Announcements, General Information, Counselors,
-     Outreach Concerts, Student Chamber Rehearsal Schedules,
-     Fellow Chamber Music Rehearsal Schedules, Lesson Schedules
+     Outreach Concerts
    ============================================================ */
 (function () {
   var PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQg7mhQsWCaOdsg1k_z-TkSHRqNDTuAQE7NEXr6xzCBR-psxMoQGExmVlINpF-xu_3FIgbE4qSK1aAJ";
@@ -35,17 +34,12 @@
     { key: "announcements", tab: "Announcements" },
     { key: "generalInfo", tab: "General Information" },
     { key: "counselors", tab: "Counselors" },
-    { key: "outreach", tab: "Outreach Concerts" },
-    { key: "studentChamber", tab: "Student Chamber Rehearsal Schedules" },
-    { key: "fellowChamber", tab: "Fellow Chamber Music Rehearsal Schedules" },
-    { key: "lessons", tab: "Lesson Schedules" }
+    { key: "outreach", tab: "Outreach Concerts" }
   ];
 
   // Generic schedule tables (title column + Date/Time/Location/Details).
   var TABLES = {
-    outreach:       { titleCol: "Concert Title", empty: "No outreach concerts scheduled yet." },
-    studentChamber: { titleCol: "Group Name",    empty: "No student chamber rehearsals scheduled yet." },
-    fellowChamber:  { titleCol: "Group Name",    empty: "No fellow chamber rehearsals scheduled yet." }
+    outreach: { titleCol: "Concert Title", empty: "No outreach concerts scheduled yet." }
   };
 
   // Fallback room names if the Legend sheet can't be fetched/parsed.
@@ -57,17 +51,13 @@
   var ROOM_ORDER = ["D", "S", "MR", "CR", "C", "CC", "HL", "CO", "Var"];
   var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
-  var DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  var DAY_FULL = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday",
-    Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
 
   // ---- navigation model -------------------------------------------------
   var NAV = [
     { id: "students", label: "Students", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
-      { label: "GSO Schedule", kind: "ensemble", code: "GSO" },
-      { label: "Chamber Music", kind: "table", source: "studentChamber" } ] },
+      { label: "GSO Schedule", kind: "ensemble", code: "GSO" } ] },
     { id: "faculty", label: "Faculty", subs: [
       { label: "Today", kind: "today", codes: ["EFO", "ECP"] },
       { label: "EFO Schedule", kind: "ensemble", code: "EFO" },
@@ -76,15 +66,12 @@
       { label: "Today", kind: "today", codes: ["EFO", "REP"] },
       { label: "EFO Schedule", kind: "ensemble", code: "EFO" },
       { label: "REP Schedule", kind: "ensemble", code: "REP" },
-      { label: "Outreach Concerts", kind: "table", source: "outreach" },
-      { label: "Chamber Music", kind: "table", source: "fellowChamber" } ] },
+      { label: "Outreach Concerts", kind: "table", source: "outreach" } ] },
     { id: "staff", label: "Staff", subs: [
       { label: "Today", kind: "today", codes: null },
       { label: "Ensemble Schedule", kind: "allEnsembles" },
       { label: "Meeting Schedule", kind: "type", value: "Meeting / Admin" },
       { label: "Room Schedule", kind: "jump", target: "rooms" } ] },
-    { id: "lessons", label: "Lesson Schedules", subs: [
-      { label: "By Faculty", kind: "lessons" } ] },
     { id: "info", label: "General Information", subs: [
       { label: "Overview", kind: "info" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
@@ -161,8 +148,6 @@
   }
   function monthAbbr(key) { return key !== null ? MONTH_NAMES[Math.floor(key / 100) - 1].slice(0, 3) : ""; }
   function roomLabel(code) { return ROOM_NAMES[code] || code; }
-  function dayKey(d) { var k = DAY_ORDER.indexOf((d || "").slice(0, 3)); return k === -1 ? 99 : k; }
-  function dayFull(d) { return DAY_FULL[(d || "").slice(0, 3)] || d; }
 
   // Start time in minutes since midnight, for chronological sorting.
   // Handles the sheet's mixed formats: "8:00 AM", "7:30 - 8:30am",
@@ -187,7 +172,7 @@
   // ---- state --------------------------------------------------------------
   var allRows = [];
   var seenRooms = {};
-  var aux = {};            // outreach / studentChamber / fellowChamber / lessons -> {headers, items}
+  var aux = {};            // outreach -> {headers, items}
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
   var counselors = [];     // { Name, Title, Phone, Email }
@@ -367,36 +352,6 @@
     finishList(html, shown, "", "No matches.");
   }
 
-  function renderLessons() {
-    var t = aux.lessons;
-    if (!t || !t.items.length) { finishList("", 0, "", "No lesson schedules posted yet."); return; }
-    var q = searchBox.value.trim().toLowerCase();
-    var order = [], groups = {};
-    t.items.forEach(function (o) {
-      var f = o.Faculty || "Other";
-      if (!groups[f]) { groups[f] = []; order.push(f); }
-      groups[f].push(o);
-    });
-    var html = "", shown = 0;
-    order.forEach(function (f) {
-      var rowsHtml = "", any = false;
-      groups[f].slice().sort(function (a, b) {
-        return dayKey(a.Day) - dayKey(b.Day) || startMinutes(a.Time || "") - startMinutes(b.Time || "");
-      }).forEach(function (o) {
-        var hay = [f, o.Day, o.Time, o.Location, o.Details].join(" ").toLowerCase();
-        if (q && hay.indexOf(q) === -1) return;
-        rowsHtml += agendaRowHTML({
-          big: "", small: (o.Day || "").slice(0, 3).toUpperCase(),
-          title: o.Time || dayFull(o.Day), when: [o.Location], chips: [],
-          modal: { title: f, fields: [["Day", dayFull(o.Day)], ["Time", o.Time], ["Location", o.Location]], details: o.Details }
-        });
-        any = true; shown++;
-      });
-      if (any) html += '<div class="efmp-group">' + esc(f) + "</div>" + rowsHtml;
-    });
-    finishList(html, shown, "", "No matches.");
-  }
-
   function renderInfo() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -430,7 +385,6 @@
     var sub = top.subs[subSel[top.id]] || top.subs[0];
     modalData = [];
     if (sub.kind === "info") return renderInfo();
-    if (sub.kind === "lessons") return renderLessons();
     if (sub.kind === "table") return renderTable(sub);
     renderAgenda(rowsForSub(sub));
   }
@@ -620,9 +574,6 @@
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
     aux.outreach = data.outreach ? tableObjects(data.outreach) : null;
-    aux.studentChamber = data.studentChamber ? tableObjects(data.studentChamber) : null;
-    aux.fellowChamber = data.fellowChamber ? tableObjects(data.fellowChamber) : null;
-    aux.lessons = data.lessons ? tableObjects(data.lessons) : null;
 
     parseCalendar(data.calendar);
     appendRoomTabs();
