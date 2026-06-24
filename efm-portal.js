@@ -169,6 +169,107 @@
     return (h + (mer === "p" ? 12 : 0)) * 60 + min;
   }
 
+  // ---- iCalendar (.ics) export -------------------------------------------
+  // A snapshot download built entirely in the browser from the parsed rows.
+  // Each export carries the events currently shown (tab + sub-tab + search);
+  // each event modal can also download just that one event. Times are local
+  // (floating, no timezone) so a calendar shows exactly the listed clock time.
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+  // Sheet times are freeform: "8:00 AM", "7:30 - 8:30am", "10:00-12:00",
+  // "5:30 PM - 6:45 pm", bare "7:30"; blank/garbage -> all-day.
+  function timeRange(timeStr) {
+    var s = (timeStr || "").trim();
+    if (!s) return { allDay: true };
+    var start = startMinutes(s);                 // full string -> robust meridiem
+    if (start < 0) return { allDay: true };
+    var end = null;
+    var parts = s.split(/\s*(?:–|—|-|\bto\b)\s*/i);
+    if (parts.length > 1) {
+      var e = startMinutes(parts[parts.length - 1]);
+      if (e >= 0) {
+        end = e;
+        // an end with no am/pm of its own that lands before the start -> next half-day
+        if (end < start && !/[ap]\.?\s*m/i.test(parts[parts.length - 1])) end += 720;
+        if (end > 1439) end = 1439;
+      }
+    }
+    return { allDay: false, start: start, end: end };
+  }
+  function icsDate(dateStr) {
+    var key = dateKey(dateStr);
+    if (key === null) return null;
+    return { y: YEAR, m: Math.floor(key / 100), d: key % 100 };
+  }
+  function icsFmtDate(p) { return "" + p.y + pad2(p.m) + pad2(p.d); }
+  function icsFmtDateTime(p, min) {
+    return icsFmtDate(p) + "T" + pad2(Math.floor(min / 60)) + pad2(min % 60) + "00";
+  }
+  function icsNextDay(p) {
+    var dt = new Date(p.y, p.m - 1, p.d + 1);
+    return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() };
+  }
+  function icsEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,")
+      .replace(/\r?\n/g, "\\n");
+  }
+  function icsUID(ev) {
+    var basis = [ev.title, ev.dateStr, ev.timeStr, ev.location].join("|");
+    var h = 0;
+    for (var i = 0; i < basis.length; i++) h = (h * 31 + basis.charCodeAt(i)) | 0;
+    return "efm-" + (h >>> 0).toString(36) + "@easternfestivalofmusic.org";
+  }
+  function icsStampUTC() {
+    var d = new Date();
+    return "" + d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate()) +
+      "T" + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + "Z";
+  }
+  function vevent(ev, stamp) {
+    var p = icsDate(ev.dateStr);
+    if (!p) return null;                          // unparseable date -> skip
+    var t = timeRange(ev.timeStr), lines = ["BEGIN:VEVENT", "UID:" + icsUID(ev), "DTSTAMP:" + stamp];
+    if (t.allDay) {
+      lines.push("DTSTART;VALUE=DATE:" + icsFmtDate(p));
+      lines.push("DTEND;VALUE=DATE:" + icsFmtDate(icsNextDay(p)));
+    } else {
+      var end = (t.end !== null && t.end > t.start) ? t.end : Math.min(t.start + 60, 1439);
+      lines.push("DTSTART:" + icsFmtDateTime(p, t.start));
+      lines.push("DTEND:" + icsFmtDateTime(p, end));
+    }
+    lines.push("SUMMARY:" + icsEsc(ev.title || "Event"));
+    if (ev.location) lines.push("LOCATION:" + icsEsc(ev.location));
+    if (ev.description) lines.push("DESCRIPTION:" + icsEsc(ev.description));
+    lines.push("END:VEVENT");
+    return lines.join("\r\n");
+  }
+  function buildICS(events, calName) {
+    var stamp = icsStampUTC();
+    var body = events.map(function (e) { return vevent(e, stamp); }).filter(Boolean);
+    if (!body.length) return null;
+    return ["BEGIN:VCALENDAR", "VERSION:2.0",
+      "PRODID:-//Eastern Festival of Music//Schedule Portal//EN",
+      "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+      "X-WR-CALNAME:" + icsEsc(calName || "EFM Schedule")]
+      .concat(body, ["END:VCALENDAR"]).join("\r\n") + "\r\n";
+  }
+  function icsSlug(s) {
+    return (String(s || "schedule").replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "").slice(0, 60)) || "schedule";
+  }
+  function downloadICS(events, label) {
+    var text = buildICS(events, "EFM " + (label || "Schedule"));
+    if (!text) return;
+    var blob = new Blob([text], { type: "text/calendar;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = "EFM-" + icsSlug(label) + ".ics";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+  function updateICSButton() {
+    if (icsBtn) icsBtn.hidden = viewEvents.length === 0;
+  }
+
   // ---- state --------------------------------------------------------------
   var allRows = [];
   var seenRooms = {};
@@ -177,12 +278,14 @@
   var generalInfo = [];    // raw lines
   var counselors = [];     // { Name, Title, Phone, Email }
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
+  var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
+  var viewLabel = "";      // label for the current view's .ics calendar name + filename
 
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
-  var topnav, subnav, list, status, banner, searchBox, ticker, modal, lastFocus;
+  var topnav, subnav, list, status, banner, searchBox, ticker, modal, icsBtn, lastFocus;
 
   function currentTop() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i];
@@ -304,6 +407,13 @@
         var mon = Math.floor(r.key / 100);
         if (mon !== lastMonth) { html += '<div class="efmp-month">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
       }
+      var ev = {
+        title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
+        description: [r.ensemble && ("Ensemble: " + r.ensemble),
+          r.conductor && ("Conductor / Soloist: " + r.conductor),
+          r.type && ("Type: " + r.type), r.details].filter(Boolean).join("\n")
+      };
+      viewEvents.push(ev);
       html += agendaRowHTML({
         big: r.dayNum, small: r.day, title: r.event || "(untitled)",
         when: [r.time, r.loc, r.conductor],
@@ -312,7 +422,7 @@
           title: r.event || "Event",
           fields: [["Date", calDateLabel(r)], ["Time", r.time], ["Location", r.loc],
             ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
-          details: r.details
+          details: r.details, ics: ev
         }
       });
       shown++;
@@ -340,12 +450,15 @@
         var mon = Math.floor(e.key / 100);
         if (mon !== lastMonth) { html += '<div class="efmp-month">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
       }
+      var ev = { title: o[cfg.titleCol] || cfg.titleCol, dateStr: o.Date, timeStr: o.Time,
+        location: o.Location, description: o.Details || "" };
+      viewEvents.push(ev);
       html += agendaRowHTML({
         big: e.key !== null ? String(e.key % 100) : "", small: monthAbbr(e.key),
         title: o[cfg.titleCol] || "(untitled)",
         when: [o.Time, o.Location], chips: [],
         modal: { title: o[cfg.titleCol] || cfg.titleCol,
-          fields: [["Date", o.Date], ["Time", o.Time], ["Location", o.Location]], details: o.Details }
+          fields: [["Date", o.Date], ["Time", o.Time], ["Location", o.Location]], details: o.Details, ics: ev }
       });
       shown++;
     });
@@ -384,9 +497,12 @@
     var top = currentTop();
     var sub = top.subs[subSel[top.id]] || top.subs[0];
     modalData = [];
-    if (sub.kind === "info") return renderInfo();
-    if (sub.kind === "table") return renderTable(sub);
-    renderAgenda(rowsForSub(sub));
+    viewEvents = [];
+    viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
+    if (sub.kind === "info") renderInfo();
+    else if (sub.kind === "table") renderTable(sub);
+    else renderAgenda(rowsForSub(sub));
+    updateICSButton();
   }
 
   // ---- announcements ticker (side-scrolling, pinned under the search box) --
@@ -441,6 +557,9 @@
     if (d.details) html += '<div class="efmp-modal__details">' + esc(d.details) + "</div>";
     if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
     modal.querySelector(".efmp-modal__content").innerHTML = html;
+    var mIcs = modal.querySelector(".efmp-modal__ics");
+    if (d.ics) { mIcs.hidden = false; mIcs.onclick = function () { downloadICS([d.ics], d.ics.title); }; }
+    else { mIcs.hidden = true; mIcs.onclick = null; }
     modal.hidden = false;
     document.body.classList.add("efmp-modal-open");
     modal.querySelector(".efmp-modal__close").focus();
@@ -637,6 +756,20 @@
     var controls = root.querySelector(".efmp__controls");
     if (controls && controls.parentNode) controls.parentNode.insertBefore(ticker, controls.nextSibling);
 
+    // "Add to Calendar (.ics)" export button, beside the search box. Snapshot of
+    // the events currently shown (tab + sub-tab + search). Injected here so the
+    // pasted embed markup never has to change.
+    icsBtn = document.createElement("button");
+    icsBtn.type = "button";
+    icsBtn.id = "efmp-ics";
+    icsBtn.className = "efmp__ics";
+    icsBtn.hidden = true;
+    icsBtn.textContent = "Add to Calendar (.ics)";
+    icsBtn.title = "Download the events shown here as a calendar (.ics) file";
+    icsBtn.setAttribute("aria-label", "Download the events shown here as a calendar file");
+    icsBtn.addEventListener("click", function () { if (viewEvents.length) downloadICS(viewEvents, viewLabel); });
+    if (controls) controls.appendChild(icsBtn);
+
     // Details modal, injected once.
     modal = document.createElement("div");
     modal.className = "efmp-modal";
@@ -645,7 +778,9 @@
       '<div class="efmp-modal__box" role="dialog" aria-modal="true" aria-labelledby="efmp-modal-title">' +
         '<button type="button" class="efmp-modal__close" aria-label="Close">×</button>' +
         '<h3 class="efmp-modal__title" id="efmp-modal-title"></h3>' +
-        '<div class="efmp-modal__content"></div></div>';
+        '<div class="efmp-modal__content"></div>' +
+        '<div class="efmp-modal__actions"><button type="button" class="efmp-modal__ics" hidden>Add to Calendar (.ics)</button></div>' +
+      '</div>';
     root.appendChild(modal);
     modal.querySelector(".efmp-modal__close").addEventListener("click", closeModal);
     modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
