@@ -316,7 +316,7 @@
   var subSel = {};  // topId -> sub index
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
-  var topnav, subnav, list, status, banner, searchBox, ticker, modal, icsBtn, lastFocus;
+  var root, topnav, subnav, list, status, banner, searchBox, ticker, modal, icsBtn, srLive, lastFocus;
 
   function currentTop() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i];
@@ -371,8 +371,11 @@
     topnav.innerHTML = "";
     NAV.forEach(function (t) {
       var b = document.createElement("button");
+      b.type = "button";
       b.textContent = t.label;
-      b.className = t.id === topSel ? "efmp-active" : "";
+      var on = t.id === topSel;
+      b.className = on ? "efmp-active" : "";
+      if (on) b.setAttribute("aria-current", "true");   // announces the selected section to screen readers
       b.onclick = function () { topSel = t.id; renderNav(); renderList(); };
       topnav.appendChild(b);
     });
@@ -380,8 +383,11 @@
     subnav.innerHTML = "";
     top.subs.forEach(function (s, i) {
       var b = document.createElement("button");
+      b.type = "button";
       b.textContent = s.label;
-      b.className = (s.kind !== "jump" && i === subSel[top.id]) ? "efmp-active" : "";
+      var on = (s.kind !== "jump" && i === subSel[top.id]);
+      b.className = on ? "efmp-active" : "";
+      if (on) b.setAttribute("aria-current", "true");
       b.onclick = function () {
         if (s.kind === "jump") { topSel = s.target; renderNav(); renderList(); return; }
         subSel[top.id] = i; renderNav(); renderList();
@@ -416,12 +422,28 @@
     "</div>";
   }
 
+  // Polite screen-reader announcement (debounced so fast typing doesn't chatter).
+  var _annT;
+  function announce(msg) {
+    if (!srLive) return;
+    clearTimeout(_annT);
+    _annT = setTimeout(function () { srLive.textContent = ""; srLive.textContent = String(msg || ""); }, 300);
+  }
+
   function finishList(html, shown, bannerMsg, emptyMsg) {
     banner.hidden = !bannerMsg;
     banner.textContent = bannerMsg || "";
     list.innerHTML = html;
-    status.textContent = shown ? "" : (emptyMsg || "No events match this view.");
+    var msg = shown ? "" : (emptyMsg || "No events match this view.");
+    status.textContent = msg;
     status.hidden = !!shown;
+    // single, polite SR announcement: result count (or the empty message), plus any banner note
+    var q = searchBox.value.trim();
+    var ann = shown
+      ? (shown + (shown === 1 ? " event" : " events") + (q ? " match your search." : " shown."))
+      : msg;
+    if (bannerMsg) ann = bannerMsg + " " + ann;
+    announce(ann);
   }
 
   function calDateLabel(r) { return r.day ? (r.day + ", " + r.date) : r.date; }
@@ -433,10 +455,10 @@
       if (q && r.haystack.indexOf(q) === -1) return;
       if (res.groupByRoom) {
         var g = r.roomTokens.map(roomLabel).join(" / ");
-        if (g !== lastGroup) { html += '<div class="efmp-group">' + esc(g) + "</div>"; lastGroup = g; }
+        if (g !== lastGroup) { html += '<div class="efmp-group" role="heading" aria-level="3">' + esc(g) + "</div>"; lastGroup = g; }
       } else if (!res.singleDay && r.key !== null) {
         var mon = Math.floor(r.key / 100);
-        if (mon !== lastMonth) { html += '<div class="efmp-month">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
+        if (mon !== lastMonth) { html += '<div class="efmp-month" role="heading" aria-level="3">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
       }
       var ev = {
         title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
@@ -479,7 +501,7 @@
       if (q && hay.indexOf(q) === -1) return;
       if (e.key !== null) {
         var mon = Math.floor(e.key / 100);
-        if (mon !== lastMonth) { html += '<div class="efmp-month">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
+        if (mon !== lastMonth) { html += '<div class="efmp-month" role="heading" aria-level="3">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
       }
       var ev = { title: o[cfg.titleCol] || cfg.titleCol, dateStr: o.Date, timeStr: o.Time,
         location: o.Location, description: o.Details || "" };
@@ -504,10 +526,10 @@
     if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
     lines.forEach(function (l) {
       var heading = (l === l.toUpperCase() && /[A-Z]/.test(l)) || (!/\d/.test(l) && l.length < 30);
-      html += heading ? "<h4>" + esc(l) + "</h4>" : "<p>" + esc(l) + "</p>";
+      html += heading ? "<h3>" + esc(l) + "</h3>" : "<p>" + esc(l) + "</p>";
     });
     if (counselors.length) {
-      html += "<h4>Counselors</h4><ul class=\"efmp-people\">";
+      html += "<h3>Counselors</h3><ul class=\"efmp-people\">";
       counselors.forEach(function (c) {
         var name = c.Name || "";
         if (!name) return;
@@ -519,7 +541,7 @@
       });
       html += "</ul>";
     }
-    html += '<h4>General Inquiries</h4><p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
+    html += '<h3>General Inquiries</h3><p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
     html += "</div>";
     list.innerHTML = html;
   }
@@ -561,9 +583,14 @@
     }
     if (!items.length) { ticker.hidden = true; ticker.innerHTML = ""; return; }
     var seq = items.map(function (a) { return '<span class="efmp-ticker__item">' + esc(a.text) + "</span>"; }).join("");
+    // The track holds the sequence twice for a seamless marquee; the second copy
+    // is aria-hidden so a screen reader reads each announcement only once.
     ticker.innerHTML =
       '<span class="efmp-ticker__label">Announcements</span>' +
-      '<div class="efmp-ticker__viewport"><div class="efmp-ticker__track">' + seq + seq + "</div></div>" +
+      '<div class="efmp-ticker__viewport"><div class="efmp-ticker__track">' +
+        '<span class="efmp-ticker__seq">' + seq + '</span>' +
+        '<span class="efmp-ticker__seq" aria-hidden="true">' + seq + '</span>' +
+      "</div></div>" +
       '<button type="button" class="efmp-ticker__pause" aria-pressed="false" aria-label="Pause announcements">∥</button>';
     ticker.hidden = false;
     var btn = ticker.querySelector(".efmp-ticker__pause");
@@ -609,8 +636,20 @@
     }
     modal.hidden = false;
     document.body.classList.add("efmp-modal-open");
+    setBgInert(true);   // hide the rest of the widget from AT + tab order while the dialog is open
     if (d.afterRender) d.afterRender(content);
     modal.querySelector(".efmp-modal__close").focus();
+  }
+  // Make everything except the dialog inert (and aria-hidden as a fallback) so a
+  // screen reader / keyboard can't wander into the background behind the modal.
+  function setBgInert(on) {
+    if (!root) return;
+    var kids = root.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i] === modal) continue;
+      try { kids[i].inert = on; } catch (e) {}
+      if (on) kids[i].setAttribute("aria-hidden", "true"); else kids[i].removeAttribute("aria-hidden");
+    }
   }
 
   // The whole-view "Add to Calendar" chooser. Google has no bulk one-click add,
@@ -678,6 +717,7 @@
   function closeModal() {
     modal.hidden = true;
     document.body.classList.remove("efmp-modal-open");
+    setBgInert(false);   // restore the background before returning focus to it
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   function trapKey(e) {
@@ -818,6 +858,7 @@
     if (status) {
       status.textContent = "Could not load the schedule right now. Please refresh the page, or contact the EFM office.";
       status.hidden = false;
+      announce(status.textContent);
     }
     console.error("EFM schedule load failed:", err);
   }
@@ -849,7 +890,7 @@
   // Wrapped so block/script order never matters, and so the script no-ops on
   // any page that doesn't contain the widget.
   function boot() {
-    var root = document.getElementById("efm-portal");
+    root = document.getElementById("efm-portal");
     if (!root) return;
     topnav = document.getElementById("efmp-topnav");
     subnav = document.getElementById("efmp-subnav");
@@ -858,12 +899,21 @@
     banner = document.getElementById("efmp-banner");
     searchBox = document.getElementById("efmp-search");
 
-    // Announcements ticker, injected right under the search controls.
+    // Visually-hidden polite live region: the single announcer for loading /
+    // result counts / empty / error states (so nothing is announced twice).
+    srLive = document.createElement("div");
+    srLive.className = "efmp__sr";
+    srLive.setAttribute("aria-live", "polite");
+    srLive.setAttribute("aria-atomic", "true");
+    root.appendChild(srLive);
+    announce("Loading the schedule…");
+
+    // Announcements ticker, injected right under the search controls. (The visible
+    // "Announcements" label inside it provides the name; no aria-label on the div.)
     ticker = document.createElement("div");
     ticker.className = "efmp__ticker";
     ticker.id = "efmp-ticker";
     ticker.hidden = true;
-    ticker.setAttribute("aria-label", "Announcements");
     var controls = root.querySelector(".efmp__controls");
     if (controls && controls.parentNode) controls.parentNode.insertBefore(ticker, controls.nextSibling);
 
