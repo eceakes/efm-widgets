@@ -941,14 +941,16 @@
     root.appendChild(srLive);
     announce("Loading the schedule…");
 
-    // Announcements ticker, injected right under the search controls. (The visible
-    // "Announcements" label inside it provides the name; no aria-label on the div.)
+    // Announcements ticker, injected ABOVE the nav tabs (just under the title).
+    // (The visible "Announcements" label inside it provides the name; no aria-label on the div.)
     ticker = document.createElement("div");
     ticker.className = "efmp__ticker";
     ticker.id = "efmp-ticker";
     ticker.hidden = true;
     controls = root.querySelector(".efmp__controls");
-    if (controls && controls.parentNode) controls.parentNode.insertBefore(ticker, controls.nextSibling);
+    var tabsEl = root.querySelector(".efmp__tabs");
+    if (tabsEl && tabsEl.parentNode) tabsEl.parentNode.insertBefore(ticker, tabsEl);
+    else if (controls && controls.parentNode) controls.parentNode.insertBefore(ticker, controls.nextSibling);
 
     // "Add to Calendar (.ics)" export button, beside the search box. Snapshot of
     // the events currently shown (tab + sub-tab + search). Injected here so the
