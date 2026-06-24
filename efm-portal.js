@@ -33,6 +33,17 @@
   // portal ensemble code -> feed ?view= key (only these views have a live feed)
   var FEED_VIEWS = { ESO: "eso", GSO: "gso", EFO: "efo", REP: "rep", ECP: "ecp" };
 
+  // Campus map assets sit next to this script in the repo. Derive the CDN base
+  // from this script's own URL, so the map always matches the deployed commit
+  // (no separate SHA to bump). Falls back to @main if loaded some other way.
+  var CDN_BASE = (function () {
+    var s = (document.currentScript && document.currentScript.src) || "";
+    var m = s.match(/^(.*\/efm-widgets@[^/]+\/)/);
+    return m ? m[1] : "https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@main/";
+  })();
+  var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
+  var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
+
   // Tabs to fetch: key (used in code) -> sheet tab name. calendar is required.
   var SOURCES = [
     { key: "calendar", tab: TAB_CALENDAR, required: true },
@@ -81,7 +92,9 @@
     { id: "info", label: "General Information", subs: [
       { label: "Overview", kind: "info" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
-      { label: "Today", kind: "roomsToday" } ] }  // room tabs appended after data loads
+      { label: "Today", kind: "roomsToday" } ] },  // room tabs appended after data loads
+    { id: "map", label: "Campus Map", subs: [
+      { label: "Map", kind: "map" } ] }
   ];
 
   // ---- helpers ------------------------------------------------------------
@@ -316,7 +329,7 @@
   var subSel = {};  // topId -> sub index
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
-  var root, topnav, subnav, list, status, banner, searchBox, ticker, modal, icsBtn, srLive, lastFocus;
+  var root, topnav, subnav, list, status, banner, searchBox, controls, ticker, modal, icsBtn, srLive, lastFocus;
 
   function currentTop() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i];
@@ -546,6 +559,24 @@
     list.innerHTML = html;
   }
 
+  function renderMap() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    list.innerHTML =
+      '<div class="efmp-map">' +
+        '<a class="efmp-map__frame" href="' + esc(MAP_IMAGE_URL) + '" target="_blank" rel="noopener noreferrer" ' +
+          'aria-label="Open the full-size Guilford College campus map in a new tab">' +
+          '<img src="' + esc(MAP_IMAGE_URL) + '" loading="lazy" ' +
+            'alt="Guilford College campus map: an aerial view of campus buildings and parking lots, with a lettered building legend.">' +
+        '</a>' +
+        '<p class="efmp-map__hint">Tap the map to open it full size. EFM venues: <b>Dana Auditorium</b> (Q) holds the ' +
+          'Choir Room and Moon Room; <b>Sternberger Auditorium</b> is in Founders Hall (I); the <b>Carnegie Room</b> ' +
+          'is in Hege (C); <b>Ragan-Brown Field House</b> is L1.</p>' +
+        '<a class="efmp-modal__cal efmp-map__pdf" href="' + esc(MAP_PDF_URL) + '" target="_blank" rel="noopener noreferrer">Download map (PDF)</a>' +
+      '</div>';
+    announce("Campus map shown.");
+  }
+
   function renderList() {
     var top = currentTop();
     var sub = top.subs[subSel[top.id]] || top.subs[0];
@@ -553,7 +584,9 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (sub.kind === "info") renderInfo();
+    if (controls) controls.hidden = (sub.kind === "map");   // no search/export on the map tab
+    if (sub.kind === "map") renderMap();
+    else if (sub.kind === "info") renderInfo();
     else if (sub.kind === "table") renderTable(sub);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
@@ -914,7 +947,7 @@
     ticker.className = "efmp__ticker";
     ticker.id = "efmp-ticker";
     ticker.hidden = true;
-    var controls = root.querySelector(".efmp__controls");
+    controls = root.querySelector(".efmp__controls");
     if (controls && controls.parentNode) controls.parentNode.insertBefore(ticker, controls.nextSibling);
 
     // "Add to Calendar (.ics)" export button, beside the search box. Snapshot of

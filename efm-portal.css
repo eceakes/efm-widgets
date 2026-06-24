@@ -81,6 +81,20 @@
   #efm-portal .efmp__ics:hover { background: var(--efmp-ink); color: #fff; }
   #efm-portal .efmp__ics:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
   #efm-portal .efmp__ics[hidden] { display: none; }
+  #efm-portal .efmp__controls[hidden] { display: none; }   /* hidden on the Campus Map tab */
+
+  /* --- campus map tab --- */
+  #efm-portal .efmp-map { max-width: 760px; margin: 0 auto; }
+  #efm-portal .efmp-map__frame {
+    display: block; border: 1px solid var(--efmp-rule); border-radius: 12px; overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #efm-portal .efmp-map__frame img { display: block; width: 100%; height: auto; }
+  #efm-portal .efmp-map__frame:hover { border-color: var(--efmp-ink); box-shadow: 0 6px 18px rgba(9, 12, 38, .08); }
+  #efm-portal .efmp-map__frame:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+  #efm-portal .efmp-map__hint { color: var(--efmp-role); font-size: 13.5px; line-height: 1.5; margin: 14px 0; }
+  #efm-portal .efmp-map__hint b { color: var(--efmp-ink); font-family: var(--efmp-name-font); font-weight: 400; }
+  #efm-portal .efmp-map__pdf { display: inline-block; }
 
   /* --- banner + status --- */
   #efm-portal .efmp__banner {
