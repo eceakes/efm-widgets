@@ -285,6 +285,10 @@
   #efm-portal .efmp-modal__cal:hover { background: var(--efmp-hover); border-color: var(--efmp-hover); }
   #efm-portal .efmp-modal__cal:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
   #efm-portal .efmp-modal__cal[hidden] { display: none; }
+  /* secondary (outline) variant, e.g. "Download .ics instead" next to Subscribe */
+  #efm-portal .efmp-modal__cal--ghost { background: #fff; color: var(--efmp-ink); }
+  #efm-portal .efmp-modal__cal--ghost:hover { background: var(--efmp-soft); color: var(--efmp-ink); border-color: var(--efmp-hover); }
+  #efm-portal .efmp-cal__opt .efmp-modal__cal { margin: 0 8px 4px 0; }
   /* whole-view "Add to Calendar" chooser */
   #efm-portal .efmp-cal__what {
     background: var(--efmp-soft); border: 1px solid var(--efmp-rule);

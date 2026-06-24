@@ -27,6 +27,12 @@
   var TAB_LEGEND = "Legend";
   var YEAR = 2026;
 
+  // Live subscribe feed (Google Apps Script web app; see efm-calendar-feed.gs).
+  // Set to "" to hide the one-click Subscribe options and offer downloads only.
+  var SUBSCRIBE_BASE = "https://script.google.com/macros/s/AKfycbz6fh9qP2zQnaRfzV2qW0dndtwUrhXahOLuxxDmibCxqPaQOlW-_D98EUpUlWkAY07tFA/exec";
+  // portal ensemble code -> feed ?view= key (only these views have a live feed)
+  var FEED_VIEWS = { ESO: "eso", GSO: "gso", EFO: "efo", REP: "rep", ECP: "ecp" };
+
   // Tabs to fetch: key (used in code) -> sheet tab name. calendar is required.
   var SOURCES = [
     { key: "calendar", tab: TAB_CALENDAR, required: true },
@@ -284,6 +290,12 @@
     if (ev.description) q.push("details=" + encodeURIComponent(ev.description));
     return "https://calendar.google.com/calendar/render?" + q.join("&");
   }
+  // Live subscribe links (auto-updating) for a feed ?view= key.
+  function feedUrl(viewKey) { return SUBSCRIBE_BASE + (viewKey ? "?view=" + encodeURIComponent(viewKey) : ""); }
+  function webcalUrl(viewKey) { return feedUrl(viewKey).replace(/^https?:\/\//i, "webcal://"); }
+  function gcalSubscribeUrl(viewKey) {
+    return "https://calendar.google.com/calendar/render?cid=" + encodeURIComponent(webcalUrl(viewKey));
+  }
   function updateICSButton() {
     if (icsBtn) icsBtn.hidden = viewEvents.length === 0;
   }
@@ -298,6 +310,7 @@
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
   var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
   var viewLabel = "";      // label for the current view's .ics calendar name + filename
+  var viewFeedKey = "";    // feed ?view= key for the current view ("" = no live subscribe feed)
 
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
@@ -517,6 +530,7 @@
     modalData = [];
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
+    viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
     if (sub.kind === "info") renderInfo();
     else if (sub.kind === "table") renderTable(sub);
     else renderAgenda(rowsForSub(sub));
@@ -602,10 +616,11 @@
   // The whole-view "Add to Calendar" chooser. Google has no bulk one-click add,
   // so for a batch we offer the .ics (Apple opens it directly; Google/Outlook
   // import it); a single-event view also gets a one-click Google link.
-  function openAddToCalendar(events, label) {
+  function openAddToCalendar(events, label, feedKey) {
     if (!events || !events.length) return;
     var single = events.length === 1;
     var gUrl = single ? gcalUrl(events[0]) : null;
+    var canSub = !!(SUBSCRIBE_BASE && feedKey);
     var fname = "EFM-" + icsSlug(label) + ".ics";
     // date span across the events, so it's obvious exactly what's being added
     var keys = events.map(function (e) { return icsDate(e.dateStr); }).filter(Boolean)
@@ -622,26 +637,41 @@
         '<div class="efmp-cal__what-name">' + esc(label || "This schedule") + '</div>' +
         '<div class="efmp-cal__what-meta">' + events.length + ' event' + (single ? "" : "s") +
           (span ? " &#183; " + esc(span) : "") + '</div>' +
-        '<div class="efmp-cal__what-file">File: ' + esc(fname) + '</div>' +
+        '<div class="efmp-cal__what-file">Download file: ' + esc(fname) + '</div>' +
       '</div>' +
+      // --- Google ---
       '<div class="efmp-cal__opt"><div class="efmp-cal__name">Google Calendar</div>' +
-        (gUrl
-          ? '<a class="efmp-modal__cal" target="_blank" rel="noopener noreferrer" href="' + esc(gUrl) + '">Add to Google Calendar</a>'
-          : '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
-            '<p class="efmp-cal__hint">Then in Google Calendar: Settings &#8594; Import, and choose the file.</p>') +
+        (canSub
+          ? '<a class="efmp-modal__cal" target="_blank" rel="noopener noreferrer" href="' + esc(gcalSubscribeUrl(feedKey)) + '">Subscribe (auto-updates)</a>' +
+            '<button type="button" class="efmp-modal__cal efmp-modal__cal--ghost" data-cal-dl data-cal-gimport>Download .ics instead</button>' +
+            '<p class="efmp-cal__hint">Subscribe keeps it in sync (refreshes every few hours). Or download a one-time copy.</p>'
+          : (gUrl
+            ? '<a class="efmp-modal__cal" target="_blank" rel="noopener noreferrer" href="' + esc(gUrl) + '">Add to Google Calendar</a>'
+            : '<button type="button" class="efmp-modal__cal" data-cal-dl data-cal-gimport>Download .ics for Google</button>' +
+              '<p class="efmp-cal__hint">Opens Google\'s import page in a new tab; choose the file we just downloaded.</p>')) +
       '</div>' +
+      // --- Apple ---
       '<div class="efmp-cal__opt"><div class="efmp-cal__name">Apple Calendar</div>' +
-        '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
-        '<p class="efmp-cal__hint">Open the downloaded file to add ' + (single ? "it" : "them") + '.</p>' +
+        (canSub
+          ? '<a class="efmp-modal__cal" href="' + esc(webcalUrl(feedKey)) + '">Subscribe (auto-updates)</a>' +
+            '<button type="button" class="efmp-modal__cal efmp-modal__cal--ghost" data-cal-dl>Download .ics instead</button>'
+          : '<button type="button" class="efmp-modal__cal" data-cal-dl>Open in Apple Calendar</button>' +
+            '<p class="efmp-cal__hint">Opens the file in Apple Calendar, which asks to add ' + (single ? "it" : "them") + '. (On iPhone/iPad it opens straight from the tap.)</p>') +
       '</div>' +
+      // --- everything else ---
       '<div class="efmp-cal__opt"><div class="efmp-cal__name">Other apps (Outlook, etc.)</div>' +
-        '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
+        '<button type="button" class="efmp-modal__cal' + (canSub ? " efmp-modal__cal--ghost" : "") + '" data-cal-dl>Download .ics</button>' +
         '<p class="efmp-cal__hint">Import the file in your calendar app.</p>' +
       '</div>' +
     '</div>';
     openModal({ title: "Add to calendar", html: html, afterRender: function (content) {
       Array.prototype.forEach.call(content.querySelectorAll("[data-cal-dl]"), function (b) {
-        b.addEventListener("click", function () { downloadICS(events, label); });
+        b.addEventListener("click", function () {
+          downloadICS(events, label);
+          if (b.hasAttribute("data-cal-gimport")) {
+            try { window.open("https://calendar.google.com/calendar/r/settings/import", "_blank", "noopener"); } catch (e) {}
+          }
+        });
       });
     } });
   }
@@ -848,7 +878,7 @@
     icsBtn.textContent = "Add to Calendar";
     icsBtn.title = "Add the events shown here to your calendar";
     icsBtn.setAttribute("aria-label", "Add the events shown here to your calendar");
-    icsBtn.addEventListener("click", function () { if (viewEvents.length) openAddToCalendar(viewEvents, viewLabel); });
+    icsBtn.addEventListener("click", function () { if (viewEvents.length) openAddToCalendar(viewEvents, viewLabel, viewFeedKey); });
     if (controls) controls.appendChild(icsBtn);
 
     // Details modal, injected once.
