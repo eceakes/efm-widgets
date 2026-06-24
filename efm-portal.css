@@ -313,3 +313,36 @@
   }
   #efm-portal .efmp-cal__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
   body.efmp-modal-open { overflow: hidden; }
+
+  /* ===== Phone (<=600px): app-style tile-grid layout ===== */
+  /* Comes after the 480/720 tweaks above so it wins where they overlap. */
+  @media (max-width: 600px) {
+    #efm-portal.efmp { padding: 8px 12px 30px; }
+    #efm-portal .efmp__title { font-size: 26px; margin: 4px 0 16px; }
+    /* main sections -> 2-column tappable tiles */
+    #efm-portal .efmp__tabs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      border-bottom: 0; margin: 0 0 16px;
+    }
+    #efm-portal .efmp__tabs button {
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      margin: 0; padding: 10px; min-height: 64px; white-space: normal;
+      border: 1px solid var(--efmp-rule); border-radius: 14px;
+      background: var(--efmp-soft); color: var(--efmp-ink); font-size: 16px; line-height: 1.2;
+    }
+    #efm-portal .efmp__tabs button.efmp-active { background: var(--efmp-ink); color: #fff; border-color: var(--efmp-ink); }
+    /* sub-views -> larger pills */
+    #efm-portal .efmp__subtabs { gap: 8px; margin: 0 0 14px; }
+    #efm-portal .efmp__subtabs button { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; font-size: 15px; }
+    /* controls full width; 16px search avoids iOS zoom-on-focus */
+    #efm-portal .efmp__controls { gap: 8px; }
+    #efm-portal #efmp-search { flex: 1 1 100%; max-width: none; min-height: 48px; font-size: 16px; }
+    #efm-portal .efmp__ics { flex: 1 1 100%; min-height: 48px; text-align: center; font-size: 15px; }
+    /* event cards -> bigger touch targets */
+    #efm-portal .efmp-row { padding: 15px 14px; gap: 14px; border-radius: 14px; }
+    #efm-portal .efmp-row__date { width: 54px; }
+    #efm-portal .efmp-row__date b { font-size: 25px; }
+    #efm-portal .efmp-row__title { font-size: 16.5px; }
+    #efm-portal .efmp-row__when { font-size: 13.5px; }
+    #efm-portal .efmp-row__meta { margin-left: 68px; }
+  }
