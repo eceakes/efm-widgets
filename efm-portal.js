@@ -70,31 +70,32 @@
     "July", "August", "September", "October", "November", "December"];
 
   // ---- navigation model -------------------------------------------------
+  // Tab order (left -> right). NAV[0] is also the default tab shown on load.
   var NAV = [
+    { id: "info", label: "General Information", subs: [
+      { label: "Overview", kind: "info" } ] },
     { id: "students", label: "Students", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
       { label: "GSO Schedule", kind: "ensemble", code: "GSO" } ] },
-    { id: "faculty", label: "Faculty", subs: [
-      { label: "Today", kind: "today", codes: ["EFO", "ECP"] },
-      { label: "EFO Schedule", kind: "ensemble", code: "EFO" },
-      { label: "ECP Schedule", kind: "ensemble", code: "ECP" } ] },
     { id: "fellows", label: "Fellows", subs: [
       { label: "Today", kind: "today", codes: ["EFO", "REP"] },
       { label: "EFO Schedule", kind: "ensemble", code: "EFO" },
       { label: "REP Schedule", kind: "ensemble", code: "REP" },
       { label: "Outreach Concerts", kind: "table", source: "outreach" } ] },
+    { id: "faculty", label: "Faculty", subs: [
+      { label: "Today", kind: "today", codes: ["EFO", "ECP"] },
+      { label: "EFO Schedule", kind: "ensemble", code: "EFO" },
+      { label: "ECP Schedule", kind: "ensemble", code: "ECP" } ] },
     { id: "staff", label: "Staff", subs: [
       { label: "Today", kind: "today", codes: null },
       { label: "Ensemble Schedule", kind: "allEnsembles" },
       { label: "Meeting Schedule", kind: "type", value: "Meeting / Admin" },
       { label: "Room Schedule", kind: "jump", target: "rooms" } ] },
-    { id: "info", label: "General Information", subs: [
-      { label: "Overview", kind: "info" } ] },
-    { id: "rooms", label: "Room Schedule", subs: [
-      { label: "Today", kind: "roomsToday" } ] },  // room tabs appended after data loads
     { id: "map", label: "Campus Map", subs: [
-      { label: "Map", kind: "map" } ] }
+      { label: "Map", kind: "map" } ] },
+    { id: "rooms", label: "Room Schedule", subs: [
+      { label: "Today", kind: "roomsToday" } ] }  // room tabs appended after data loads
   ];
 
   // ---- helpers ------------------------------------------------------------
