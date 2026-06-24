@@ -267,14 +267,45 @@
     margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--efmp-rule);
     color: #2b3042; font-size: 14.5px; line-height: 1.5; white-space: pre-wrap;
   }
-  #efm-portal .efmp-modal__actions { margin: 18px 0 0; }
-  #efm-portal .efmp-modal__ics {
-    appearance: none; cursor: pointer; border: 1px solid var(--efmp-ink);
-    background: var(--efmp-ink); color: #fff; font-family: var(--efmp-name-font);
-    font-size: 13.5px; line-height: 1.2; padding: 9px 16px; border-radius: 999px;
-    transition: background .18s, border-color .18s;
+  /* per-event inline "Add to calendar:" row */
+  #efm-portal .efmp-modal__actions {
+    margin: 18px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   }
-  #efm-portal .efmp-modal__ics:hover { background: var(--efmp-hover); border-color: var(--efmp-hover); }
-  #efm-portal .efmp-modal__ics:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
-  #efm-portal .efmp-modal__ics[hidden] { display: none; }
+  #efm-portal .efmp-modal__actions[hidden] { display: none; }
+  #efm-portal .efmp-modal__addlabel {
+    font-family: var(--efmp-name-font); color: var(--efmp-role); font-size: 12px;
+    letter-spacing: .05em; text-transform: uppercase; margin-right: 2px;
+  }
+  #efm-portal .efmp-modal__cal {
+    appearance: none; cursor: pointer; text-decoration: none; white-space: nowrap; display: inline-block;
+    border: 1px solid var(--efmp-ink); background: var(--efmp-ink); color: #fff;
+    font-family: var(--efmp-name-font); font-size: 13px; line-height: 1.2;
+    padding: 9px 15px; border-radius: 999px; transition: background .18s, border-color .18s;
+  }
+  #efm-portal .efmp-modal__cal:hover { background: var(--efmp-hover); border-color: var(--efmp-hover); }
+  #efm-portal .efmp-modal__cal:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+  #efm-portal .efmp-modal__cal[hidden] { display: none; }
+  /* whole-view "Add to Calendar" chooser */
+  #efm-portal .efmp-cal__what {
+    background: var(--efmp-soft); border: 1px solid var(--efmp-rule);
+    border-radius: 12px; padding: 12px 14px; margin: 0 0 16px;
+  }
+  #efm-portal .efmp-cal__what-label {
+    font-family: var(--efmp-name-font); color: var(--efmp-role); font-size: 11px;
+    letter-spacing: .07em; text-transform: uppercase; margin: 0 0 4px;
+  }
+  #efm-portal .efmp-cal__what-name {
+    font-family: var(--efmp-name-font); color: var(--efmp-ink); font-size: 17px; line-height: 1.2;
+  }
+  #efm-portal .efmp-cal__what-meta { color: #2b3042; font-size: 13.5px; margin: 4px 0 0; }
+  #efm-portal .efmp-cal__what-file {
+    color: var(--efmp-role); font-size: 12px; margin: 6px 0 0; word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #efm-portal .efmp-cal__opt { padding: 12px 0; border-top: 1px solid var(--efmp-rule); }
+  #efm-portal .efmp-cal__opt:first-of-type { border-top: 0; padding-top: 2px; }
+  #efm-portal .efmp-cal__name {
+    font-family: var(--efmp-name-font); color: var(--efmp-ink); font-size: 15px; margin: 0 0 8px;
+  }
+  #efm-portal .efmp-cal__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
   body.efmp-modal-open { overflow: hidden; }

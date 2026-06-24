@@ -266,6 +266,24 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
   }
+  // Google Calendar "add event" template link (single event; Google has no
+  // bulk-add URL). Times are sent as local with an explicit Eastern tz.
+  function gcalUrl(ev) {
+    var p = icsDate(ev.dateStr);
+    if (!p) return null;
+    var t = timeRange(ev.timeStr), dates;
+    if (t.allDay) {
+      dates = icsFmtDate(p) + "/" + icsFmtDate(icsNextDay(p));   // end exclusive
+    } else {
+      var end = (t.end !== null && t.end > t.start) ? t.end : Math.min(t.start + 60, 1439);
+      dates = icsFmtDateTime(p, t.start) + "/" + icsFmtDateTime(p, end);
+    }
+    var q = ["action=TEMPLATE", "text=" + encodeURIComponent(ev.title || "Event"),
+      "dates=" + dates, "ctz=America/New_York"];
+    if (ev.location) q.push("location=" + encodeURIComponent(ev.location));
+    if (ev.description) q.push("details=" + encodeURIComponent(ev.description));
+    return "https://calendar.google.com/calendar/render?" + q.join("&");
+  }
   function updateICSButton() {
     if (icsBtn) icsBtn.hidden = viewEvents.length === 0;
   }
@@ -548,21 +566,84 @@
     if (!d) return;
     lastFocus = document.activeElement;
     modal.querySelector(".efmp-modal__title").textContent = d.title || "Details";
-    var html = "";
-    if (d.fields) {
-      var dl = d.fields.filter(function (f) { return f[1]; })
-        .map(function (f) { return "<dt>" + esc(f[0]) + "</dt><dd>" + esc(f[1]) + "</dd>"; }).join("");
-      if (dl) html += "<dl>" + dl + "</dl>";
+    var content = modal.querySelector(".efmp-modal__content");
+    var actions = modal.querySelector(".efmp-modal__actions");
+    if (d.html != null) {
+      // custom modal body (e.g. the "Add to calendar" chooser)
+      content.innerHTML = d.html;
+      actions.hidden = true;
+    } else {
+      var html = "";
+      if (d.fields) {
+        var dl = d.fields.filter(function (f) { return f[1]; })
+          .map(function (f) { return "<dt>" + esc(f[0]) + "</dt><dd>" + esc(f[1]) + "</dd>"; }).join("");
+        if (dl) html += "<dl>" + dl + "</dl>";
+      }
+      if (d.details) html += '<div class="efmp-modal__details">' + esc(d.details) + "</div>";
+      if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
+      content.innerHTML = html;
+      // inline one-click "Add to calendar" for this single event
+      if (d.ics) {
+        actions.hidden = false;
+        var g = actions.querySelector(".efmp-modal__cal--gcal");
+        var gu = gcalUrl(d.ics);
+        if (gu) { g.href = gu; g.hidden = false; } else { g.hidden = true; }
+        actions.querySelector(".efmp-modal__cal--ics").onclick = function () { downloadICS([d.ics], d.ics.title); };
+      } else {
+        actions.hidden = true;
+      }
     }
-    if (d.details) html += '<div class="efmp-modal__details">' + esc(d.details) + "</div>";
-    if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
-    modal.querySelector(".efmp-modal__content").innerHTML = html;
-    var mIcs = modal.querySelector(".efmp-modal__ics");
-    if (d.ics) { mIcs.hidden = false; mIcs.onclick = function () { downloadICS([d.ics], d.ics.title); }; }
-    else { mIcs.hidden = true; mIcs.onclick = null; }
     modal.hidden = false;
     document.body.classList.add("efmp-modal-open");
+    if (d.afterRender) d.afterRender(content);
     modal.querySelector(".efmp-modal__close").focus();
+  }
+
+  // The whole-view "Add to Calendar" chooser. Google has no bulk one-click add,
+  // so for a batch we offer the .ics (Apple opens it directly; Google/Outlook
+  // import it); a single-event view also gets a one-click Google link.
+  function openAddToCalendar(events, label) {
+    if (!events || !events.length) return;
+    var single = events.length === 1;
+    var gUrl = single ? gcalUrl(events[0]) : null;
+    var fname = "EFM-" + icsSlug(label) + ".ics";
+    // date span across the events, so it's obvious exactly what's being added
+    var keys = events.map(function (e) { return icsDate(e.dateStr); }).filter(Boolean)
+      .map(function (p) { return p.m * 100 + p.d; }).sort(function (a, b) { return a - b; });
+    var span = "";
+    if (keys.length) {
+      var lo = keys[0], hi = keys[keys.length - 1];
+      span = monthAbbr(lo) + " " + (lo % 100) +
+        (hi !== lo ? " – " + monthAbbr(hi) + " " + (hi % 100) : "") + ", " + YEAR;
+    }
+    var html = '<div class="efmp-cal">' +
+      '<div class="efmp-cal__what">' +
+        '<div class="efmp-cal__what-label">You\'re adding</div>' +
+        '<div class="efmp-cal__what-name">' + esc(label || "This schedule") + '</div>' +
+        '<div class="efmp-cal__what-meta">' + events.length + ' event' + (single ? "" : "s") +
+          (span ? " &#183; " + esc(span) : "") + '</div>' +
+        '<div class="efmp-cal__what-file">File: ' + esc(fname) + '</div>' +
+      '</div>' +
+      '<div class="efmp-cal__opt"><div class="efmp-cal__name">Google Calendar</div>' +
+        (gUrl
+          ? '<a class="efmp-modal__cal" target="_blank" rel="noopener noreferrer" href="' + esc(gUrl) + '">Add to Google Calendar</a>'
+          : '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
+            '<p class="efmp-cal__hint">Then in Google Calendar: Settings &#8594; Import, and choose the file.</p>') +
+      '</div>' +
+      '<div class="efmp-cal__opt"><div class="efmp-cal__name">Apple Calendar</div>' +
+        '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
+        '<p class="efmp-cal__hint">Open the downloaded file to add ' + (single ? "it" : "them") + '.</p>' +
+      '</div>' +
+      '<div class="efmp-cal__opt"><div class="efmp-cal__name">Other apps (Outlook, etc.)</div>' +
+        '<button type="button" class="efmp-modal__cal" data-cal-dl>Download .ics</button>' +
+        '<p class="efmp-cal__hint">Import the file in your calendar app.</p>' +
+      '</div>' +
+    '</div>';
+    openModal({ title: "Add to calendar", html: html, afterRender: function (content) {
+      Array.prototype.forEach.call(content.querySelectorAll("[data-cal-dl]"), function (b) {
+        b.addEventListener("click", function () { downloadICS(events, label); });
+      });
+    } });
   }
   function closeModal() {
     modal.hidden = true;
@@ -764,10 +845,10 @@
     icsBtn.id = "efmp-ics";
     icsBtn.className = "efmp__ics";
     icsBtn.hidden = true;
-    icsBtn.textContent = "Add to Calendar (.ics)";
-    icsBtn.title = "Download the events shown here as a calendar (.ics) file";
-    icsBtn.setAttribute("aria-label", "Download the events shown here as a calendar file");
-    icsBtn.addEventListener("click", function () { if (viewEvents.length) downloadICS(viewEvents, viewLabel); });
+    icsBtn.textContent = "Add to Calendar";
+    icsBtn.title = "Add the events shown here to your calendar";
+    icsBtn.setAttribute("aria-label", "Add the events shown here to your calendar");
+    icsBtn.addEventListener("click", function () { if (viewEvents.length) openAddToCalendar(viewEvents, viewLabel); });
     if (controls) controls.appendChild(icsBtn);
 
     // Details modal, injected once.
@@ -779,7 +860,11 @@
         '<button type="button" class="efmp-modal__close" aria-label="Close">×</button>' +
         '<h3 class="efmp-modal__title" id="efmp-modal-title"></h3>' +
         '<div class="efmp-modal__content"></div>' +
-        '<div class="efmp-modal__actions"><button type="button" class="efmp-modal__ics" hidden>Add to Calendar (.ics)</button></div>' +
+        '<div class="efmp-modal__actions" hidden>' +
+          '<span class="efmp-modal__addlabel">Add to calendar:</span>' +
+          '<a class="efmp-modal__cal efmp-modal__cal--gcal" target="_blank" rel="noopener noreferrer" href="#">Google Calendar</a>' +
+          '<button type="button" class="efmp-modal__cal efmp-modal__cal--ics">Apple Calendar (.ics)</button>' +
+        '</div>' +
       '</div>';
     root.appendChild(modal);
     modal.querySelector(".efmp-modal__close").addEventListener("click", closeModal);
