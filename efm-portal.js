@@ -567,8 +567,6 @@
         html += "</div>";
       });
     }
-    html += '<div class="efmp-info__head" role="heading" aria-level="3">General Inquiries</div>' +
-      '<p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
     html += "</div>";
     list.innerHTML = html;
   }
