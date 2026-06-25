@@ -320,7 +320,7 @@
   var aux = {};            // outreach -> {headers, items}
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
-  var staff = [];          // { Name, Title, Phone, Email } from the "Staff List" tab
+  var staff = [];          // [{ dept, people:[{name,title,contact,office}] }] from the "Staff List" tab
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
   var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
   var viewLabel = "";      // label for the current view's .ics calendar name + filename
@@ -546,34 +546,26 @@
         : "<p>" + esc(l) + "</p>";
     });
     if (staff.length) {
-      // Group by Department. The sheet lists people in department blocks, so a
-      // blank Department cell inherits the department of the block above it.
-      var deptOrder = [], deptGroups = {}, curDept = "";
-      staff.forEach(function (c) {
-        var name = (c.Name || "").trim(), title = (c.Title || "").trim();
-        if (!name && !title) return;                 // skip the sheet's blank spacer rows
-        var d = (c.Department || "").trim();
-        if (d) curDept = d;
-        var dept = d || curDept || "Staff";
-        if (!deptGroups[dept]) { deptGroups[dept] = []; deptOrder.push(dept); }
-        var nameCell = name || title;                 // service rows (e.g. Nurses) have no name
-        var titleCell = (name && title) ? title : "";
-        var contact = [];
-        if (c.Phone) contact.push(esc(c.Phone));       // may be a phone OR a note ("Hours listed in...")
-        if (c.Email) contact.push('<a href="mailto:' + esc(c.Email) + '">' + esc(c.Email) + "</a>");
-        deptGroups[dept].push('<tr><th scope="row">' + esc(nameCell) + "</th><td>" + esc(titleCell) +
-          "</td><td>" + contact.join(" &#183; ") + "</td></tr>");
-      });
-      if (deptOrder.length) {
-        html += '<div class="efmp-info__head" role="heading" aria-level="3">Staff</div>';
-        html += '<table class="efmp-staff"><thead><tr>' +
-          '<th scope="col">Name</th><th scope="col">Title</th><th scope="col">Contact</th></tr></thead><tbody>';
-        deptOrder.forEach(function (dept) {
-          html += '<tr class="efmp-staff__dept"><th colspan="3" scope="colgroup">' + esc(dept) + "</th></tr>" +
-            deptGroups[dept].join("");
+      html += '<div class="efmp-info__head" role="heading" aria-level="3">Staff</div>';
+      staff.forEach(function (g) {
+        if (g.dept) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.dept) + "</div>";
+        html += '<div class="efmp-cards">';
+        g.people.forEach(function (p) {
+          var contact = "";
+          if (p.contact) {
+            contact = /@/.test(p.contact)
+              ? '<a class="efmp-card__contact efmp-card__contact--email" href="mailto:' + esc(p.contact) + '">' + esc(p.contact) + "</a>"
+              : '<div class="efmp-card__contact">' + esc(p.contact) + "</div>";
+          }
+          html += '<div class="efmp-card">' +
+            '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
+            (p.title ? '<div class="efmp-card__title">' + esc(p.title) + "</div>" : "") +
+            (p.office ? '<div class="efmp-card__office">' + esc(p.office) + "</div>" : "") +
+            contact +
+          "</div>";
         });
-        html += "</tbody></table>";
-      }
+        html += "</div>";
+      });
     }
     html += '<div class="efmp-info__head" role="heading" aria-level="3">General Inquiries</div>' +
       '<p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
@@ -853,6 +845,26 @@
     return out;
   }
 
+  // Parse the "Staff List" tab into department groups. Layout (by position, no
+  // header row): col A = name (or a department name on a section row), B = title,
+  // C = email or phone, D = office/location. A row is a DEPARTMENT header when its
+  // last cell is "Office" (the sheet's section marker) and B/C are empty.
+  function parseStaff(rows) {
+    var groups = [], cur = null;
+    (rows || []).forEach(function (r) {
+      var a = (r[0] || "").trim(), b = (r[1] || "").replace(/\s+/g, " ").trim(),
+          c = (r[2] || "").trim(), d = (r[3] || "").trim();
+      if (!a && !b && !c && !d) return;                          // blank spacer row
+      if (a && !b && !c && d.toLowerCase() === "office") {       // department header
+        cur = { dept: a, people: [] }; groups.push(cur); return;
+      }
+      if (!a && !b && !c) return;                                // nothing useful
+      if (!cur) { cur = { dept: "", people: [] }; groups.push(cur); }
+      cur.people.push({ name: a, title: b, contact: c, office: d });
+    });
+    return groups.filter(function (g) { return g.people.length; });
+  }
+
   function appendRoomTabs() {
     var roomsTab = null;
     for (var t = 0; t < NAV.length; t++) {
@@ -895,7 +907,7 @@
 
   function build(data) {
     if (data.legend) applyLegend(data.legend);
-    if (data.staff) staff = tableObjects(data.staff).items;
+    if (data.staff) staff = parseStaff(data.staff);
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
     aux.outreach = data.outreach ? tableObjects(data.outreach) : null;
