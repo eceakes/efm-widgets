@@ -543,18 +543,29 @@
       html += heading ? "<h3>" + esc(l) + "</h3>" : "<p>" + esc(l) + "</p>";
     });
     if (staff.length) {
-      var rows = "";
+      // Group by Department. The sheet lists people in department blocks, so a
+      // blank Department cell inherits the department of the block above it.
+      var deptOrder = [], deptGroups = {}, curDept = "";
       staff.forEach(function (c) {
         var name = (c.Name || "").trim(), title = (c.Title || "").trim();
         if (!name && !title) return;                 // skip the sheet's blank spacer rows
+        var d = (c.Department || "").trim();
+        if (d) curDept = d;
+        var dept = d || curDept || "Staff";
+        if (!deptGroups[dept]) { deptGroups[dept] = []; deptOrder.push(dept); }
         var primary = name || title;                 // service rows (e.g. Nurses) have no name
         var bits = [];
         if (name && title) bits.push(esc(title));
         if (c.Phone) bits.push(esc(c.Phone));         // may be a phone OR a note ("Hours listed in...")
         if (c.Email) bits.push('<a href="mailto:' + esc(c.Email) + '">' + esc(c.Email) + "</a>");
-        rows += "<li><b>" + esc(primary) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>";
+        deptGroups[dept].push("<li><b>" + esc(primary) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>");
       });
-      if (rows) html += "<h3>Staff</h3><ul class=\"efmp-people\">" + rows + "</ul>";
+      if (deptOrder.length) {
+        html += "<h3>Staff</h3>";
+        deptOrder.forEach(function (dept) {
+          html += '<h4 class="efmp-dept">' + esc(dept) + "</h4><ul class=\"efmp-people\">" + deptGroups[dept].join("") + "</ul>";
+        });
+      }
     }
     html += '<h3>General Inquiries</h3><p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
     html += "</div>";
