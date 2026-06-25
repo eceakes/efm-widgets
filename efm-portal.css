@@ -265,8 +265,11 @@
   #efm-portal .efmp-card__title { color: var(--efmp-role) !important; font-size: 13.5px; line-height: 1.35; margin-top: 2px; }
   #efm-portal .efmp-card__office { color: var(--efmp-role) !important; font-size: 13px; margin-top: 7px; }
   #efm-portal .efmp-card__contact { color: var(--efmp-role) !important; font-size: 13px; margin-top: 3px; word-break: break-word; }
-  #efm-portal a.efmp-card__contact--email { color: var(--efmp-ink) !important; text-decoration: underline; display: block; }
-  #efm-portal a.efmp-card__contact--email:hover { color: var(--efmp-hover) !important; }
+  /* a card with a contact is a tap-to-email/call target */
+  #efm-portal a.efmp-card--link { display: block; text-decoration: none; color: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  #efm-portal a.efmp-card--link:hover { border-color: var(--efmp-ink); box-shadow: 0 4px 14px rgba(9, 12, 38, .08); }
+  #efm-portal a.efmp-card--link:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+  #efm-portal a.efmp-card--link .efmp-card__contact { color: var(--efmp-ink) !important; text-decoration: underline; }
 
   /* --- announcements tab list --- */
   #efm-portal .efmp-ann {
