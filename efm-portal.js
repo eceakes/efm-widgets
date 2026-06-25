@@ -552,17 +552,20 @@
         html += '<div class="efmp-cards">';
         g.people.forEach(function (p) {
           // A contact makes the whole card a tap target: mailto: for an email,
-          // tel: for a phone (so on a phone it opens mail / the dialer).
-          var href = "", aria = "", contact = (p.contact || "").trim();
-          if (contact && /@/.test(contact)) { href = "mailto:" + contact; aria = "Email " + p.name; }
-          else if (contact && /\d/.test(contact)) { href = "tel:" + contact.replace(/[^\d+]/g, ""); aria = "Call " + p.name; }
+          // tel: for a phone (so on a phone it opens mail / the dialer). The
+          // action word is a visually-hidden prefix (not aria-label) so the link's
+          // accessible name keeps the name + title + office a screen reader needs.
+          var href = "", action = "", contact = (p.contact || "").trim();
+          if (contact && /@/.test(contact)) { href = "mailto:" + contact; action = "Email"; }
+          else if (contact && /\d/.test(contact)) { href = "tel:" + contact.replace(/[^\d+]/g, ""); action = "Call"; }
           var inner =
+            (href ? '<span class="efmp__sr">' + action + " </span>" : "") +
             '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
             (p.title ? '<div class="efmp-card__title">' + esc(p.title) + "</div>" : "") +
             (p.office ? '<div class="efmp-card__office">' + esc(p.office) + "</div>" : "") +
             (contact ? '<div class="efmp-card__contact">' + esc(contact) + "</div>" : "");
           html += href
-            ? '<a class="efmp-card efmp-card--link" href="' + esc(href) + '" aria-label="' + esc(aria) + '">' + inner + "</a>"
+            ? '<a class="efmp-card efmp-card--link" href="' + esc(href) + '">' + inner + "</a>"
             : '<div class="efmp-card">' + inner + "</div>";
         });
         html += "</div>";
