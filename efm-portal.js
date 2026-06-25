@@ -16,7 +16,7 @@
    page's embed block.
 
    Tabs read (all optional except Master Calendar; missing/empty -> graceful):
-     Master Calendar, Legend, Announcements, General Information, Counselors,
+     Master Calendar, Legend, Announcements, General Information, Staff List,
      Outreach Concerts
    ============================================================ */
 (function () {
@@ -50,7 +50,7 @@
     { key: "legend", tab: TAB_LEGEND },
     { key: "announcements", tab: "Announcements" },
     { key: "generalInfo", tab: "General Information" },
-    { key: "counselors", tab: "Counselors" },
+    { key: "staff", tab: "Staff List" },
     { key: "outreach", tab: "Outreach Concerts" }
   ];
 
@@ -320,7 +320,7 @@
   var aux = {};            // outreach -> {headers, items}
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
-  var counselors = [];     // { Name, Title, Phone, Email }
+  var staff = [];          // { Name, Title, Phone, Email } from the "Staff List" tab
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
   var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
   var viewLabel = "";      // label for the current view's .ics calendar name + filename
@@ -542,18 +542,19 @@
       var heading = (l === l.toUpperCase() && /[A-Z]/.test(l)) || (!/\d/.test(l) && l.length < 30);
       html += heading ? "<h3>" + esc(l) + "</h3>" : "<p>" + esc(l) + "</p>";
     });
-    if (counselors.length) {
-      html += "<h3>Counselors</h3><ul class=\"efmp-people\">";
-      counselors.forEach(function (c) {
-        var name = c.Name || "";
-        if (!name) return;
+    if (staff.length) {
+      var rows = "";
+      staff.forEach(function (c) {
+        var name = (c.Name || "").trim(), title = (c.Title || "").trim();
+        if (!name && !title) return;                 // skip the sheet's blank spacer rows
+        var primary = name || title;                 // service rows (e.g. Nurses) have no name
         var bits = [];
-        if (c.Title) bits.push(esc(c.Title));
-        if (c.Phone) bits.push(esc(c.Phone));
+        if (name && title) bits.push(esc(title));
+        if (c.Phone) bits.push(esc(c.Phone));         // may be a phone OR a note ("Hours listed in...")
         if (c.Email) bits.push('<a href="mailto:' + esc(c.Email) + '">' + esc(c.Email) + "</a>");
-        html += "<li><b>" + esc(name) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>";
+        rows += "<li><b>" + esc(primary) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>";
       });
-      html += "</ul>";
+      if (rows) html += "<h3>Staff</h3><ul class=\"efmp-people\">" + rows + "</ul>";
     }
     html += '<h3>General Inquiries</h3><p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
     html += "</div>";
@@ -874,7 +875,7 @@
 
   function build(data) {
     if (data.legend) applyLegend(data.legend);
-    if (data.counselors) counselors = tableObjects(data.counselors).items;
+    if (data.staff) staff = tableObjects(data.staff).items;
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
     aux.outreach = data.outreach ? tableObjects(data.outreach) : null;
