@@ -540,7 +540,10 @@
     if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
     lines.forEach(function (l) {
       var heading = (l === l.toUpperCase() && /[A-Z]/.test(l)) || (!/\d/.test(l) && l.length < 30);
-      html += heading ? "<h3>" + esc(l) + "</h3>" : "<p>" + esc(l) + "</p>";
+      // role=heading DIV (not <h3>) so the site's global heading theme can't recolor it
+      html += heading
+        ? '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(l) + "</div>"
+        : "<p>" + esc(l) + "</p>";
     });
     if (staff.length) {
       // Group by Department. The sheet lists people in department blocks, so a
@@ -561,13 +564,15 @@
         deptGroups[dept].push("<li><b>" + esc(primary) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>");
       });
       if (deptOrder.length) {
-        html += "<h3>Staff</h3>";
+        html += '<div class="efmp-info__head" role="heading" aria-level="3">Staff</div>';
         deptOrder.forEach(function (dept) {
-          html += '<h4 class="efmp-dept">' + esc(dept) + "</h4><ul class=\"efmp-people\">" + deptGroups[dept].join("") + "</ul>";
+          html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(dept) + "</div>" +
+            "<ul class=\"efmp-people\">" + deptGroups[dept].join("") + "</ul>";
         });
       }
     }
-    html += '<h3>General Inquiries</h3><p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
+    html += '<div class="efmp-info__head" role="heading" aria-level="3">General Inquiries</div>' +
+      '<p><a href="mailto:info@easternfestivalofmusic.org">info@easternfestivalofmusic.org</a></p>';
     html += "</div>";
     list.innerHTML = html;
   }
@@ -986,7 +991,7 @@
     modal.innerHTML =
       '<div class="efmp-modal__box" role="dialog" aria-modal="true" aria-labelledby="efmp-modal-title">' +
         '<button type="button" class="efmp-modal__close" aria-label="Close">×</button>' +
-        '<h3 class="efmp-modal__title" id="efmp-modal-title"></h3>' +
+        '<div class="efmp-modal__title" id="efmp-modal-title" role="heading" aria-level="2"></div>' +
         '<div class="efmp-modal__content"></div>' +
         '<div class="efmp-modal__actions" hidden>' +
           '<span class="efmp-modal__addlabel">Add to calendar:</span>' +

@@ -233,17 +233,21 @@
 
   /* --- general information + counselors --- */
   #efm-portal .efmp-info { max-width: 680px; margin: 0 auto; }
-  #efm-portal .efmp-info h3 {
-    font-family: var(--efmp-name-font); color: var(--efmp-ink); font-weight: 400;
-    font-size: 16px; letter-spacing: .02em; margin: 20px 0 6px;
+  /* role=heading DIVs (not real h3/h4) + !important, so the site's global heading
+     theme can't recolor them (it would force h3 white, h4 gold serif). */
+  #efm-portal .efmp-info__head {
+    font-family: var(--efmp-name-font) !important; color: var(--efmp-ink) !important; font-weight: 400 !important;
+    font-size: 16px !important; line-height: 1.2 !important; letter-spacing: .02em;
+    text-transform: none !important; margin: 20px 0 6px;
   }
-  #efm-portal .efmp-info h3:first-child { margin-top: 0; }
+  #efm-portal .efmp-info__head:first-child { margin-top: 0; }
   /* department sub-headings within the Staff list */
-  #efm-portal .efmp-info h4 {
-    font-family: var(--efmp-name-font); color: var(--efmp-role); font-weight: 400;
-    font-size: 12px; letter-spacing: .07em; text-transform: uppercase; margin: 16px 0 8px;
+  #efm-portal .efmp-info__dept {
+    font-family: var(--efmp-name-font) !important; color: var(--efmp-role) !important; font-weight: 400 !important;
+    font-size: 12px !important; line-height: 1.2 !important; letter-spacing: .07em;
+    text-transform: uppercase !important; margin: 16px 0 8px;
   }
-  #efm-portal .efmp-info h3 + h4 { margin-top: 10px; }
+  #efm-portal .efmp-info__head + .efmp-info__dept { margin-top: 10px; }
   #efm-portal .efmp-info p { color: #2b3042; font-size: 14.5px; line-height: 1.5; margin: 0 0 5px; }
   #efm-portal .efmp-info a { color: var(--efmp-ink); }
   #efm-portal .efmp-people { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -283,8 +287,8 @@
   #efm-portal .efmp-modal__close:hover { background: var(--efmp-ink); color: #fff; }
   #efm-portal .efmp-modal__close:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
   #efm-portal .efmp-modal__title {
-    font-family: var(--efmp-title-font); color: var(--efmp-ink); font-weight: 400;
-    font-size: 22px; line-height: 1.15; margin: 0 40px 14px 0;
+    font-family: var(--efmp-title-font) !important; color: var(--efmp-ink) !important; font-weight: 400 !important;
+    font-size: 22px !important; line-height: 1.15 !important; margin: 0 40px 14px 0;
   }
   #efm-portal .efmp-modal dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
   #efm-portal .efmp-modal dt {
