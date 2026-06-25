@@ -556,19 +556,23 @@
         if (d) curDept = d;
         var dept = d || curDept || "Staff";
         if (!deptGroups[dept]) { deptGroups[dept] = []; deptOrder.push(dept); }
-        var primary = name || title;                 // service rows (e.g. Nurses) have no name
-        var bits = [];
-        if (name && title) bits.push(esc(title));
-        if (c.Phone) bits.push(esc(c.Phone));         // may be a phone OR a note ("Hours listed in...")
-        if (c.Email) bits.push('<a href="mailto:' + esc(c.Email) + '">' + esc(c.Email) + "</a>");
-        deptGroups[dept].push("<li><b>" + esc(primary) + "</b>" + (bits.length ? ' <span>' + bits.join(" &#183; ") + "</span>" : "") + "</li>");
+        var nameCell = name || title;                 // service rows (e.g. Nurses) have no name
+        var titleCell = (name && title) ? title : "";
+        var contact = [];
+        if (c.Phone) contact.push(esc(c.Phone));       // may be a phone OR a note ("Hours listed in...")
+        if (c.Email) contact.push('<a href="mailto:' + esc(c.Email) + '">' + esc(c.Email) + "</a>");
+        deptGroups[dept].push('<tr><th scope="row">' + esc(nameCell) + "</th><td>" + esc(titleCell) +
+          "</td><td>" + contact.join(" &#183; ") + "</td></tr>");
       });
       if (deptOrder.length) {
         html += '<div class="efmp-info__head" role="heading" aria-level="3">Staff</div>';
+        html += '<table class="efmp-staff"><thead><tr>' +
+          '<th scope="col">Name</th><th scope="col">Title</th><th scope="col">Contact</th></tr></thead><tbody>';
         deptOrder.forEach(function (dept) {
-          html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(dept) + "</div>" +
-            "<ul class=\"efmp-people\">" + deptGroups[dept].join("") + "</ul>";
+          html += '<tr class="efmp-staff__dept"><th colspan="3" scope="colgroup">' + esc(dept) + "</th></tr>" +
+            deptGroups[dept].join("");
         });
+        html += "</tbody></table>";
       }
     }
     html += '<div class="efmp-info__head" role="heading" aria-level="3">General Inquiries</div>' +

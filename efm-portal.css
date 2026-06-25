@@ -250,10 +250,31 @@
   #efm-portal .efmp-info__head + .efmp-info__dept { margin-top: 10px; }
   #efm-portal .efmp-info p { color: #2b3042; font-size: 14.5px; line-height: 1.5; margin: 0 0 5px; }
   #efm-portal .efmp-info a { color: var(--efmp-ink); }
-  #efm-portal .efmp-people { list-style: none; margin: 8px 0 0; padding: 0; }
-  #efm-portal .efmp-people li { border: 1px solid var(--efmp-rule); border-radius: 12px; padding: 10px 14px; margin: 0 0 8px; }
-  #efm-portal .efmp-people b { font-family: var(--efmp-name-font); font-weight: 400; color: var(--efmp-ink); }
-  #efm-portal .efmp-people span { color: var(--efmp-role); font-size: 13.5px; }
+  /* staff directory table (Name / Title / Contact, grouped by department) */
+  #efm-portal .efmp-staff {
+    width: 100%; border-collapse: collapse; margin: 10px 0 0;
+    font-family: var(--efmp-body-font); font-size: 14.5px;
+  }
+  #efm-portal .efmp-staff th, #efm-portal .efmp-staff td {
+    text-align: left; vertical-align: top; padding: 9px 16px 9px 0;
+    border-bottom: 1px solid var(--efmp-rule);
+  }
+  #efm-portal .efmp-staff thead th {
+    font-family: var(--efmp-name-font) !important; color: var(--efmp-role) !important; font-weight: 400 !important;
+    font-size: 11px !important; letter-spacing: .06em; text-transform: uppercase !important;
+    border-bottom: 2px solid var(--efmp-rule);
+  }
+  #efm-portal .efmp-staff tbody th[scope="row"] {
+    font-family: var(--efmp-name-font) !important; font-weight: 400 !important; color: var(--efmp-ink) !important;
+  }
+  #efm-portal .efmp-staff td { color: #2b3042 !important; }
+  #efm-portal .efmp-staff__dept th {
+    font-family: var(--efmp-name-font) !important; color: var(--efmp-role) !important; font-weight: 400 !important;
+    font-size: 11px !important; letter-spacing: .07em; text-transform: uppercase !important;
+    padding: 20px 0 7px; border-bottom: 1px solid var(--efmp-rule);
+  }
+  #efm-portal .efmp-staff a { color: var(--efmp-ink); text-decoration: underline; word-break: break-word; }
+  #efm-portal .efmp-staff a:hover { color: var(--efmp-hover); }
 
   /* --- announcements tab list --- */
   #efm-portal .efmp-ann {
