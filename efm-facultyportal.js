@@ -126,7 +126,7 @@
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
-      { label: "Library", kind: "infoSection", match: ["library"] },
+      { label: "Documents", kind: "infoSection", match: ["document"], all: true },
       { label: "Tickets", kind: "tickets" } ] },
     // Calendar: ensemble schedules + Outreach + All Events (the whole festival).
     // The "Eastern Festival Orchestra" pill (weeks: true) reveals a 3rd-level week
@@ -700,16 +700,19 @@
     syncBox();
   }
 
-  // General Information -> "Dress Code" / "Wifi Access" / "Keys" / "Library" pills:
-  // the matching major section of the Faculty-Portal "General-Information" tab.
+  // General Information -> "Dress Code" / "Wifi Access" / "Keys" / "Documents"
+  // pills: the matching major section(s) of the Faculty-Portal "General-Information"
+  // tab. Most pills show the first matching section; a pill with all:true (Documents)
+  // renders every matching section stacked (e.g. both "Library Documents" and
+  // "Festival Documents For Print" become download-button lists under one pill).
   function renderInfoSection(sub) {
     banner.hidden = true; status.hidden = true;
-    var secs = infoSections(), match = null;
-    for (var i = 0; i < secs.length; i++) {
-      var h = secs[i].head.toLowerCase();
-      if (sub.match.some(function (m) { return h.indexOf(m) !== -1; })) { match = secs[i]; break; }
-    }
-    if (!match) {
+    var matches = infoSections().filter(function (s) {
+      var h = s.head.toLowerCase();
+      return sub.match.some(function (m) { return h.indexOf(m) !== -1; });
+    });
+    if (!sub.all) matches = matches.slice(0, 1);
+    if (!matches.length) {
       list.innerHTML = "";
       status.textContent = "This information will appear here once it is posted.";
       status.hidden = false;
@@ -718,8 +721,10 @@
       return;
     }
     var html = '<div class="efmfp-info efmfp-info--center">';
-    html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
-    html += renderInfoBlocksHTML(match.blocks);
+    matches.forEach(function (match) {
+      html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
+      html += renderInfoBlocksHTML(match.blocks);
+    });
     html += "</div>";
     list.innerHTML = html;
     announce(sub.label + " shown.");
