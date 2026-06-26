@@ -3,7 +3,7 @@
   --efme-ink:#0E178E;            /* brand blue: titles, active tab, accents */
   --efme-role:#5b6473;           /* muted text */
   --efme-rule:#e4e6ef;           /* hairlines / borders */
-  --efme-hover:#6C82FA;          /* hover accent */
+  --efme-hover:#4E63D6;          /* hover/focus accent — AA: 5.15:1 on white, 4.76:1 on soft */
   --efme-soft:#f4f6fc;           /* soft panel fills (day cells, badges) */
   --efme-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   --efme-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
@@ -99,7 +99,7 @@
 #efm-events .efme-cal__cell--has .efme-cal__daynum{ color:var(--efme-ink); }
 #efm-events .efme-cal__ev{
   display:block; width:100%; text-align:left; appearance:none; -webkit-appearance:none; border:0; cursor:pointer;
-  background:var(--efme-soft); color:var(--efme-ink); border-radius:6px; padding:3px 6px; margin-top:4px;
+  background:var(--efme-soft); color:var(--efme-ink); border-radius:6px; padding:5px 6px; min-height:24px; margin-top:4px;
   font-size:11.5px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   font-family:var(--efme-body-font);
 }
@@ -111,7 +111,7 @@
 /* agenda = the "List View" tab (works at every size; centered on wide screens) */
 #efm-events .efme-cal__agenda{ display:block; max-width:760px; margin:0 auto; }
 #efm-events .efme-cal__empty{ color:var(--efme-role); text-align:center; padding:22px 0; }
-#efm-events .efme-agenda-row{ display:flex; align-items:center; gap:14px; width:100%; text-align:left; appearance:none; -webkit-appearance:none; background:#fff; border:1px solid var(--efme-rule); border-radius:12px; padding:11px 14px; margin:0 0 9px; cursor:pointer; transition:border-color .15s ease, box-shadow .15s ease; }
+#efm-events .efme-agenda-row{ display:flex; align-items:center; gap:14px; width:100%; text-align:left; appearance:none; -webkit-appearance:none; background:#fff; border:1px solid #8A90A3; border-radius:12px; padding:11px 14px; margin:0 0 9px; cursor:pointer; transition:border-color .15s ease, box-shadow .15s ease; }
 #efm-events .efme-agenda-row:hover{ border-color:var(--efme-ink); box-shadow:0 6px 18px rgba(9,12,38,.08); }
 #efm-events .efme-agenda-date{ flex:0 0 auto; width:46px; text-align:center; color:var(--efme-ink); font-family:var(--efme-name-font); line-height:1; }
 #efm-events .efme-agenda-date b{ display:block; font-size:22px; font-weight:400; }
@@ -124,8 +124,8 @@
 #efm-events .efme-agenda-group{ font-family:var(--efme-name-font); color:var(--efme-ink); font-size:12.5px; letter-spacing:.08em; text-transform:uppercase; margin:22px 0 12px; padding-bottom:7px; border-bottom:1px solid var(--efme-rule); }
 #efm-events .efme-agenda-group:first-child{ margin-top:0; }
 #efm-events .efme-agenda-group--past{ color:var(--efme-role); margin-top:30px; }
-#efm-events .efme-agenda-row--past{ opacity:.5; }
-#efm-events .efme-agenda-row--past:hover{ opacity:1; }
+/* 'Past' rows: a soft fill instead of opacity (opacity drops text below AA contrast) */
+#efm-events .efme-agenda-row--past{ background:var(--efme-soft); }
 
 /* ====================== EVENT MODAL ====================== */
 #efm-events .efme-modal[hidden]{ display:none; }
@@ -155,15 +155,23 @@
 
 /* "Add to Calendar" control in the modal */
 #efm-events .efme-modal__cal{ margin-top:16px; }
-#efm-events .efme-cal__btn{ display:inline-flex; align-items:center; gap:7px; appearance:none; -webkit-appearance:none; cursor:pointer; background:#fff; border:1.5px solid var(--efme-rule); color:var(--efme-ink); font-family:var(--efme-name-font); font-size:14px; padding:9px 16px; border-radius:999px; transition:border-color .15s ease, background .15s ease; }
+#efm-events .efme-cal__btn{ display:inline-flex; align-items:center; gap:7px; appearance:none; -webkit-appearance:none; cursor:pointer; background:#fff; border:1.5px solid #8A90A3; color:var(--efme-ink); font-family:var(--efme-name-font); font-size:14px; padding:9px 16px; border-radius:999px; transition:border-color .15s ease, background .15s ease; }
 #efm-events .efme-cal__btn:hover{ border-color:var(--efme-ink); background:var(--efme-soft); }
 #efm-events .efme-cal__btn:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
 #efm-events .efme-cal__btn svg{ flex:0 0 auto; }
 #efm-events .efme-cal__menu{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 #efm-events .efme-cal__menu[hidden]{ display:none; }
-#efm-events .efme-cal__opt{ appearance:none; -webkit-appearance:none; cursor:pointer; background:var(--efme-soft); border:1px solid var(--efme-rule); color:var(--efme-ink)!important; text-decoration:none!important; font-family:var(--efme-body-font); font-size:14px; padding:9px 14px; border-radius:8px; transition:background .15s ease, border-color .15s ease; }
+#efm-events .efme-cal__opt{ appearance:none; -webkit-appearance:none; cursor:pointer; background:var(--efme-soft); border:1px solid #8A90A3; color:var(--efme-ink)!important; text-decoration:none!important; font-family:var(--efme-body-font); font-size:14px; padding:9px 14px; border-radius:8px; transition:background .15s ease, border-color .15s ease; }
 #efm-events .efme-cal__opt:hover{ background:#fff; border-color:var(--efme-ink); }
 #efm-events .efme-cal__opt:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
+
+/* focus-visible for the remaining interactive controls */
+#efm-events .efme-modal__close:focus-visible, #efm-events .efme-cal__nav:focus-visible, #efm-events .efme-modal__btn:focus-visible, #efm-events .efme-modal__more:focus-visible, #efm-events .efme-card__btn:focus-visible, #efm-events .efme-cal__ev:focus-visible, #efm-events .efme-cal__more:focus-visible, #efm-events .efme-agenda-row:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
+#efm-events .efme-modal__desc a:focus-visible, #efm-events .efme-card__desc a:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
+/* tablist wrapper participates in the tab bar's flex layout */
+#efm-events .efme__tablist{ display:contents; }
+/* visually-hidden text for screen readers */
+#efm-events .efme-sr-only{ position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 /* rich-text (Markdown) inside event descriptions */
 #efm-events .efme-card__desc p, #efm-events .efme-modal__desc p{ margin:0 0 10px; }
@@ -180,4 +188,8 @@
   #efm-events #efme-tab-calendar{ display:none!important; }
   #efm-events .efme-cal__head{ gap:12px; }
   #efm-events .efme-cal__month{ min-width:auto; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #efm-events *{ transition:none!important; animation:none!important; scroll-behavior:auto!important; }
 }

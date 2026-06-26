@@ -188,10 +188,11 @@
   function calIconSvg(){ return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>'; }
   function renderCalControl(g){
     var wrap=document.createElement("div"); wrap.className="efmpr-cal"; var gurl=googleCalUrl(g);
-    wrap.innerHTML='<button type="button" class="efmpr-cal__btn" aria-haspopup="true" aria-expanded="false">'+calIconSvg()+'<span>Add to Calendar</span></button>'+
-      '<div class="efmpr-cal__menu" hidden role="menu">'+
-        (gurl?'<a class="efmpr-cal__opt" role="menuitem" data-cal="google" target="_blank" rel="noopener noreferrer" href="'+escapeHtml(gurl)+'">Google Calendar</a>':'')+
-        '<button type="button" class="efmpr-cal__opt" role="menuitem" data-cal="ics">Apple / Outlook (.ics)</button>'+
+    var menuId="efmpr-calmenu-"+(g.anchorSlug||slug(g.title)||"x"), ct=escapeHtml(plain(g.title));
+    wrap.innerHTML='<button type="button" class="efmpr-cal__btn" aria-expanded="false" aria-controls="'+menuId+'">'+calIconSvg()+'<span>Add to Calendar</span></button>'+
+      '<div class="efmpr-cal__menu" id="'+menuId+'" hidden>'+
+        (gurl?'<a class="efmpr-cal__opt" data-cal="google" target="_blank" rel="noopener noreferrer" href="'+escapeHtml(gurl)+'" aria-label="Add '+ct+' to Google Calendar (opens in a new tab)">Google Calendar</a>':'')+
+        '<button type="button" class="efmpr-cal__opt" data-cal="ics" aria-label="Download '+ct+' calendar file (.ics) for Apple or Outlook">Apple / Outlook (.ics)</button>'+
       '</div>';
     var btn=wrap.querySelector(".efmpr-cal__btn"), menu=wrap.querySelector(".efmpr-cal__menu");
     btn.addEventListener("click",function(e){ e.stopPropagation(); var willOpen=menu.hidden; closeAllCalMenus(); menu.hidden=!willOpen; btn.setAttribute("aria-expanded", menu.hidden?"false":"true"); sync(); });
@@ -207,7 +208,7 @@
     var url=httpUrl(it.url); if(!url) return null;
     var a=document.createElement("a"); a.className="efmpr-item"; a.href=url; a.target="_blank"; a.rel="noopener noreferrer"; a.setAttribute("download","");
     var t=plain(it.title)||typeLabel(it);
-    a.setAttribute("aria-label","View or download "+t+" (PDF)");
+    a.setAttribute("aria-label","View or download "+t+" (PDF, opens in a new tab)");
     a.innerHTML='<span class="efmpr-item__icon">'+downloadIconSvg()+'</span>'+
       '<span class="efmpr-item__text"><span class="efmpr-item__title">'+escapeHtml(t)+'</span>'+
       '<span class="efmpr-item__type">'+escapeHtml(plain(it.type)?typeLabel(it)+" · PDF":"PDF")+'</span></span>'+
@@ -219,11 +220,11 @@
   function renderGroup(g, isPast){
     var art=document.createElement("article"); art.className="efmpr-group"+(isPast?" efmpr-group--past":""); art.id=g.anchorId;
     if(g.image){ art.innerHTML='<div class="efmpr-group__banner">'+
-        '<img src="'+escapeHtml(g.image)+'" alt="'+escapeHtml(g.title)+'" loading="lazy">'+
-        (g.date?'<span class="efmpr-group__badge"><b>'+g.date.getDate()+'</b><span>'+MON3[g.date.getMonth()].toUpperCase()+'</span></span>':'')+
+        '<img src="'+escapeHtml(g.image)+'" alt="" loading="lazy">'+
+        (g.date?'<span class="efmpr-group__badge" aria-hidden="true"><b>'+g.date.getDate()+'</b><span>'+MON3[g.date.getMonth()].toUpperCase()+'</span></span>':'')+
       '</div>'; }
     var body=document.createElement("div"); body.className="efmpr-group__body";
-    body.innerHTML='<div class="efmpr-group__title">'+escapeHtml(g.title||"Program")+'</div>'+
+    body.innerHTML='<div class="efmpr-group__title" role="heading" aria-level="4">'+escapeHtml(g.title||"Program")+'</div>'+
       (g.date?'<div class="efmpr-group__date">'+escapeHtml(fmtDate(g.date))+'</div>':'');
     if(g.desc){ var d=document.createElement("div"); d.className="efmpr-group__desc"; d.innerHTML=mdToHtml(g.desc); body.appendChild(d); }
     var wrap=document.createElement("div"); wrap.className="efmpr-group__items"; var n=0;
@@ -242,7 +243,7 @@
     var up=groups.filter(function(g){ return !g.date || g.date>=t; }).sort(function(a,b){ return (a.date?a.date:0)-(b.date?b.date:0); });
     var past=groups.filter(function(g){ return g.date && g.date<t; }).sort(function(a,b){ return b.date-a.date; });
     function section(label, list, isPast){ if(!list.length) return;
-      var h=document.createElement("div"); h.className="efmpr-section"+(isPast?" efmpr-section--past":""); h.setAttribute("role","heading"); h.setAttribute("aria-level","2"); h.textContent=label; panelEl.appendChild(h);
+      var h=document.createElement("div"); h.className="efmpr-section"+(isPast?" efmpr-section--past":""); h.setAttribute("role","heading"); h.setAttribute("aria-level","3"); h.textContent=label; panelEl.appendChild(h);
       list.forEach(function(g){ panelEl.appendChild(renderGroup(g, isPast)); }); }
     section("Upcoming", up, false);
     section("Past", past, true);
@@ -254,27 +255,29 @@
     var url=httpUrl(book.url); panelEl.innerHTML="";
     var card=document.createElement("div"); card.className="efmpr-book";
     card.innerHTML='<div class="efmpr-book__head">'+
-        '<div class="efmpr-book__meta"><div class="efmpr-book__title">'+escapeHtml(PROGRAM_BOOK_TITLE)+'</div>'+
+        '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(PROGRAM_BOOK_TITLE)+'</div>'+
           (PROGRAM_BOOK_BLURB?'<div class="efmpr-book__blurb">'+escapeHtml(PROGRAM_BOOK_BLURB)+'</div>':'')+'</div>'+
-        '<a class="efmpr-book__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" download data-book-dl>'+downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
+        '<a class="efmpr-book__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" download data-book-dl aria-label="View or download '+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF, opens in a new tab)">'+downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
       '</div>'+
-      '<div class="efmpr-book__viewer"><iframe class="efmpr-book__frame" title="'+escapeHtml(PROGRAM_BOOK_TITLE)+'" loading="lazy" data-src="'+escapeHtml(url)+'#view=FitH"></iframe>'+
+      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF document viewer)" loading="lazy" data-src="'+escapeHtml(url)+'#view=FitH"></iframe>'+
         '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a></p></div>';
     panelEl.appendChild(card);
     bookFrame=card.querySelector(".efmpr-book__frame");
+    var viewer=card.querySelector(".efmpr-book__viewer");
+    if(bookFrame&&viewer) bookFrame.addEventListener("load",function(){ viewer.setAttribute("aria-busy","false"); });
     var dl=card.querySelector("[data-book-dl]");
     if(dl) dl.addEventListener("click",function(){ track(EV_DOWNLOAD,{ concert:"Program Book", item_type:"Program Book", item_title:PROGRAM_BOOK_TITLE, file_name:fileNameOf(url), link_url:url }); });
   }
-  function loadBookFrame(){ if(bookFrame && !bookFrame.getAttribute("src")){ var s=bookFrame.getAttribute("data-src"); if(s) bookFrame.setAttribute("src",s); } }
+  function loadBookFrame(){ if(bookFrame && !bookFrame.getAttribute("src")){ var s=bookFrame.getAttribute("data-src"); if(s){ var v=bookFrame.parentNode; if(v&&v.setAttribute) v.setAttribute("aria-busy","true"); bookFrame.setAttribute("src",s); } } }
 
   function renderCTA(){
     var tickets=httpUrl(TICKETS_URL), donate=httpUrl(DONATE_URL);
     if(!tickets && !donate){ ctaEl.hidden=true; return; }
     var btns="";
-    if(tickets) btns+='<a class="efmpr-cta__btn efmpr-cta__btn--primary" href="'+escapeHtml(tickets)+'" target="_blank" rel="noopener noreferrer" data-cta="tickets">'+escapeHtml(TICKETS_LABEL)+'</a>';
-    if(donate)  btns+='<a class="efmpr-cta__btn efmpr-cta__btn--ghost" href="'+escapeHtml(donate)+'" target="_blank" rel="noopener noreferrer" data-cta="donate">'+escapeHtml(DONATE_LABEL)+'</a>';
+    if(tickets) btns+='<a class="efmpr-cta__btn efmpr-cta__btn--primary" href="'+escapeHtml(tickets)+'" target="_blank" rel="noopener noreferrer" data-cta="tickets" aria-label="'+escapeHtml(TICKETS_LABEL)+' (opens in a new tab)">'+escapeHtml(TICKETS_LABEL)+'</a>';
+    if(donate)  btns+='<a class="efmpr-cta__btn efmpr-cta__btn--ghost" href="'+escapeHtml(donate)+'" target="_blank" rel="noopener noreferrer" data-cta="donate" aria-label="'+escapeHtml(DONATE_LABEL)+' (opens in a new tab)">'+escapeHtml(DONATE_LABEL)+'</a>';
     ctaEl.innerHTML='<div class="efmpr-cta__inner">'+
-      (CTA_HEADING?'<div class="efmpr-cta__heading">'+escapeHtml(CTA_HEADING)+'</div>':'')+
+      (CTA_HEADING?'<div class="efmpr-cta__heading" role="heading" aria-level="3">'+escapeHtml(CTA_HEADING)+'</div>':'')+
       (CTA_TEXT?'<div class="efmpr-cta__text">'+escapeHtml(CTA_TEXT)+'</div>':'')+
       '<div class="efmpr-cta__btns">'+btns+'</div></div>';
     ctaEl.hidden=false;
@@ -289,7 +292,7 @@
     tabsBar.hidden=false;
     TABS.filter(function(t){ return keys.indexOf(t.key)>=0; }).forEach(function(t){
       var b=document.createElement("button"); b.type="button"; b.className="efmpr-tab"; b.id="efmpr-tab-"+t.key;
-      b.textContent=t.label; b.setAttribute("role","tab"); b.setAttribute("aria-selected","false");
+      b.textContent=t.label; b.setAttribute("role","tab"); b.setAttribute("aria-selected","false"); b.setAttribute("aria-controls","efmpr-panel-"+t.key);
       b.addEventListener("click",function(){ activate(t.key,true); });
       b.addEventListener("keydown",onTabKey); tabsBar.appendChild(b); }); }
   function onTabKey(e){ var i=shownKeys.indexOf(activeKey);
@@ -299,7 +302,7 @@
   function activate(key, user){ if(!panels[key]) return; activeKey=key;
     TABS.forEach(function(t){ var on=t.key===key; var b=document.getElementById("efmpr-tab-"+t.key);
       if(b){ b.setAttribute("aria-selected",on?"true":"false"); b.tabIndex=on?0:-1; }
-      if(panels[t.key]) panels[t.key].hidden=!on; });
+      if(panels[t.key]){ panels[t.key].hidden=!on; panels[t.key].tabIndex=on?0:-1; } });
     if(key==="programbook") loadBookFrame();
     sync(); }
 
@@ -317,7 +320,7 @@
     var keys=TABS.map(function(t){return t.key;}).filter(function(k){ return content[k] && content[k].length; });
     if(!keys.length){ setStatus("Programs will be posted here soon — check back closer to each concert."); return; }
     setStatus("");
-    if(MODULE_TITLE){ titleEl.textContent=MODULE_TITLE; titleEl.hidden=false; }
+    if(MODULE_TITLE){ titleEl.textContent=MODULE_TITLE; titleEl.setAttribute("role","heading"); titleEl.setAttribute("aria-level","2"); titleEl.hidden=false; }
     if(INTRO){ introEl.textContent=INTRO; introEl.hidden=false; }
     listEl.innerHTML=""; panels={};
     TABS.forEach(function(t){ if(keys.indexOf(t.key)<0) return;
@@ -370,7 +373,7 @@
     titleEl = host.querySelector("[data-efmpr-title]");
     introEl = host.querySelector("[data-efmpr-intro]");
     tabsBar = host.querySelector("[data-efmpr-tabs]");
-    statusEl= host.querySelector("[data-efmpr-status]");
+    statusEl= host.querySelector("[data-efmpr-status]"); if(statusEl) statusEl.setAttribute("role","status");
     listEl  = host.querySelector("[data-efmpr-list]");
     ctaEl   = host.querySelector("[data-efmpr-cta]");
     if(!tabsBar){ tabsBar=document.createElement("div"); tabsBar.setAttribute("data-efmpr-tabs",""); tabsBar.setAttribute("role","tablist"); tabsBar.setAttribute("aria-label","Program categories"); tabsBar.hidden=true; host.insertBefore(tabsBar, statusEl||listEl); }

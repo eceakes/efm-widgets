@@ -159,11 +159,11 @@
   function closeAllCalMenus(){ if(!modal) return; Array.prototype.forEach.call(modal.querySelectorAll(".efme-cal__menu"),function(m){ if(!m.hidden){ m.hidden=true; var b=m.parentNode.querySelector(".efme-cal__btn"); if(b) b.setAttribute("aria-expanded","false"); } }); }
   function calIconSvg(){ return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>'; }
   function renderCalControl(e){
-    var wrap=document.createElement("div"); wrap.className="efme-cal"; var gurl=googleCalUrl(e);
-    wrap.innerHTML='<button type="button" class="efme-cal__btn" aria-haspopup="true" aria-expanded="false">'+calIconSvg()+'<span>Add to Calendar</span></button>'+
-      '<div class="efme-cal__menu" hidden role="menu">'+
-        (gurl?'<a class="efme-cal__opt" role="menuitem" data-cal="google" target="_blank" rel="noopener noreferrer" href="'+escapeHtml(gurl)+'">Google Calendar</a>':'')+
-        '<button type="button" class="efme-cal__opt" role="menuitem" data-cal="ics">Apple / Outlook (.ics)</button>'+
+    var wrap=document.createElement("div"); wrap.className="efme-cal"; var gurl=googleCalUrl(e); var ct=escapeHtml(plain(e.title));
+    wrap.innerHTML='<button type="button" class="efme-cal__btn" aria-expanded="false" aria-controls="efme-calmenu">'+calIconSvg()+'<span>Add to Calendar</span></button>'+
+      '<div class="efme-cal__menu" id="efme-calmenu" hidden>'+
+        (gurl?'<a class="efme-cal__opt" data-cal="google" target="_blank" rel="noopener noreferrer" href="'+escapeHtml(gurl)+'" aria-label="Add '+ct+' to Google Calendar (opens in a new tab)">Google Calendar</a>':'')+
+        '<button type="button" class="efme-cal__opt" data-cal="ics" aria-label="Download '+ct+' calendar file (.ics) for Apple or Outlook">Apple / Outlook (.ics)</button>'+
       '</div>';
     var btn=wrap.querySelector(".efme-cal__btn"), menu=wrap.querySelector(".efme-cal__menu");
     btn.addEventListener("click",function(ev){ ev.stopPropagation(); var willOpen=menu.hidden; closeAllCalMenus(); menu.hidden=!willOpen; btn.setAttribute("aria-expanded", menu.hidden?"false":"true"); });
@@ -253,15 +253,24 @@
 
   /* ---- shared event modal ---- */
   var modal;
+  function modalFocusables(){ if(!modal) return []; return Array.prototype.filter.call(
+    modal.querySelectorAll('a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'),
+    function(el){ return el.offsetParent!==null; }); }
+  function trapTab(e){ if(e.key!=="Tab") return; var f=modalFocusables(); if(!f.length) return;
+    var first=f[0], last=f[f.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); } }
+  function bgInert(on){ if(!host) return; Array.prototype.forEach.call(host.children,function(c){ if(c===modal) return;
+    if(on) c.setAttribute("aria-hidden","true"); else c.removeAttribute("aria-hidden"); }); }
   function buildModal(){ if(modal) return; modal=document.createElement("div"); modal.className="efme-modal"; modal.hidden=true;
-    modal.setAttribute("role","dialog"); modal.setAttribute("aria-modal","true");
+    modal.setAttribute("role","dialog"); modal.setAttribute("aria-modal","true"); modal.setAttribute("aria-labelledby","efme-modal-title");
     modal.innerHTML='<div class="efme-modal__backdrop" data-efme-close></div>'+
-      '<div class="efme-modal__panel" role="document">'+
+      '<div class="efme-modal__panel">'+
         '<div class="efme-modal__media" data-m-media></div>'+
         '<button type="button" class="efme-modal__close" data-efme-close aria-label="Close">×</button>'+
         '<div class="efme-modal__body">'+
           '<div class="efme-modal__date" data-m-date></div>'+
-          '<div class="efme-modal__title" data-m-title></div>'+
+          '<div class="efme-modal__title" id="efme-modal-title" role="heading" aria-level="2" data-m-title></div>'+
           '<div class="efme-modal__loc" data-m-loc></div>'+
           '<div class="efme-modal__desc" data-m-desc></div>'+
           '<a class="efme-modal__btn" data-m-btn target="_blank" rel="noopener noreferrer" href="#"></a>'+
@@ -274,7 +283,10 @@
         '</div></div>';
     host.appendChild(modal);
     modal.addEventListener("click",function(e){ if(e.target.hasAttribute("data-efme-close")) closeModal(); });
-    document.addEventListener("keydown",function(e){ if(!modal.hidden && e.key==="Escape") closeModal(); });
+    modal.addEventListener("keydown",trapTab);
+    document.addEventListener("keydown",function(e){ if(modal.hidden || e.key!=="Escape") return;
+      if(modal.querySelector(".efme-cal__menu:not([hidden])")){ closeAllCalMenus(); var cb=modal.querySelector(".efme-cal__btn"); if(cb) cb.focus(); }
+      else closeModal(); });
     document.addEventListener("click",function(){ closeAllCalMenus(); });
   }
   var lastFocus;
@@ -283,7 +295,7 @@
     return base + (e.time? "  ·  "+e.time : ""); }
   function openModal(e){ buildModal();
     var media=modal.querySelector("[data-m-media]"); media.innerHTML="";
-    if(e.image){ var im=document.createElement("img"); im.src=e.image; im.alt=e.title;
+    if(e.image){ var im=document.createElement("img"); im.src=e.image; im.alt="";
       im.addEventListener("error",function(){ media.style.display="none"; }); media.style.display=""; media.appendChild(im); }
     else media.style.display="none";
     modal.querySelector("[data-m-date]").textContent=fmtRange(e);
@@ -292,20 +304,20 @@
     modal.querySelector("[data-m-loc]").style.display=e.address?"":"none";
     modal.querySelector("[data-m-desc]").innerHTML=mdToHtml(e.desc);
     var btn=modal.querySelector("[data-m-btn]"); var url=ticketUrl(e.link);
-    if(url){ btn.href=url; btn.textContent=(plain(e.button)||"Tickets"); btn.style.display=""; } else btn.style.display="none";
+    if(url){ btn.href=url; btn.textContent=(plain(e.button)||"Tickets"); btn.setAttribute("aria-label",(plain(e.button)||"Tickets")+" (opens in a new tab)"); btn.style.display=""; } else btn.style.display="none";
     var prog=modal.querySelector("[data-m-program]"), plbl=modal.querySelector("[data-m-program-label]"), pr=resolveProgram(e.program);
     if(pr){ prog.href=pr.href;
-      if(pr.isPdf){ prog.setAttribute("download",""); if(plbl) plbl.textContent="View / Download Program (PDF)"; prog.setAttribute("aria-label","View or download program (PDF) for "+plain(e.title)); }
-      else { prog.removeAttribute("download"); if(plbl) plbl.textContent="View Program"; prog.setAttribute("aria-label","View the program for "+plain(e.title)); }
+      if(pr.isPdf){ prog.setAttribute("download",""); if(plbl) plbl.textContent="View / Download Program (PDF)"; prog.setAttribute("aria-label","View or download program (PDF) for "+plain(e.title)+" (opens in a new tab)"); }
+      else { prog.removeAttribute("download"); if(plbl) plbl.textContent="View Program"; prog.setAttribute("aria-label","View the program for "+plain(e.title)+" (opens in a new tab)"); }
       prog.onclick=function(){ track("program_link_click",{ title:plain(e.title), target_url:pr.href, is_pdf:!!pr.isPdf }); };
       prog.style.display=""; }
     else { prog.style.display="none"; prog.onclick=null; }
     var calc=modal.querySelector("[data-m-cal]"); calc.innerHTML=""; if(e.start){ calc.appendChild(renderCalControl(e)); calc.style.display=""; } else calc.style.display="none";
     var pl=modal.querySelector("[data-m-programs]"); var ppl=safeUrl(PROGRAMS_URL);
     if(pl){ if(ppl){ pl.href=ppl; pl.onclick=function(){ track("programs_page_click",{ from_event:plain(e.title) }); }; pl.style.display=""; } else pl.style.display="none"; }
-    lastFocus=document.activeElement; modal.hidden=false; modal.querySelector(".efme-modal__close").focus();
+    lastFocus=document.activeElement; modal.hidden=false; bgInert(true); modal.querySelector(".efme-modal__close").focus();
   }
-  function closeModal(){ if(!modal) return; modal.hidden=true; if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
+  function closeModal(){ if(!modal) return; modal.hidden=true; bgInert(false); if(lastFocus&&document.contains(lastFocus)&&lastFocus.focus) lastFocus.focus(); }
 
   /* ---- UPCOMING LIST ---- */
   function renderList(events){
@@ -316,14 +328,14 @@
     list.forEach(function(e){
       var card=document.createElement("article"); card.className="efme-card";
       var media="";
-      if(e.image){ media='<div class="efme-card__media"><img src="'+escapeHtml(e.image)+'" alt="'+escapeHtml(e.title)+'" loading="lazy">'+
-        '<div class="efme-card__badge"><b>'+e.start.getDate()+'</b><span>'+MON3[e.start.getMonth()].toUpperCase()+'</span></div></div>'; }
+      if(e.image){ media='<div class="efme-card__media"><img src="'+escapeHtml(e.image)+'" alt="" loading="lazy">'+
+        '<div class="efme-card__badge" aria-hidden="true"><b>'+e.start.getDate()+'</b><span>'+MON3[e.start.getMonth()].toUpperCase()+'</span></div></div>'; }
       var dateStr=DOWFULL[e.start.getDay()]+", "+MONTHS[e.start.getMonth()]+" "+e.start.getDate()+", "+e.start.getFullYear();
       if(e.end && e.end.getTime()!==e.start.getTime()) dateStr=MONTHS[e.start.getMonth()]+" "+e.start.getDate()+" – "+MONTHS[e.end.getMonth()]+" "+e.end.getDate()+", "+e.end.getFullYear();
       var when=(e.time?escapeHtml(e.time)+" · ":"")+escapeHtml(dateStr);
       var where=e.address? '<div class="efme-card__where">'+htmlBreaks(e.address)+'</div>' : '';
       var url=ticketUrl(e.link);
-      var btn=url? '<a class="efme-card__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer">'+escapeHtml(plain(e.button)||"Tickets")+'</a>' : '';
+      var btn=url? '<a class="efme-card__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" aria-label="'+escapeHtml((plain(e.button)||"Tickets")+" for "+plain(e.title))+' (opens in a new tab)">'+escapeHtml(plain(e.button)||"Tickets")+'</a>' : '';
       card.innerHTML = media +
         '<div class="efme-card__body">'+
           '<div class="efme-card__title" role="heading" aria-level="3">'+escapeHtml(e.title)+'</div>'+
@@ -385,13 +397,15 @@
     for(var d=1; d<=daysIn; d++){
       var cell=document.createElement("div"); cell.className="efme-cal__cell";
       var date=new Date(calState.y,calState.mo,d);
-      if(date.getTime()===tdy.getTime()) cell.className+=" efme-cal__cell--today";
-      var num=document.createElement("div"); num.className="efme-cal__daynum"; num.textContent=d; cell.appendChild(num);
+      var isToday=date.getTime()===tdy.getTime();
+      if(isToday){ cell.className+=" efme-cal__cell--today"; cell.setAttribute("aria-current","date"); }
+      var num=document.createElement("div"); num.className="efme-cal__daynum"; num.innerHTML=d+(isToday?'<span class="efme-sr-only"> (Today)</span>':''); cell.appendChild(num);
       var evs=calState.byDay[dayKey(date)]||[];
       if(evs.length) cell.className+=" efme-cal__cell--has";
       evs.slice(0,MAX_EV_PER_DAY).forEach(function(e){
         var chip=document.createElement("button"); chip.type="button"; chip.className="efme-cal__ev";
         chip.title=(e.time?e.time+" · ":"")+e.title;
+        chip.setAttribute("aria-label",DOWFULL[e.start.getDay()]+", "+MONTHS[e.start.getMonth()]+" "+e.start.getDate()+(e.time?" at "+e.time:"")+" — "+plain(e.title));
         chip.innerHTML=(e.time?'<b>'+escapeHtml(e.time.replace(/:00\s/," "))+'</b> ':'')+escapeHtml(e.title);
         chip.addEventListener("click",function(){ openModal(e); });
         cell.appendChild(chip);
@@ -422,10 +436,11 @@
       list.forEach(function(e){
         var meta=[DOWFULL[e.start.getDay()]]; if(e.time) meta.push(escapeHtml(e.time)); var v=venueOf(e.address); if(v) meta.push(escapeHtml(v));
         var row=document.createElement("button"); row.type="button"; row.className="efme-agenda-row"+(isPast?" efme-agenda-row--past":"");
-        row.innerHTML='<span class="efme-agenda-date"><b>'+e.start.getDate()+'</b><span>'+MON3[e.start.getMonth()].toUpperCase()+'</span></span>'+
+        row.innerHTML='<span class="efme-agenda-date" aria-hidden="true"><b>'+e.start.getDate()+'</b><span>'+MON3[e.start.getMonth()].toUpperCase()+'</span></span>'+
           '<span class="efme-agenda-info"><span class="efme-agenda-title">'+escapeHtml(e.title)+'</span>'+
           '<span class="efme-agenda-time">'+meta.join(" · ")+'</span></span>'+
           '<span class="efme-agenda-arrow" aria-hidden="true">›</span>';
+        row.setAttribute("aria-label",DOWFULL[e.start.getDay()]+", "+MONTHS[e.start.getMonth()]+" "+e.start.getDate()+", "+e.start.getFullYear()+(e.time?" at "+e.time:"")+" — "+plain(e.title)+(isPast?" (past)":""));
         row.addEventListener("click",function(){ openModal(e); });
         agenda.appendChild(row);
       });
@@ -443,10 +458,12 @@
   var TABS=[{key:"calendar",label:"Event Calendar"},{key:"list",label:"List View"},{key:"upcoming",label:"Upcoming Events"}];
   var buttons={}, active=null, ticketsHref="", subscribeHref="";
   function buildTabs(){ tabsBar.textContent="";
+    var tl=document.createElement("div"); tl.className="efme__tablist"; tl.setAttribute("role","tablist"); tl.setAttribute("aria-label","Events views");
     TABS.forEach(function(t){ var b=document.createElement("button"); b.type="button"; b.className="efme-tab"; b.id="efme-tab-"+t.key;
-      b.textContent=t.label; b.setAttribute("role","tab"); b.setAttribute("aria-selected","false");
+      b.textContent=t.label; b.setAttribute("role","tab"); b.setAttribute("aria-selected","false"); b.setAttribute("aria-controls","efme-panel-"+t.key);
       b.addEventListener("click",function(){ activate(t.key,true); });
-      b.addEventListener("keydown",onTabKey); tabsBar.appendChild(b); buttons[t.key]=b; });
+      b.addEventListener("keydown",onTabKey); tl.appendChild(b); buttons[t.key]=b; });
+    tabsBar.appendChild(tl);
     if(ticketsHref){ var a=document.createElement("a"); a.className="efme-tab efme-tab--tickets";
       a.href=ticketsHref; a.target="_blank"; a.rel="noopener noreferrer";
       a.textContent=TICKETS_LABEL; a.setAttribute("aria-label",TICKETS_LABEL+" (opens in a new tab)");
@@ -455,15 +472,18 @@
       s.href=subscribeHref; s.target="_blank"; s.rel="noopener noreferrer";
       s.textContent=SUBSCRIBE_LABEL; s.setAttribute("aria-label",SUBSCRIBE_LABEL+" (opens in a new tab)");
       tabsBar.appendChild(s); } }
-  function onTabKey(e){ var keys=TABS.map(function(t){return t.key;}); var i=keys.indexOf(active);
+  function onTabKey(e){ var keys=TABS.map(function(t){return t.key;}).filter(function(k){ return !(k==="calendar" && !calAvail()); }); var i=keys.indexOf(active);
     if(e.key==="ArrowRight"||e.key==="ArrowDown"){ e.preventDefault(); activate(keys[(i+1)%keys.length],true); buttons[active].focus(); }
     else if(e.key==="ArrowLeft"||e.key==="ArrowUp"){ e.preventDefault(); activate(keys[(i-1+keys.length)%keys.length],true); buttons[active].focus(); } }
   function calAvail(){ return !(window.matchMedia && window.matchMedia("(max-width:820px)").matches); }
   function activate(key,hash){
     if(key==="calendar" && !calAvail()) key="list";   // the month grid is a desktop-only tab
     active=key;
-    TABS.forEach(function(t){ var on=t.key===key; if(buttons[t.key]){ buttons[t.key].setAttribute("aria-selected",on?"true":"false"); buttons[t.key].tabIndex=on?0:-1; }
-      if(panels[t.key]) panels[t.key].hidden=!on; });
+    var calOff=!calAvail();
+    TABS.forEach(function(t){ var on=t.key===key; var b=buttons[t.key];
+      if(b){ b.setAttribute("aria-selected",on?"true":"false"); b.tabIndex=on?0:-1;
+        if(t.key==="calendar"){ if(calOff){ b.setAttribute("hidden",""); b.setAttribute("aria-hidden","true"); } else { b.removeAttribute("hidden"); b.removeAttribute("aria-hidden"); } } }
+      if(panels[t.key]){ panels[t.key].hidden=!on; panels[t.key].tabIndex=on?0:-1; } });
     if(hash){ try{ history.replaceState(null,"","#"+key); }catch(e){} }
     sync();
   }
@@ -491,7 +511,7 @@
     var events=rawEvents.map(coerce).filter(function(e){ return e.start && e.title; }).filter(visible);
     if(!events.length){ setStatus("No events to display yet."); return; }
     setStatus("");
-    if(MODULE_TITLE){ titleEl.textContent=MODULE_TITLE; titleEl.hidden=false; }
+    if(MODULE_TITLE){ titleEl.textContent=MODULE_TITLE; titleEl.setAttribute("role","heading"); titleEl.setAttribute("aria-level","2"); titleEl.hidden=false; }
     ticketsHref = ticketUrl(TICKETS_URL);
     if(!ticketsHref){ for(var i=0;i<events.length;i++){ var tu=ticketUrl(events[i].link); if(tu){ ticketsHref=tu; break; } } }
     subscribeHref = ticketUrl(SUBSCRIBE_URL);
@@ -538,10 +558,12 @@
     if(!host) return;   // widget not on this page -> no-op (paste order irrelevant)
     titleEl = host.querySelector("[data-efme-title]");
     tabsBar = host.querySelector("[data-efme-tabs]");
-    statusEl= host.querySelector("[data-efme-status]");
+    statusEl= host.querySelector("[data-efme-status]"); if(statusEl) statusEl.setAttribute("role","status");
+    if(tabsBar){ tabsBar.removeAttribute("role"); tabsBar.removeAttribute("aria-label"); }
     panels  = { calendar: host.querySelector('[data-efme-panel="calendar"]'),
                 list:     host.querySelector('[data-efme-panel="list"]'),
                 upcoming: host.querySelector('[data-efme-panel="upcoming"]') };
+    Object.keys(panels).forEach(function(k){ if(panels[k]) panels[k].id="efme-panel-"+k; });
     start();
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot);
