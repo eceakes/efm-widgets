@@ -149,6 +149,10 @@
 #efm-events .efme-modal__program svg{ flex:0 0 auto; }
 #efm-events .efme-modal__program:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
 
+/* "View concert programs" link in the modal */
+#efm-events .efme-modal__more{ display:inline-block; margin-top:16px; font-family:var(--efme-name-font); font-size:14px; color:var(--efme-ink)!important; text-decoration:none!important; border-bottom:1px solid currentColor; padding-bottom:1px; transition:color .15s ease; }
+#efm-events .efme-modal__more:hover{ color:var(--efme-hover)!important; }
+
 /* "Add to Calendar" control in the modal */
 #efm-events .efme-modal__cal{ margin-top:16px; }
 #efm-events .efme-cal__btn{ display:inline-flex; align-items:center; gap:7px; appearance:none; -webkit-appearance:none; cursor:pointer; background:#fff; border:1.5px solid var(--efme-rule); color:var(--efme-ink); font-family:var(--efme-name-font); font-size:14px; padding:9px 16px; border-radius:999px; transition:border-color .15s ease, background .15s ease; }

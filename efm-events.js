@@ -270,6 +270,7 @@
             '<span data-m-program-label>View / Download Program (PDF)</span>'+
           '</a>'+
           '<div class="efme-modal__cal" data-m-cal></div>'+
+          '<a class="efme-modal__more" data-m-programs href="#">View concert programs →</a>'+
         '</div></div>';
     host.appendChild(modal);
     modal.addEventListener("click",function(e){ if(e.target.hasAttribute("data-efme-close")) closeModal(); });
@@ -300,6 +301,8 @@
       prog.style.display=""; }
     else { prog.style.display="none"; prog.onclick=null; }
     var calc=modal.querySelector("[data-m-cal]"); calc.innerHTML=""; if(e.start){ calc.appendChild(renderCalControl(e)); calc.style.display=""; } else calc.style.display="none";
+    var pl=modal.querySelector("[data-m-programs]"); var ppl=safeUrl(PROGRAMS_URL);
+    if(pl){ if(ppl){ pl.href=ppl; pl.onclick=function(){ track("programs_page_click",{ from_event:plain(e.title) }); }; pl.style.display=""; } else pl.style.display="none"; }
     lastFocus=document.activeElement; modal.hidden=false; modal.querySelector(".efme-modal__close").focus();
   }
   function closeModal(){ if(!modal) return; modal.hidden=true; if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
