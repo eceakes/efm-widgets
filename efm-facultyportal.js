@@ -661,7 +661,7 @@
       return;
     }
     var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
-    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
+    var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
     var curNames = [], curSec = null;
     function flush() {
       if (curSec) {
