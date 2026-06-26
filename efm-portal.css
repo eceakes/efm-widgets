@@ -250,6 +250,21 @@
   #efm-portal .efmp-info__head + .efmp-info__dept { margin-top: 10px; }
   #efm-portal .efmp-info p { color: #2b3042; font-size: 14.5px; line-height: 1.5; margin: 0 0 5px; }
   #efm-portal .efmp-info a { color: var(--efmp-ink); }
+  /* key/value rows for the info tabs (Placement Auditions, Sectionals, etc.) */
+  #efm-portal .efmp-kv {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 8px 2px; border-bottom: 1px solid var(--efmp-rule);
+  }
+  #efm-portal .efmp-info__dept + .efmp-kv { border-top: 0; }
+  #efm-portal .efmp-kv b {
+    flex: 0 0 auto; min-width: 150px; color: var(--efmp-ink);
+    font-family: var(--efmp-name-font); font-weight: 400; font-size: 14.5px; line-height: 1.4;
+  }
+  #efm-portal .efmp-kv span { color: #2b3042; font-size: 14.5px; line-height: 1.45; }
+  @media (max-width: 480px) {
+    #efm-portal .efmp-kv { flex-direction: column; gap: 1px; padding: 9px 2px; }
+    #efm-portal .efmp-kv b { min-width: 0; }
+  }
   /* staff directory cards (grouped by department) */
   #efm-portal .efmp-cards {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
