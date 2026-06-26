@@ -140,12 +140,11 @@
       { label: "Sectionals", kind: "infoTab", source: "sectionals" },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
-    { id: "facultyc", label: "Faculty Contact", subs: [
+    { id: "contacts", label: "Contacts", subs: [
       { label: "Faculty", kind: "facultyCards" },
       { label: "Subs", kind: "subCards" },
-      { label: "Orchestral Fellows", kind: "fellowCards" } ] },
-    { id: "staffc", label: "Staff Contact", subs: [
-      { label: "Staff Contact", kind: "staffCards" } ] },
+      { label: "Orchestral Fellows", kind: "fellowCards" },
+      { label: "Staff", kind: "staffCards" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
