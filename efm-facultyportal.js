@@ -139,7 +139,7 @@
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
       { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
-      { label: "Sectionals", kind: "infoTab", source: "sectionals" },
+      { label: "Sectionals", kind: "sectional", sectionals: true },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "contacts", label: "Contacts", subs: [
@@ -362,6 +362,8 @@
   var rostersAll = [];     // [{title, link, release}]
   var calendarWeeks = [];  // released roster weeks -> 3rd-level nav under Eastern Festival Orchestra
   var weekSel = null;      // selected EFO week index, or null = full EFO schedule
+  var sectionalData = null; // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
+  var sectionalEns = "ESO"; // selected sectionals ensemble (3rd-level under the Sectionals pill)
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
   var subPeople = [];
   var fellowPeople = [];
@@ -432,6 +434,17 @@
           if (on) b.setAttribute("aria-current", "true");
           // Clicking the active week toggles back to the full EFO schedule.
           b.onclick = function () { weekSel = (weekSel === i ? null : i); renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else if (activeSub && activeSub.sectionals) {
+        // ESO / GSO sectional pills (third level under the Sectionals pill).
+        subnav2.hidden = false;
+        ["ESO", "GSO"].forEach(function (ens) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = ens;
+          var on = ens === sectionalEns; b.className = on ? "efmfp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          b.onclick = function () { sectionalEns = ens; renderNav(); renderList(); };
           subnav2.appendChild(b);
         });
       } else {
@@ -770,6 +783,65 @@
     syncBox();
   }
 
+  /* ---- Sectionals (Auditions & Classes -> Sectionals -> ESO / GSO) ----- */
+  // Parse the Sectional Rehearsals tab into { eso, gso, perc, locations,
+  // esoCoaches, gsoCoaches }. ESO/GSO/Percussion schedule lines live under
+  // "Week One Sectionals:" / "All other weeks:"; the shared location table under
+  // "Locations:"; coaches in two columns under the "...Sectional Coaches" header.
+  function parseSectionals(rows) {
+    var out = { eso: {}, gso: {}, perc: {}, locations: [], esoCoaches: {}, gsoCoaches: {} };
+    var mode = "";
+    (rows || []).forEach(function (r) {
+      var a = clean(r[0]), b = clean(r[1]), c = clean(r[2]);
+      if (/^week one/i.test(a)) { mode = "weekone"; return; }
+      if (/^all other weeks/i.test(a)) { mode = "other"; return; }
+      if (/^locations?:?$/i.test(a)) { mode = "loc"; return; }
+      if (/sectional coaches/i.test(a) || /sectional coaches/i.test(c)) { mode = "coach"; return; }
+      if (mode === "weekone" || mode === "other") {
+        var m = a.match(/^(ESO|GSO|Percussion)\s*:\s*(.*)$/i);
+        if (m) out[/^p/i.test(m[1]) ? "perc" : m[1].toLowerCase()][mode === "weekone" ? "weekOne" : "other"] = m[2].trim();
+      } else if (mode === "loc") {
+        if (a && b) out.locations.push({ section: a, room: b });
+      } else if (mode === "coach") {
+        var ea = a.match(/^([A-Za-z]+)\s*:\s*(.+)$/); if (ea) out.esoCoaches[ea[1].toLowerCase()] = ea[2].trim();
+        var gc = c.match(/^([A-Za-z]+)\s*:\s*(.+)$/); if (gc) out.gsoCoaches[gc[1].toLowerCase()] = gc[2].trim();
+      }
+    });
+    return out;
+  }
+  // Render one ensemble's sectionals: rehearsal times + a merged
+  // Section / Location / Coach table (shared locations + that ensemble's coaches).
+  function renderSectional(ens) {
+    banner.hidden = true; status.hidden = true;
+    var s = sectionalData;
+    if (!s || (!s.locations.length && !s.eso.weekOne && !s.gso.weekOne)) {
+      list.innerHTML = "";
+      status.textContent = "Sectional information will appear here once posted.";
+      status.hidden = false;
+      announce("Sectionals will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var sched = ens === "GSO" ? s.gso : s.eso;
+    var coaches = ens === "GSO" ? s.gsoCoaches : s.esoCoaches;
+    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">' + esc(ens) + " Sectionals</div>";
+    html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Rehearsal Times</div>';
+    if (sched.weekOne) html += "<p><b>Week One:</b> " + esc(sched.weekOne) + "</p>";
+    if (sched.other) html += "<p><b>All other weeks:</b> " + esc(sched.other) + "</p>";
+    var perc = [s.perc.weekOne, s.perc.other].filter(Boolean);
+    if (perc.length) html += "<p><b>Percussion:</b> " + perc.map(esc).join(" &#183; ") + "</p>";
+    html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Sections</div>';
+    s.locations.forEach(function (loc) {
+      var coach = coaches[loc.section.toLowerCase()] || "";
+      html += '<div class="efmfp-kv"><b>' + esc(loc.section) + "</b><span>" + esc(loc.room) + (coach ? " &#183; " + esc(coach) : "") + "</span></div>";
+    });
+    if (!s.locations.length) html += "<p>No sections posted yet.</p>";
+    html += "</div>";
+    list.innerHTML = html;
+    announce(ens + " sectionals shown.");
+    syncBox();
+  }
+
   /* ---- Campus Map (from the 2026 portal) ------------------------------- */
   function renderMap() {
     banner.hidden = true; status.hidden = true;
@@ -971,6 +1043,7 @@
     else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "infoTab") renderInfoTab(sub);
+    else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (k === "map") renderMap();
     else if (k === "ensemble") {
       // Eastern Festival Orchestra: a chosen week shows that week's roster +
@@ -1392,6 +1465,7 @@
     // Auditions & Classes info tabs + conditional pills: a showWhen pill stays only
     // when its tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
     ["placement", "sectionals", "studio", "concerto"].forEach(function (key) { infoTabs[key] = data[key] || null; });
+    sectionalData = parseSectionals(infoTabs.sectionals);
     NAV.forEach(function (t) {
       t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
     });
