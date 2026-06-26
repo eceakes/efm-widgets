@@ -616,7 +616,7 @@
   // are paragraphs.
   function renderDining() {
     banner.hidden = true; status.hidden = true;
-    var html = '<div class="efmfp-info">';
+    var html = '<div class="efmfp-info efmfp-info--center">';
     var dl = diningLines.filter(function (l) { return l !== ""; })
       .filter(function (l) { return !/^general information$/i.test(l); });
     // The General Information tab also holds a "Chamber Music Coaches" roster (its
@@ -698,7 +698,7 @@
       syncBox();
       return;
     }
-    var html = '<div class="efmfp-info">';
+    var html = '<div class="efmfp-info efmfp-info--center">';
     html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
     html += renderInfoBlocksHTML(match.blocks);
     html += "</div>";

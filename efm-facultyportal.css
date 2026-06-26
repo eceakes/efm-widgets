@@ -198,6 +198,7 @@
      center, instead of a centered title floating over a left-aligned list. */
   #efm-faculty-portal .efmfp-info--center { text-align: center; }
   #efm-faculty-portal .efmfp-info--center p { max-width: none; }
+  #efm-faculty-portal .efmfp-info--center .efmfp-info__meal { justify-content: center; }
   #efm-faculty-portal .efmfp-info__card {
     border: 1px solid var(--efmfp-rule); border-radius: 14px; padding: 18px 22px; margin: 0 0 16px; background: #fff;
   }
