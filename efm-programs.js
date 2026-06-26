@@ -35,7 +35,7 @@
   /* Conversion CTA (any blank URL hides that button). */
   var TICKETS_URL   = "https://www.tangercenter.com/events/eastern-festival-of-music/";
   var TICKETS_LABEL = "Buy Tickets";
-  var DONATE_URL    = "";                          /* <-- set your donate page URL to show a Donate button */
+  var DONATE_URL    = "https://ahrpferd.donorsupport.co/page/EFMDonations";   /* "" hides the Donate button */
   var DONATE_LABEL  = "Donate";
   var CTA_HEADING   = "Enjoyed the music?";
   var CTA_TEXT      = "Support the next generation of musicians.";
@@ -358,10 +358,16 @@
   function urlOk(u){ return u && !/PASTE|YOUR_|^\s*$/.test(u); }
   function fetchRows(url){ return fetch(url,{cache:"no-store"}).then(function(r){ if(!r.ok) throw 0; return r.text(); })
     .then(function(t){ return parseCSV(t); }).catch(function(){ return []; }); }
+  function headerSig(rows){ return (rows&&rows[0])? rows[0].map(function(c){ return String(c==null?"":c).trim().toLowerCase(); }).join("|") : ""; }
   function start(){
     setStatus("Loading programs…");
     Promise.all([ fetchRows(EVENTS_CSV), fetchRows(PROGRAMS_CSV), fetchRows(MASTERCLASS_CSV) ]).then(function(res){
-      render({ events:parseEvents(res[0]), programs:parsePrograms(res[1]), masterclasses:parseMasterclasses(res[2]) });
+      var evRows=res[0], pgRows=res[1], mcRows=res[2], evSig=headerSig(evRows);
+      /* gviz returns the FIRST sheet when a named tab doesn't exist yet — so if
+         "Programs"/"Masterclasses" come back identical to the events sheet, that
+         tab hasn't been created: treat as empty instead of rendering events as programs. */
+      if(evSig){ if(headerSig(pgRows)===evSig) pgRows=[]; if(headerSig(mcRows)===evSig) mcRows=[]; }
+      render({ events:parseEvents(evRows), programs:parsePrograms(pgRows), masterclasses:parseMasterclasses(mcRows) });
       wire();
     });
   }
