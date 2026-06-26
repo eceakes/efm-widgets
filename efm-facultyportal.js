@@ -42,7 +42,8 @@
     subs:    { name: "Weekly-EFO-Subs", gid: "1288329624" },
     rosters: { name: "Rosters", gid: "1681602909" },
     staff:   { name: "Staff", gid: "1949353186" },
-    fellows: { name: "Orchestral-Fellows", gid: "752003554" }
+    fellows: { name: "Orchestral-Fellows", gid: "752003554" },
+    tickets: { name: "Friends-Family-Discounts", gid: "1079241752" }
   };
 
   // The Master Calendar (same document that feeds the 2026 portal). EFO/ECP are
@@ -125,7 +126,8 @@
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
-      { label: "Library", kind: "infoSection", match: ["library"] } ] },
+      { label: "Library", kind: "infoSection", match: ["library"] },
+      { label: "Tickets", kind: "tickets" } ] },
     // Calendar: ensemble schedules + Outreach + All Events (the whole festival).
     // The "Eastern Festival Orchestra" pill (weeks: true) reveals a 3rd-level week
     // nav of the released roster weeks; with no week chosen it shows the full EFO
@@ -364,6 +366,7 @@
   var weekSel = null;      // selected EFO week index, or null = full EFO schedule
   var sectionalData = null; // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
   var sectionalEns = "ESO"; // selected sectionals ensemble (3rd-level under the Sectionals pill)
+  var ticketData = null;    // parsed Friends-Family-Discounts: { head, blurb, codes:[{code,url,key,concert,day}], byKey }
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
   var subPeople = [];
   var fellowPeople = [];
@@ -481,7 +484,7 @@
       ? '<div class="efmfp-row__date">' + (o.big ? "<b>" + esc(o.big) + "</b>" : "") + (o.small ? "<span>" + esc(o.small) + "</span>" : "") + "</div>" : "";
     var when = (o.when || []).filter(Boolean).map(esc).join(" &#183; ");
     var chips = (o.chips || []).map(function (c) {
-      return '<span class="efmfp-chip' + (c.ens ? " efmfp-chip--ens" : "") + '">' + esc(c.label) + "</span>";
+      return '<span class="efmfp-chip' + (c.ens ? " efmfp-chip--ens" : "") + (c.ticket ? " efmfp-chip--ticket" : "") + '">' + esc(c.label) + "</span>";
     }).join("");
     return '<div class="' + cls + '"' + attrs + ">" + dateBlock +
       '<div class="efmfp-row__info"><div class="efmfp-row__title">' + esc(o.title || "(untitled)") + "</div>" +
@@ -500,14 +503,17 @@
   // ensemble + type, so show those; EFO/ECP/Outreach service rows don't, so fall
   // back to the dress/rehearsal/performance heuristic.
   function rowChips(r) {
+    var c;
     if (r.ensemble !== undefined || r.type !== undefined) {
-      var c = [];
+      c = [];
       if (r.ensemble) c.push({ label: r.ensemble, ens: true });
       if (r.type) c.push({ label: r.type });
-      return c;
+    } else {
+      var ty = serviceType(r.event);
+      c = [{ label: ty.label, ens: ty.ens }];
     }
-    var ty = serviceType(r.event);
-    return [{ label: ty.label, ens: ty.ens }];
+    if (r.ticket) c.push({ label: "Tickets", ticket: true });   // Friends & Family code available
+    return c;
   }
 
   // Render a list of service / event rows as an agenda. Returns the count shown.
@@ -542,7 +548,7 @@
           title: r.event || "Event",
           fields: [["Date", (r.day ? r.day + ", " : "") + r.date], ["Time", r.time], ["Location", r.loc],
             ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
-          details: r.details, ics: ev
+          ticket: r.ticket, details: r.details, ics: ev
         }
       });
       shown++;
@@ -717,6 +723,48 @@
     html += "</div>";
     list.innerHTML = html;
     announce(sub.label + " shown.");
+    syncBox();
+  }
+
+  // General Information -> "Tickets" pill: the "Ticketing Process" policy blurb
+  // followed by the Friends & Family comp codes, each with a Reserve link. Codes
+  // that map to a concert in the calendar also show that concert's date + name.
+  function renderTickets() {
+    banner.hidden = true; status.hidden = true;
+    var t = ticketData;
+    if (!t || (!t.blurb.length && !t.codes.length)) {
+      list.innerHTML = "";
+      status.textContent = "Ticketing information will appear here once it is posted.";
+      status.hidden = false;
+      announce("Ticketing information will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">' + esc(t.head || "Ticketing Process") + "</div>";
+    t.blurb.forEach(function (p) { html += "<p>" + esc(p) + "</p>"; });
+    if (t.codes.length) {
+      html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Friends &amp; Family Codes</div>';
+      html += '<div class="efmfp-tickets">';
+      // chronological by concert date; codes with no parseable date sink to the end
+      var ordered = t.codes.slice().sort(function (a, b) {
+        return (a.key == null ? 99999 : a.key) - (b.key == null ? 99999 : b.key);
+      });
+      ordered.forEach(function (c) {
+        var when = c.key != null ? ((c.day ? c.day + ", " : "") + monthAbbr(c.key) + " " + (c.key % 100)) : "";
+        html += '<div class="efmfp-ticket">' +
+          '<div class="efmfp-ticket__info">' +
+            (when ? '<div class="efmfp-ticket__when">' + esc(when) + "</div>" : "") +
+            (c.concert ? '<div class="efmfp-ticket__name">' + esc(c.concert) + "</div>" : "") +
+            '<div class="efmfp-ticket__code">Code <b>' + esc(c.code) + "</b></div>" +
+          "</div>" +
+          (c.url ? '<a class="efmfp-roster__btn efmfp-ticket__btn" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer">Reserve<span class="efmfp__sr"> tickets for ' + esc(c.concert || ("the " + (when || "concert"))) + '</span></a>' : "") +
+          "</div>";
+      });
+      html += "</div>";
+    }
+    html += "</div>";
+    list.innerHTML = html;
+    announce("Ticketing information shown.");
     syncBox();
   }
 
@@ -1042,6 +1090,7 @@
     if (k === "dining") renderDining();
     else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "infoSection") renderInfoSection(sub);
+    else if (k === "tickets") renderTickets();
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (k === "map") renderMap();
@@ -1105,6 +1154,11 @@
       if (d.fields) {
         var dl = d.fields.filter(function (f) { return f[1]; }).map(function (f) { return "<dt>" + esc(f[0]) + "</dt><dd>" + esc(f[1]) + "</dd>"; }).join("");
         if (dl) html += "<dl>" + dl + "</dl>";
+      }
+      if (d.ticket && d.ticket.url) {
+        html += '<div class="efmfp-modal__ticket"><div class="efmfp-modal__ticket-head">Friends &amp; Family tickets</div>' +
+          (d.ticket.code ? '<div class="efmfp-modal__ticket-code">Code <b>' + esc(d.ticket.code) + "</b></div>" : "") +
+          '<a class="efmfp-roster__btn efmfp-modal__ticket-btn" href="' + esc(d.ticket.url) + '" target="_blank" rel="noopener noreferrer">Reserve tickets</a></div>';
       }
       if (d.details) html += '<div class="efmfp-modal__details">' + esc(d.details) + "</div>";
       if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
@@ -1260,6 +1314,67 @@
     }
     allRows.sort(function (a, b) { var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key; return ka - kb || a.startMin - b.startMin || a.seq - b.seq; });
     allRows.forEach(function (r, i) { r.seq = i; });
+  }
+
+  /* ---- Friends & Family ticket codes ----------------------------------- */
+  // Parse the "Friends-Family-Discounts" tab: a "Ticketing Process" heading + a
+  // policy blurb, then a "Code | URL" table. Each code ends in MMDD (e.g.
+  // EGCD0801 -> Aug 1), which is the join key (month*100 + day) onto a concert.
+  function parseTickets(rows) {
+    var out = { head: "Ticketing Process", blurb: [], codes: [], byKey: {} };
+    if (!rows || !rows.length) return out;
+    var mode = "intro";
+    rows.forEach(function (r) {
+      var a = clean(r[0]), b = clean(r[1]);
+      if (!a && !b) return;
+      if (/^ticketing process/i.test(a)) { out.head = a; mode = "intro"; return; }
+      if (/^code$/i.test(a) && /url|link/i.test(b)) { mode = "codes"; return; }
+      if (mode === "codes") {
+        if (!a) return;
+        var m = a.match(/(\d{4})\s*$/);              // trailing MMDD
+        var t = { code: a, url: safeUrl(b), key: m ? parseInt(m[1], 10) : null, concert: "", day: "" };
+        out.codes.push(t);
+        if (t.key != null && !out.byKey[t.key]) out.byKey[t.key] = t;
+      } else {
+        out.blurb.push(a);                            // policy paragraph(s)
+      }
+    });
+    return out;
+  }
+  // A ticketed concert: not a rehearsal/dress run, and not a meeting/orientation.
+  // (Excluding meetings keeps a code off a non-concert that shares a main-stage
+  // date — e.g. the Jul 25 "Mandatory Student Meeting" sitting beside "EFO 4".)
+  function isConcertRow(r) { return !/dress|rehearsal|meeting|orientation/i.test((r.type || "") + " " + (r.event || "")); }
+  // A main-stage event: at Dana Auditorium (room code "D"). The ticket codes are for
+  // the nightly Dana concert, so this separates a coded concert from the off-campus
+  // Outreach concerts, pre-concert talks (Moon Room), receptions (Choir Room), and
+  // Young Artist recitals (Carnegie Room) that can share the same date.
+  function isMainStage(r) {
+    return (r.roomTokens && r.roomTokens.indexOf("D") !== -1) || /dana auditorium/i.test(r.loc || "");
+  }
+  // Route each code onto its concert by date key (code MMDD == row.key). EFO/ECP
+  // dedicated tabs: tag every performance (each tab is one ensemble, all at Dana).
+  // All Events: the single main-stage Dana concert that night — this also covers the
+  // ESO/GSO, Special Event Series, and Fellows Recital concerts that have a code but
+  // live only in the full master calendar, not the EFO/ECP tabs.
+  function attachTickets() {
+    var tm = ticketData; if (!tm) return;
+    function tag(list) {
+      (list || []).forEach(function (r) {
+        if (r.key == null) return;
+        var t = tm.byKey[r.key];
+        if (t && isConcertRow(r)) { r.ticket = t; if (!t.concert) { t.concert = r.event; t.day = r.day; } }
+      });
+    }
+    tag(ensembles.EFO);
+    tag(ensembles.ECP);
+    var seen = {};   // one Dana concert per coded date wins (first in date/time order)
+    (allRows || []).forEach(function (r) {
+      if (r.key == null || seen[r.key]) return;
+      var t = tm.byKey[r.key]; if (!t || !isConcertRow(r) || !isMainStage(r)) return;
+      r.ticket = t; seen[r.key] = true;
+      if (!t.concert) { t.concert = r.event; t.day = r.day; }
+    });
   }
 
   // Append a per-room pill to the Room Schedule tab for every room actually used,
@@ -1476,6 +1591,12 @@
     parseCalendar(data.master);
     appendRoomTabs();
 
+    // Friends & Family ticket codes (Faculty-Portal "Friends-Family-Discounts"
+    // tab) -> the General Information "Tickets" pill, and routed onto each
+    // matching EFO/ECP concert (build after ensembles + allRows exist).
+    ticketData = parseTickets(data.tickets);
+    attachTickets();
+
     // Released roster weeks (Release == Yes) become the 3rd-level week nav under
     // "Eastern Festival Orchestra" (renderNav); unreleased weeks simply don't appear.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
@@ -1507,6 +1628,7 @@
         staff: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.staff)]),
         rosters: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.rosters)]),
         info: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.info)]),
+        tickets: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.tickets)]),
         EFO: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.EFO)]),
         ECP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.ECP)]),
         OUT: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.OUT)]),

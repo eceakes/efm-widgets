@@ -177,6 +177,7 @@
     border-radius: 999px; padding: 6px 10px 5px; white-space: nowrap;
   }
   #efm-faculty-portal .efmfp-chip--ens { background: var(--efmfp-ink); color: #fff; }
+  #efm-faculty-portal .efmfp-chip--ticket { background: #fbe7bd; color: #7a5410; }
   #efm-faculty-portal .efmfp-row__more { flex: 0 0 auto; color: var(--efmfp-role); font-size: 18px; line-height: 1; align-self: center; }
   #efm-faculty-portal .efmfp__note { color: var(--efmfp-role); font-size: 12.5px; text-align: center; margin: 22px 0 0; }
 
@@ -290,6 +291,31 @@
   }
   #efm-faculty-portal .efmfp-roster__btn:hover { background: var(--efmfp-hover); border-color: var(--efmfp-hover); }
   #efm-faculty-portal .efmfp-roster__btn:focus-visible { outline: 2px solid var(--efmfp-hover); outline-offset: 2px; }
+
+  /* --- Tickets (General Information) + per-concert ticket block --- */
+  #efm-faculty-portal .efmfp-tickets { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  #efm-faculty-portal .efmfp-ticket {
+    display: flex; align-items: center; gap: 14px; justify-content: space-between;
+    padding: 12px 14px; border: 1px solid var(--efmfp-rule); border-radius: 12px; background: #fff; text-align: left;
+  }
+  #efm-faculty-portal .efmfp-ticket__when { font-family: var(--efmfp-name-font); color: var(--efmfp-ink); font-size: 14.5px; font-weight: 600; }
+  #efm-faculty-portal .efmfp-ticket__name { color: #2b3042; font-size: 14px; line-height: 1.35; margin-top: 1px; }
+  #efm-faculty-portal .efmfp-ticket__code { color: var(--efmfp-role); font-size: 13px; margin-top: 2px; }
+  #efm-faculty-portal .efmfp-ticket__code b { color: var(--efmfp-ink); letter-spacing: .04em; }
+  #efm-faculty-portal .efmfp-ticket__btn { font-size: 13.5px; padding: 9px 18px; }
+  #efm-faculty-portal .efmfp-modal__ticket {
+    margin-top: 14px; padding: 13px 15px; border: 1px solid #f0d9a8; background: #fff8ec; border-radius: 12px;
+  }
+  #efm-faculty-portal .efmfp-modal__ticket-head {
+    font-family: var(--efmfp-name-font); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: #7a5410;
+  }
+  #efm-faculty-portal .efmfp-modal__ticket-code { color: var(--efmfp-role); font-size: 14px; margin: 5px 0 10px; }
+  #efm-faculty-portal .efmfp-modal__ticket-code b { color: var(--efmfp-ink); letter-spacing: .04em; }
+  #efm-faculty-portal .efmfp-modal__ticket-btn { font-size: 13.5px; padding: 10px 18px; }
+  @media (max-width: 540px) {
+    #efm-faculty-portal .efmfp-ticket { flex-direction: column; align-items: stretch; gap: 10px; }
+    #efm-faculty-portal .efmfp-ticket__btn { text-align: center; }
+  }
   #efm-faculty-portal .efmfp-roster__svc-head {
     font-family: var(--efmfp-name-font) !important; color: var(--efmfp-ink) !important; font-weight: 400 !important;
     font-size: 15px !important; line-height: 1.2 !important; letter-spacing: .04em; text-transform: uppercase !important;
