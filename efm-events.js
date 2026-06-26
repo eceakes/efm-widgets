@@ -106,6 +106,7 @@
   function plain(s){ return String(s==null?"":s).replace(/<br\s*\/?>(?=)/gi," ").replace(/\s+/g," ").trim(); }
   function safeUrl(u){ u=String(u==null?"":u).trim();
     if(/^(javascript|data|vbscript):/i.test(u)) return "";
+    if(/^[\\/]{2}/.test(u) || /^\\/.test(u)) return "";   /* block //host, \\host, /\host, \host (protocol-relative / open-redirect) */
     if(/^(https?:|mailto:|tel:|#|\/|\.\/|\.\.\/)/i.test(u)) return u;
     if(/^[a-z0-9.\-]+\.[a-z]{2,}([\/?#].*)?$/i.test(u)) return "https://"+u;   /* bare domain */
     return "";
@@ -154,6 +155,7 @@
     time:["time","starttime","start time","event time","times"],
     link:["link","url","tickets","ticket","ticket link","ticketurl","ticket url","tickets url","tickets link","buy tickets","ticket page","event link","event url","rsvp","register","registration","more info"],
     button:["button text","button","buttontext","cta","cta text","button label","label","link text","btn text"],
+    program:["program url","program pdf","program link","program download","program file","programurl","program (pdf)","program booklet","program notes pdf"],
     show:["showevent","show","show event","visible","published","display","active","live"]
   };
   function headerMap(h){ var m={}; h.forEach(function(x,i){ var k=String(x==null?"":x).trim().toLowerCase();
@@ -166,7 +168,7 @@
     return body.map(function(r){ return {
       image:cell(r,m.image), start:cell(r,m.start), end:cell(r,m.end), title:cell(r,m.title),
       desc:cell(r,m.desc), address:cell(r,m.address), time:cell(r,m.time), link:cell(r,m.link),
-      button:cell(r,m.button), show:cell(r,m.show) }; });
+      button:cell(r,m.button), program:cell(r,m.program), show:cell(r,m.show) }; });
   }
 
   /* ---- dates (local, date-only) ---- */
@@ -180,7 +182,7 @@
 
   function coerce(e){ var s=parseDate(e.start)||parseDate(e.date), en=parseDate(e.end)||s;
     return { image:e.image||"", start:s, end:en||s, title:e.title||"", desc:e.desc||"",
-             address:e.address||"", time:e.time||"", link:e.link||"", button:e.button||"", show:e.show,
+             address:e.address||"", time:e.time||"", link:e.link||"", button:e.button||"", program:e.program||"", show:e.show,
              scheduleOnly:!!e.scheduleOnly }; }
   function visible(e){ return !(String(e.show||"").trim().toLowerCase().match(/^(no|false|0|hide|hidden)$/)); }
 
@@ -198,6 +200,10 @@
           '<div class="efme-modal__loc" data-m-loc></div>'+
           '<div class="efme-modal__desc" data-m-desc></div>'+
           '<a class="efme-modal__btn" data-m-btn target="_blank" rel="noopener noreferrer" href="#"></a>'+
+          '<a class="efme-modal__program" data-m-program target="_blank" rel="noopener noreferrer" download href="#">'+
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>'+
+            '<span>View / Download Program (PDF)</span>'+
+          '</a>'+
         '</div></div>';
     host.appendChild(modal);
     modal.addEventListener("click",function(e){ if(e.target.hasAttribute("data-efme-close")) closeModal(); });
@@ -219,6 +225,8 @@
     modal.querySelector("[data-m-desc]").innerHTML=mdToHtml(e.desc);
     var btn=modal.querySelector("[data-m-btn]"); var url=ticketUrl(e.link);
     if(url){ btn.href=url; btn.textContent=(plain(e.button)||"Tickets"); btn.style.display=""; } else btn.style.display="none";
+    var prog=modal.querySelector("[data-m-program]"); var purl=safeUrl(e.program);
+    if(purl){ prog.href=purl; prog.setAttribute("aria-label","View or download program (PDF) for "+plain(e.title)); prog.style.display=""; } else prog.style.display="none";
     lastFocus=document.activeElement; modal.hidden=false; modal.querySelector(".efme-modal__close").focus();
   }
   function closeModal(){ if(!modal) return; modal.hidden=true; if(lastFocus&&lastFocus.focus) lastFocus.focus(); }

@@ -141,8 +141,13 @@
 #efm-events .efme-modal__title{ font-family:var(--efme-title-font); color:var(--efme-ink); font-size:26px; line-height:1.12; margin:0 0 10px; }
 #efm-events .efme-modal__loc{ color:var(--efme-role); font-size:15px; line-height:1.5; margin:0 0 14px; }
 #efm-events .efme-modal__desc{ color:#2b3042; font-size:16px; line-height:1.6; }
-#efm-events .efme-modal__btn{ display:inline-block; margin-top:18px; font-family:var(--efme-name-font); font-size:15px; color:#fff!important; background:var(--efme-ink); text-decoration:none!important; padding:11px 22px; border-radius:999px; }
+#efm-events .efme-modal__btn{ display:inline-block; margin-top:18px; margin-right:12px; font-family:var(--efme-name-font); font-size:15px; color:#fff!important; background:var(--efme-ink); text-decoration:none!important; padding:11px 22px; border-radius:999px; }
 #efm-events .efme-modal__btn:hover{ background:var(--efme-hover); }
+/* "Download Program (PDF)" link — shown in the modal only when a row has a Program URL */
+#efm-events .efme-modal__program{ display:inline-flex; align-items:center; gap:8px; vertical-align:top; margin-top:18px; font-family:var(--efme-name-font); font-size:15px; color:var(--efme-ink)!important; background:#fff; border:1.5px solid var(--efme-ink); text-decoration:none!important; padding:9px 20px; border-radius:999px; transition:background .18s ease, color .18s ease; }
+#efm-events .efme-modal__program:hover{ background:var(--efme-ink); color:#fff!important; }
+#efm-events .efme-modal__program svg{ flex:0 0 auto; }
+#efm-events .efme-modal__program:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
 
 /* rich-text (Markdown) inside event descriptions */
 #efm-events .efme-card__desc p, #efm-events .efme-modal__desc p{ margin:0 0 10px; }
