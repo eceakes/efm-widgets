@@ -44,6 +44,11 @@
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
+  // Student Handbook is hosted on the main EFM website's CDN (not this repo), so
+  // it is an absolute URL rather than one derived from CDN_BASE. Update here if
+  // the handbook is re-posted to a new URL.
+  var HANDBOOK_URL = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/2026+Student+Handbook.pdf";
+
   // Tabs to fetch: key (used in code) -> sheet tab name. calendar is required.
   var SOURCES = [
     { key: "calendar", tab: TAB_CALENDAR, required: true },
@@ -88,6 +93,8 @@
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
+    { id: "handbook", label: "Student Handbook", subs: [
+      { label: "Handbook", kind: "handbook" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
       { label: "Today", kind: "roomsToday" } ] }  // room tabs appended after data loads
   ];
@@ -611,6 +618,19 @@
     announce("Campus map shown.");
   }
 
+  function renderHandbook() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    list.innerHTML =
+      '<div class="efmp-handbook">' +
+        '<p class="efmp-handbook__lead">The <b>2026 Student Handbook</b> is your guide to the festival &#8212; ' +
+          'policies, daily life, contacts, and everything you need to know for your time at Eastern.</p>' +
+        '<a class="efmp-modal__cal efmp-handbook__open" href="' + esc(HANDBOOK_URL) + '" target="_blank" rel="noopener noreferrer">Open the Student Handbook (PDF)</a>' +
+        '<p class="efmp-handbook__hint">Opens in a new tab. You can read it online or download it to your phone.</p>' +
+      '</div>';
+    announce("Student handbook shown.");
+  }
+
   // ---- info tabs (Placement Auditions / Sectionals / Studio Classes / Concerto) --
   // These tabs are informational (a title, some schedule lines, and an
   // instrument -> location table), not event calendars. Render them generically:
@@ -691,8 +711,9 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
+    else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "chamberCoaches") renderChamberCoaches();
     else if (sub.kind === "staffList") renderStaffList();

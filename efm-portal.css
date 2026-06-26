@@ -99,6 +99,13 @@
   #efm-portal .efmp-map__hint b { color: var(--efmp-ink); font-family: var(--efmp-name-font); font-weight: 400; }
   #efm-portal .efmp-map__pdf { display: inline-block; }
 
+  /* --- student handbook tab --- */
+  #efm-portal .efmp-handbook { max-width: 560px; margin: 0 auto; text-align: center; padding: 8px 0 4px; }
+  #efm-portal .efmp-handbook__lead { color: var(--efmp-ink); font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+  #efm-portal .efmp-handbook__lead b { font-family: var(--efmp-name-font); font-weight: 400; }
+  #efm-portal .efmp-handbook__open { font-size: 14px; padding: 11px 20px; }
+  #efm-portal .efmp-handbook__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.5; margin: 14px 0 0; }
+
   /* --- banner + status --- */
   #efm-portal .efmp__banner {
     background: var(--efmp-soft); border: 1px solid var(--efmp-rule);
