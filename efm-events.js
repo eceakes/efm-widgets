@@ -17,6 +17,7 @@
   var TICKETS_LABEL = "Purchase Tickets";    /* text shown on that tab */
   var SUBSCRIBE_URL   = "https://am.ticketmaster.com/tangercenter/buy?id=MjAz";   /* "Become a Subscriber" tab link */
   var SUBSCRIBE_LABEL = "Become a Subscriber";    /* text shown on that tab */
+  var PROGRAMS_URL = "/programs";   /* concert programs page — a bare anchor in the Program column (e.g. "eso-gala") deep-links here for unified tracking; a full PDF URL still downloads directly */
   var HIDE_PAST    = true;                  /* Upcoming list hides events that already ended */
   var WEEK_START   = 0;                     /* 0 = Sunday, 1 = Monday */
   var MAX_EV_PER_DAY = 3;                   /* calendar chips before "+N more" */
@@ -113,6 +114,20 @@
   }
   function ticketUrl(u){ u=safeUrl(u); return /^https?:\/\//i.test(u)?u:""; }   /* internal ids like "ev1" make no button */
 
+  /* ---- analytics (no-op without gtag/dataLayer) ---- */
+  function utmParams(){ var p={}; try{ var s=new URLSearchParams(location.search);
+    ["utm_source","utm_medium","utm_campaign","utm_content","utm_term"].forEach(function(k){ var v=s.get(k); if(v) p[k]=v; }); }catch(e){} return p; }
+  function track(name,params){ try{ var d=Object.assign({},params||{},utmParams());
+    if(typeof window.gtag==="function"){ window.gtag("event",name,d); return; }
+    if(window.dataLayer && typeof window.dataLayer.push==="function"){ window.dataLayer.push(Object.assign({event:name},d)); return; } }catch(e){} }
+  function progSlug(s){ return String(s==null?"":s).toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,""); }
+  /* The Program column may hold a direct PDF URL, OR a bare anchor slug (e.g. "eso-gala")
+     that deep-links into the concert programs page (PROGRAMS_URL) for unified tracking. */
+  function resolveProgram(v){ v=String(v==null?"":v).trim(); if(!v) return null;
+    if(/^[a-z0-9][a-z0-9\-]*$/i.test(v)){ var base=safeUrl(PROGRAMS_URL)||"/programs"; return { href:base+"#"+progSlug(v), isPdf:false }; }
+    var u=safeUrl(v); if(!u) return null;
+    return { href:u, isPdf:/\.pdf(\?|#|$)/i.test(u) }; }
+
   /* ---- tiny, SAFE Markdown -> HTML (rich text straight from sheet cells) ----
      Escape everything first, then re-introduce only **bold**, *italic*,
      [text](url) links, "-" bullet lists, line breaks (Alt+Enter newlines) and
@@ -202,7 +217,7 @@
           '<a class="efme-modal__btn" data-m-btn target="_blank" rel="noopener noreferrer" href="#"></a>'+
           '<a class="efme-modal__program" data-m-program target="_blank" rel="noopener noreferrer" download href="#">'+
             '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>'+
-            '<span>View / Download Program (PDF)</span>'+
+            '<span data-m-program-label>View / Download Program (PDF)</span>'+
           '</a>'+
         '</div></div>';
     host.appendChild(modal);
@@ -225,8 +240,13 @@
     modal.querySelector("[data-m-desc]").innerHTML=mdToHtml(e.desc);
     var btn=modal.querySelector("[data-m-btn]"); var url=ticketUrl(e.link);
     if(url){ btn.href=url; btn.textContent=(plain(e.button)||"Tickets"); btn.style.display=""; } else btn.style.display="none";
-    var prog=modal.querySelector("[data-m-program]"); var purl=safeUrl(e.program);
-    if(purl){ prog.href=purl; prog.setAttribute("aria-label","View or download program (PDF) for "+plain(e.title)); prog.style.display=""; } else prog.style.display="none";
+    var prog=modal.querySelector("[data-m-program]"), plbl=modal.querySelector("[data-m-program-label]"), pr=resolveProgram(e.program);
+    if(pr){ prog.href=pr.href;
+      if(pr.isPdf){ prog.setAttribute("download",""); if(plbl) plbl.textContent="View / Download Program (PDF)"; prog.setAttribute("aria-label","View or download program (PDF) for "+plain(e.title)); }
+      else { prog.removeAttribute("download"); if(plbl) plbl.textContent="View Program"; prog.setAttribute("aria-label","View the program for "+plain(e.title)); }
+      prog.onclick=function(){ track("program_link_click",{ title:plain(e.title), target_url:pr.href, is_pdf:!!pr.isPdf }); };
+      prog.style.display=""; }
+    else { prog.style.display="none"; prog.onclick=null; }
     lastFocus=document.activeElement; modal.hidden=false; modal.querySelector(".efme-modal__close").focus();
   }
   function closeModal(){ if(!modal) return; modal.hidden=true; if(lastFocus&&lastFocus.focus) lastFocus.focus(); }
