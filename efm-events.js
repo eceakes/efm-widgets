@@ -121,6 +121,56 @@
     if(typeof window.gtag==="function"){ window.gtag("event",name,d); return; }
     if(window.dataLayer && typeof window.dataLayer.push==="function"){ window.dataLayer.push(Object.assign({event:name},d)); return; } }catch(e){} }
   function progSlug(s){ return String(s==null?"":s).toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,""); }
+
+  /* ---- Add to Calendar (Google + .ics, Eastern time) ---- */
+  var CAL_TZID="America/New_York", CAL_DURATION_MIN=120, EV_CAL="add_to_calendar";
+  var VTIMEZONE=["BEGIN:VTIMEZONE","TZID:America/New_York","BEGIN:DAYLIGHT","TZOFFSETFROM:-0500","TZOFFSETTO:-0400","TZNAME:EDT","DTSTART:19700308T020000","RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU","END:DAYLIGHT","BEGIN:STANDARD","TZOFFSETFROM:-0400","TZOFFSETTO:-0500","TZNAME:EST","DTSTART:19701101T020000","RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU","END:STANDARD","END:VTIMEZONE"].join("\r\n");
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function parseTimeStr(s){ s=String(s==null?"":s).trim(); if(!s) return null;
+    var m=s.match(/(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?/i) || s.match(/^(\d{1,2}):(\d{2})/);
+    if(!m) return null; var h=+m[1], mi=m[2]?+m[2]:0, ap=(m[3]||"").toLowerCase();
+    if(ap==="p" && h<12) h+=12; if(ap==="a" && h===12) h=0;
+    return (h>=0&&h<=23&&mi>=0&&mi<=59)?{h:h,m:mi}:null; }
+  function ymd(d){ return d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
+  function localStampDate(dt){ return dt.getFullYear()+pad2(dt.getMonth()+1)+pad2(dt.getDate())+"T"+pad2(dt.getHours())+pad2(dt.getMinutes())+"00"; }
+  function utcStampNow(){ var d=new Date(); return d.getUTCFullYear()+pad2(d.getUTCMonth()+1)+pad2(d.getUTCDate())+"T"+pad2(d.getUTCHours())+pad2(d.getUTCMinutes())+pad2(d.getUTCSeconds())+"Z"; }
+  function icsEscape(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/,/g,"\\,").replace(/;/g,"\\;"); }
+  function calLoc(e){ return plain(String(e.address==null?"":e.address).replace(/<br\s*\/?>/gi,", ")); }
+  function calTimes(e){ var d=e.start, t=parseTimeStr(e.time);
+    if(t){ var s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),t.h,t.m); return { allDay:false, s:s, e:new Date(s.getTime()+CAL_DURATION_MIN*60000) }; }
+    var en=(e.end&&e.end.getTime()>d.getTime())?e.end:d; return { allDay:true, s:d, e:new Date(en.getFullYear(),en.getMonth(),en.getDate()+1) }; }
+  function buildICS(e){ if(!e.start) return null; var tm=calTimes(e);
+    var L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Eastern Festival of Music//Events//EN","CALSCALE:GREGORIAN","METHOD:PUBLISH",VTIMEZONE,"BEGIN:VEVENT","UID:"+(progSlug(e.title)||"event")+"-"+ymd(e.start)+"@easternfestivalofmusic.org","DTSTAMP:"+utcStampNow()];
+    if(tm.allDay){ L.push("DTSTART;VALUE=DATE:"+ymd(tm.s)); L.push("DTEND;VALUE=DATE:"+ymd(tm.e)); }
+    else { L.push("DTSTART;TZID="+CAL_TZID+":"+localStampDate(tm.s)); L.push("DTEND;TZID="+CAL_TZID+":"+localStampDate(tm.e)); }
+    L.push("SUMMARY:"+icsEscape(plain(e.title))); var loc=calLoc(e); if(loc) L.push("LOCATION:"+icsEscape(loc));
+    var desc=plain(e.desc); if(desc) L.push("DESCRIPTION:"+icsEscape(desc));
+    L.push("END:VEVENT","END:VCALENDAR"); return L.join("\r\n"); }
+  function googleCalUrl(e){ if(!e.start) return ""; var tm=calTimes(e);
+    var dates=tm.allDay?(ymd(tm.s)+"/"+ymd(tm.e)):(localStampDate(tm.s)+"/"+localStampDate(tm.e));
+    var p=["action=TEMPLATE","text="+encodeURIComponent(plain(e.title)),"dates="+dates,"ctz="+encodeURIComponent(CAL_TZID)];
+    var loc=calLoc(e); if(loc) p.push("location="+encodeURIComponent(loc));
+    var desc=plain(e.desc); if(desc) p.push("details="+encodeURIComponent(desc));
+    return "https://calendar.google.com/calendar/render?"+p.join("&"); }
+  function downloadICS(e){ var ics=buildICS(e); if(!ics) return; var name=(progSlug(e.title)||"event")+".ics";
+    try{ var blob=new Blob([ics],{type:"text/calendar;charset=utf-8"}); var u=URL.createObjectURL(blob); var a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+      setTimeout(function(){ try{document.body.removeChild(a);}catch(x){} URL.revokeObjectURL(u); },100);
+    }catch(x){ try{ window.open("data:text/calendar;charset=utf-8,"+encodeURIComponent(ics),"_blank"); }catch(x2){} } }
+  function closeAllCalMenus(){ if(!modal) return; Array.prototype.forEach.call(modal.querySelectorAll(".efme-cal__menu"),function(m){ if(!m.hidden){ m.hidden=true; var b=m.parentNode.querySelector(".efme-cal__btn"); if(b) b.setAttribute("aria-expanded","false"); } }); }
+  function calIconSvg(){ return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>'; }
+  function renderCalControl(e){
+    var wrap=document.createElement("div"); wrap.className="efme-cal"; var gurl=googleCalUrl(e);
+    wrap.innerHTML='<button type="button" class="efme-cal__btn" aria-haspopup="true" aria-expanded="false">'+calIconSvg()+'<span>Add to Calendar</span></button>'+
+      '<div class="efme-cal__menu" hidden role="menu">'+
+        (gurl?'<a class="efme-cal__opt" role="menuitem" data-cal="google" target="_blank" rel="noopener noreferrer" href="'+escapeHtml(gurl)+'">Google Calendar</a>':'')+
+        '<button type="button" class="efme-cal__opt" role="menuitem" data-cal="ics">Apple / Outlook (.ics)</button>'+
+      '</div>';
+    var btn=wrap.querySelector(".efme-cal__btn"), menu=wrap.querySelector(".efme-cal__menu");
+    btn.addEventListener("click",function(ev){ ev.stopPropagation(); var willOpen=menu.hidden; closeAllCalMenus(); menu.hidden=!willOpen; btn.setAttribute("aria-expanded", menu.hidden?"false":"true"); });
+    var gx=wrap.querySelector('[data-cal="google"]'); if(gx) gx.addEventListener("click",function(){ track(EV_CAL,{ title:plain(e.title), method:"google" }); });
+    wrap.querySelector('[data-cal="ics"]').addEventListener("click",function(){ track(EV_CAL,{ title:plain(e.title), method:"ics" }); downloadICS(e); });
+    return wrap;
+  }
   /* The Program column may hold a direct PDF URL, OR a bare anchor slug (e.g. "eso-gala")
      that deep-links into the concert programs page (PROGRAMS_URL) for unified tracking. */
   function resolveProgram(v){ v=String(v==null?"":v).trim(); if(!v) return null;
@@ -219,10 +269,12 @@
             '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>'+
             '<span data-m-program-label>View / Download Program (PDF)</span>'+
           '</a>'+
+          '<div class="efme-modal__cal" data-m-cal></div>'+
         '</div></div>';
     host.appendChild(modal);
     modal.addEventListener("click",function(e){ if(e.target.hasAttribute("data-efme-close")) closeModal(); });
     document.addEventListener("keydown",function(e){ if(!modal.hidden && e.key==="Escape") closeModal(); });
+    document.addEventListener("click",function(){ closeAllCalMenus(); });
   }
   var lastFocus;
   function fmtRange(e){ var d=e.start; var base=DOW[d.getDay()]+", "+MONTHS[d.getMonth()]+" "+d.getDate();
@@ -247,6 +299,7 @@
       prog.onclick=function(){ track("program_link_click",{ title:plain(e.title), target_url:pr.href, is_pdf:!!pr.isPdf }); };
       prog.style.display=""; }
     else { prog.style.display="none"; prog.onclick=null; }
+    var calc=modal.querySelector("[data-m-cal]"); calc.innerHTML=""; if(e.start){ calc.appendChild(renderCalControl(e)); calc.style.display=""; } else calc.style.display="none";
     lastFocus=document.activeElement; modal.hidden=false; modal.querySelector(".efme-modal__close").focus();
   }
   function closeModal(){ if(!modal) return; modal.hidden=true; if(lastFocus&&lastFocus.focus) lastFocus.focus(); }

@@ -149,6 +149,18 @@
 #efm-events .efme-modal__program svg{ flex:0 0 auto; }
 #efm-events .efme-modal__program:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
 
+/* "Add to Calendar" control in the modal */
+#efm-events .efme-modal__cal{ margin-top:16px; }
+#efm-events .efme-cal__btn{ display:inline-flex; align-items:center; gap:7px; appearance:none; -webkit-appearance:none; cursor:pointer; background:#fff; border:1.5px solid var(--efme-rule); color:var(--efme-ink); font-family:var(--efme-name-font); font-size:14px; padding:9px 16px; border-radius:999px; transition:border-color .15s ease, background .15s ease; }
+#efm-events .efme-cal__btn:hover{ border-color:var(--efme-ink); background:var(--efme-soft); }
+#efm-events .efme-cal__btn:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
+#efm-events .efme-cal__btn svg{ flex:0 0 auto; }
+#efm-events .efme-cal__menu{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+#efm-events .efme-cal__menu[hidden]{ display:none; }
+#efm-events .efme-cal__opt{ appearance:none; -webkit-appearance:none; cursor:pointer; background:var(--efme-soft); border:1px solid var(--efme-rule); color:var(--efme-ink)!important; text-decoration:none!important; font-family:var(--efme-body-font); font-size:14px; padding:9px 14px; border-radius:8px; transition:background .15s ease, border-color .15s ease; }
+#efm-events .efme-cal__opt:hover{ background:#fff; border-color:var(--efme-ink); }
+#efm-events .efme-cal__opt:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
+
 /* rich-text (Markdown) inside event descriptions */
 #efm-events .efme-card__desc p, #efm-events .efme-modal__desc p{ margin:0 0 10px; }
 #efm-events .efme-card__desc p:last-child, #efm-events .efme-modal__desc p:last-child{ margin-bottom:0; }
