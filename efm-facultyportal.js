@@ -93,7 +93,7 @@
       { label: "Subs", kind: "subCards" },
       { label: "Orchestral Fellows", kind: "fellowCards" } ] },
     { id: "staffc", label: "Staff Contact", subs: [
-      { label: "Staff Contact", kind: "staffTable" } ] }
+      { label: "Staff Contact", kind: "staffCards" } ] }
   ];
 
   /* ---- small inline icons --------------------------------------------- */
@@ -159,6 +159,18 @@
     return "tel:" + digits;
   }
   function isEmail(s) { return /@/.test(clean(s)); }
+
+  // Scheme-safe URL gate for any sheet-supplied URL that ends up in an href or
+  // img src. Blocks javascript:/data:/vbscript:; allows http(s), mailto, tel,
+  // relative paths, and bare domains (auto-https). Returns "" when unsafe.
+  function safeUrl(u) {
+    u = clean(u);
+    if (!u) return "";
+    if (/^(javascript|data|vbscript):/i.test(u)) return "";
+    if (/^(https?:|mailto:|tel:|\/|\.\/|\.\.\/|#)/i.test(u)) return u;
+    if (/^[a-z0-9.\-]+\.[a-z]{2,}([\/?#].*)?$/i.test(u)) return "https://" + u;
+    return "";
+  }
 
   // Header-keyed table objects + an alias getter (column order/naming-robust).
   function tableObjects(rows) {
@@ -452,9 +464,10 @@
   function avatarEl(p) {
     var av = document.createElement("span");
     av.className = "efmfp-card__avatar";
-    if (p.photo) {
+    var photoUrl = safeUrl(p.photo);
+    if (photoUrl) {
       var img = document.createElement("img");
-      img.src = p.photo; img.alt = ""; img.loading = "lazy";
+      img.src = photoUrl; img.alt = ""; img.loading = "lazy";
       img.addEventListener("error", function () {
         av.textContent = "";
         var ph = document.createElement("span"); ph.className = "efmfp-card__initials"; ph.textContent = initials(p.name);
@@ -539,24 +552,9 @@
     syncBox();
   }
 
-  /* ---- staff table ----------------------------------------------------- */
-  function renderStaffTable() {
-    list.innerHTML = ""; banner.hidden = true; status.hidden = true;
-    if (!staffPeople.length) { status.textContent = "Staff directory will appear here once posted."; status.hidden = false; return; }
-    var html = '<div class="efmfp-tablewrap"><table class="efmfp-table">' +
-      '<caption>Tap a phone number to call or an email address to write.</caption>' +
-      '<thead><tr><th scope="col">Name</th><th scope="col">Position</th><th scope="col">Phone</th><th scope="col">Email</th></tr></thead><tbody>';
-    staffPeople.forEach(function (p) {
-      var tel = telHref(p.phone);
-      var phoneCell = p.phone ? (tel ? '<a href="' + esc(tel) + '">' + esc(clean(p.phone)) + "</a>" : esc(clean(p.phone))) : '<span class="efmfp-table__dim" aria-hidden="true">·</span>';
-      var mailCell = p.email ? '<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + "</a>" : '<span class="efmfp-table__dim" aria-hidden="true">·</span>';
-      html += '<tr><th scope="row" class="efmfp-table__name">' + esc(p.name) + "</th>" +
-        "<td>" + esc(p.position) + "</td>" + "<td>" + phoneCell + "</td>" + "<td>" + mailCell + "</td></tr>";
-    });
-    html += "</tbody></table></div>";
-    list.innerHTML = html;
-    announce(staffPeople.length + " staff shown.");
-    syncBox();
+  /* ---- staff cards (responsive; same card style as Subs) --------------- */
+  function renderStaffCards() {
+    renderCards(staffPeople, { grouped: false, avatar: false, empty: "Staff directory will appear here once posted." });
   }
 
   /* ---- rosters --------------------------------------------------------- */
@@ -608,7 +606,7 @@
     modalData = []; viewEvents = [];
     var html = '<div class="efmfp-roster">';
     // PDF block
-    var link = clean(roster.link);
+    var link = safeUrl(roster.link);
     html += '<div class="efmfp-roster__pdf"><div><div class="efmfp-roster__pdf-name">' + esc(roster.title) + " Roster</div>";
     html += '<div class="efmfp-roster__pdf-meta">' + (link ? "PDF document" : "PDF not posted yet") + "</div></div>";
     if (link) html += '<a class="efmfp-roster__btn" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">View / Download PDF</a>';
@@ -621,8 +619,8 @@
     svcWrap.innerHTML = '<div class="efmfp-roster__svc-head" role="heading" aria-level="3">EFO Services</div><div id="efmfp-roster-svc"></div>';
     list.querySelector(".efmfp-roster").appendChild(svcWrap);
     // temporarily point rendering at the services sub-list
-    var realList = list, svcList = svcWrap.querySelector("#efmfp-roster-svc");
-    // render agenda into svcList
+    var svcList = svcWrap.querySelector("#efmfp-roster-svc");
+    // render agenda into svcList (temporarily retarget the shared list pointer)
     var saved = list; list = svcList;
     renderAgenda(svc, "");        // no subscribe for a week subset; .ics export covers it
     list = saved;
@@ -648,7 +646,7 @@
     else if (k === "facultyCards") renderCards(facultyPeople, { grouped: true, avatar: true, empty: "Faculty contacts will appear here once posted." });
     else if (k === "subCards") renderCards(subPeople, { grouped: false, avatar: false, empty: "Substitute contacts will appear here once posted." });
     else if (k === "fellowCards") renderCards(fellowPeople, { grouped: false, avatar: true, empty: "Orchestral Fellow contacts will appear here once posted." });
-    else if (k === "staffTable") renderStaffTable();
+    else if (k === "staffCards") renderStaffCards();
     else if (k === "rostersEmpty") { banner.hidden = true; status.textContent = "No rosters have been released yet. Released rosters will appear here as sub-tabs."; status.hidden = false; list.innerHTML = ""; }
     updateICSButton();
     syncBox();
@@ -806,6 +804,7 @@
       } else if (kind === "staff") {
         p.position = field(o, ["position", "title", "title position"]);
         p.staffRole = field(o, ["role"]);
+        p.role = p.position;
       }
       out.push(p);
     });
