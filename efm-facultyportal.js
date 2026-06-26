@@ -54,7 +54,16 @@
   var MC_TABS = {
     EFO:         { name: "EFO", gid: "1438770792" },
     ECP:         { name: "ECP", gid: "518713173" },
-    generalInfo: { name: "General Information", gid: "1031874194" }
+    OUT:         { name: "Outreach Concerts", gid: "1962241618" },
+    generalInfo: { name: "General Information", gid: "1031874194" },
+    // Full master calendar + Legend -> the Room Schedule tab (today + per-room).
+    master:      { name: "Master Calendar", gid: "310873840" },
+    legend:      { name: "Legend", gid: "578774100" },
+    // Auditions & Classes info tabs (same source the 2026 portal uses).
+    placement:   { name: "Placement Auditions", gid: "1024060038" },
+    sectionals:  { name: "Sectional Rehearsals", gid: "436439129" },
+    studio:      { name: "Faculty Studio Classes", gid: "166720750" },
+    concerto:    { name: "Concerto Competition", gid: "1210854934" }
   };
 
   // Headshots. Faculty photos come from the same roster sheet the public Faculty
@@ -71,11 +80,31 @@
 
   // Live subscribe feed (same Apps Script web app as the 2026 portal).
   var SUBSCRIBE_BASE = "https://script.google.com/macros/s/AKfycbz6fh9qP2zQnaRfzV2qW0dndtwUrhXahOLuxxDmibCxqPaQOlW-_D98EUpUlWkAY07tFA/exec";
-  var FEED_VIEWS = { EFO: "efo", ECP: "ecp" };
+  var FEED_VIEWS = { EFO: "efo", ECP: "ecp" };   // Outreach has no live feed (.ics export only)
   var YEAR = 2026;
+
+  // Campus map assets sit next to this script in the repo. Derive the CDN base
+  // from this script's own URL so the map always matches the deployed commit
+  // (falls back to @main if loaded some other way, e.g. a local test page).
+  var CDN_BASE = (function () {
+    var s = (document.currentScript && document.currentScript.src) || "";
+    var m = s.match(/^(.*\/efm-widgets@[^/]+\/)/);
+    return m ? m[1] : "https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@main/";
+  })();
+  var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
+  var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
   var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
+
+  // Room code -> full name (the Legend tab overrides these once loaded); ROOM_ORDER
+  // fixes the Room Schedule pill order. Both feed the Room Schedule tab.
+  var ROOM_NAMES = {
+    C: "Choir Room", CC: "South Apt. Community Center", CO: "The Cottage",
+    CR: "Carnegie Room (Hege Library)", HL: "Hege Library", D: "Dana Auditorium",
+    MR: "Moon Room", S: "Sternberger Auditorium", Var: "Various Locations"
+  };
+  var ROOM_ORDER = ["D", "S", "MR", "CR", "C", "CC", "HL", "CO", "Var"];
 
   // Faculty section order (mirrors the public Faculty page).
   var SECTION_ORDER = ["Conductors", "Flute", "Oboe", "Clarinet", "Bassoon",
@@ -83,21 +112,43 @@
     "Harp", "Piano", "Violin", "Viola", "Cello", "Double Bass"];
 
   /* ---- navigation model ------------------------------------------------ */
+  // NAV[0] is the default tab on load. Tab order left -> right; mirrors the 2026
+  // portal (General Information | Calendar | Auditions & Classes | … | Campus Map
+  // | Room Schedule) with the faculty-only Contact tabs kept together.
   var NAV = [
+    // General Information is now pill-split (like the 2026 portal). "Dining Hours"
+    // is the Master Calendar dining block; the rest are major sections pulled from
+    // the Faculty-Portal "General-Information" tab, matched by heading text.
     { id: "info", label: "General Information", subs: [
-      { label: "General Information", kind: "info" } ] },
-    // Calendar holds the ensemble schedules AND the released roster weeks — a
-    // roster week is appended here as a sub-tab only when its Release column is
-    // "Yes" (build()), so unreleased rosters simply don't appear.
+      { label: "Dining Hours", kind: "dining" },
+      { label: "Dress Code", kind: "infoSection", match: ["dress"] },
+      { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
+      { label: "Keys", kind: "infoSection", match: ["key"] },
+      { label: "Library", kind: "infoSection", match: ["library"] } ] },
+    // Calendar holds the ensemble schedules, Outreach concerts, AND the released
+    // roster weeks — a roster week is appended here as a sub-tab only when its
+    // Release column is "Yes" (build()), so unreleased rosters simply don't appear.
     { id: "calendar", label: "Calendar", subs: [
       { label: "EFO", kind: "ensemble", code: "EFO" },
-      { label: "ECP", kind: "ensemble", code: "ECP" } ] },
+      { label: "ECP", kind: "ensemble", code: "ECP" },
+      { label: "Outreach", kind: "ensemble", code: "OUT" } ] },
+    // One grouped tab; the four info pages are sub-tab pills. A pill carrying
+    // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
+    { id: "programs", label: "Auditions & Classes", subs: [
+      { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
+      { label: "Sectionals", kind: "infoTab", source: "sectionals" },
+      { label: "Studio Classes", kind: "infoTab", source: "studio" },
+      { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "facultyc", label: "Faculty Contact", subs: [
       { label: "Faculty", kind: "facultyCards" },
       { label: "Subs", kind: "subCards" },
       { label: "Orchestral Fellows", kind: "fellowCards" } ] },
     { id: "staffc", label: "Staff Contact", subs: [
-      { label: "Staff Contact", kind: "staffCards" } ] }
+      { label: "Staff Contact", kind: "staffCards" } ] },
+    { id: "map", label: "Campus Map", subs: [
+      { label: "Map", kind: "map" } ] },
+    { id: "rooms", label: "Room Schedule", subs: [
+      { label: "Today", kind: "roomsToday" } ] }  // per-room pills appended after data loads
   ];
 
   /* ---- small inline icons --------------------------------------------- */
@@ -212,6 +263,9 @@
     return null;
   }
   function monthAbbr(key) { return key !== null ? MONTH_NAMES[Math.floor(key / 100) - 1].slice(0, 3) : ""; }
+  function tokens(s) { return clean(s).split("/").map(function (t) { return t.trim(); }).filter(Boolean); }
+  function roomLabel(code) { return ROOM_NAMES[code] || code; }
+  function todayKey() { var now = new Date(); if (now.getFullYear() !== YEAR) return null; return (now.getMonth() + 1) * 100 + now.getDate(); }
 
   function startMinutes(time) {
     var s = clean(time);
@@ -310,6 +364,9 @@
   var staffPeople = [];
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
+  var allRows = [];        // every Master Calendar row (Room Schedule tab)
+  var seenRooms = {};      // room codes actually used (-> which per-room pills to build)
+  var infoTabs = {};       // source key -> raw rows for Auditions & Classes (placement/sectionals/studio/concerto)
 
   var modalData = [], viewEvents = [], viewLabel = "", viewFeedKey = "";
   var topSel = NAV[0].id, subSel = {};
@@ -321,7 +378,19 @@
   function currentSub() { var t = currentTop(); return t.subs[subSel[t.id]] || t.subs[0]; }
 
   /* ---- nav render ------------------------------------------------------ */
+  // Keep the active top tab visible inside the (swipeable, scrollbar-hidden) bar.
+  function scrollActiveTabIntoView() {
+    if (!topnav) return;
+    var active = topnav.querySelector(".efmfp-active");
+    if (!active || topnav.scrollWidth <= topnav.clientWidth) return;
+    try { topnav.scrollLeft = active.offsetLeft - (topnav.clientWidth - active.offsetWidth) / 2; } catch (e) {}
+  }
   function renderNav() {
+    // The full rebuild destroys the button the user just activated; remember whether
+    // focus was on a nav control so we can put it back on the new active button.
+    var ae = document.activeElement;
+    var refocus = ae && (ae.parentNode === topnav || ae.parentNode === subnav)
+      ? (ae.parentNode === topnav ? "top" : "sub") : null;
     topnav.innerHTML = "";
     NAV.forEach(function (t) {
       var b = document.createElement("button");
@@ -343,9 +412,22 @@
         subnav.appendChild(b);
       });
     }
+    scrollActiveTabIntoView();
+    // Restore keyboard focus to the active control so a tab/pill switch doesn't
+    // drop focus to <body> (only when focus was already in the nav, never on load).
+    if (refocus) {
+      var target = (refocus === "top" ? topnav : subnav).querySelector(".efmfp-active");
+      if (target) try { target.focus(); } catch (e) {}
+    }
   }
 
-  function announce(msg) { if (srLive) { srLive.textContent = ""; srLive.textContent = String(msg || ""); } }
+  // Polite SR announcement, debounced so fast typing in search doesn't chatter.
+  var _annT;
+  function announce(msg) {
+    if (!srLive) return;
+    clearTimeout(_annT);
+    _annT = setTimeout(function () { srLive.textContent = ""; srLive.textContent = String(msg || ""); }, 300);
+  }
 
   /* ---- agenda (calendar + roster services) ----------------------------- */
   function agendaRowHTML(o) {
@@ -374,44 +456,74 @@
     return { label: "Performance", ens: true };
   }
 
-  // Render a list of service rows as a month-grouped agenda. Returns the count shown.
-  function renderAgenda(rows, feedKey) {
+  // Chips for one agenda row. Master Calendar rows (Room Schedule) carry an
+  // ensemble + type, so show those; EFO/ECP/Outreach service rows don't, so fall
+  // back to the dress/rehearsal/performance heuristic.
+  function rowChips(r) {
+    if (r.ensemble !== undefined || r.type !== undefined) {
+      var c = [];
+      if (r.ensemble) c.push({ label: r.ensemble, ens: true });
+      if (r.type) c.push({ label: r.type });
+      return c;
+    }
+    var ty = serviceType(r.event);
+    return [{ label: ty.label, ens: ty.ens }];
+  }
+
+  // Render a list of service / event rows as an agenda. Returns the count shown.
+  // opts: { feedKey, groupByRoom, singleDay, banner, noun, emptyMsg }
+  //   groupByRoom -> room-name group headers (Room Schedule) instead of month headers
+  //   singleDay   -> suppress month headers (a single-day "Today" view)
+  function renderAgenda(rows, opts) {
+    opts = opts || {};
+    var noun = opts.noun || "service";
     var q = clean(searchBox.value).toLowerCase();
-    var html = "", shown = 0, lastMonth = null;
+    var html = "", shown = 0, lastMonth = null, lastGroup = null;
     rows.forEach(function (r) {
       if (q && r.haystack.indexOf(q) === -1) return;
-      if (r.key !== null) {
+      if (opts.groupByRoom) {
+        var g = (r.roomTokens && r.roomTokens.length) ? r.roomTokens.map(roomLabel).join(" / ") : "Unassigned";
+        if (g !== lastGroup) { html += '<div class="efmfp-group" role="heading" aria-level="3">' + esc(g) + "</div>"; lastGroup = g; }
+      } else if (!opts.singleDay && r.key !== null) {
         var mon = Math.floor(r.key / 100);
         if (mon !== lastMonth) { html += '<div class="efmfp-month" role="heading" aria-level="3">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
       }
       var ev = {
         title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
-        description: [r.conductor && ("Conductor / Soloist: " + r.conductor), r.details].filter(Boolean).join("\n")
+        description: [r.ensemble && ("Ensemble: " + r.ensemble), r.conductor && ("Conductor / Soloist: " + r.conductor),
+          r.type && ("Type: " + r.type), r.details].filter(Boolean).join("\n")
       };
       viewEvents.push(ev);
-      var ty = serviceType(r.event);
       html += agendaRowHTML({
         big: r.key !== null ? String(r.key % 100) : "", small: r.day || monthAbbr(r.key),
         title: r.event || "(untitled)", when: [r.time, r.loc, r.conductor],
-        chips: [{ label: ty.label, ens: ty.ens }],
+        chips: rowChips(r),
         modal: {
           title: r.event || "Event",
-          fields: [["Date", (r.day ? r.day + ", " : "") + r.date], ["Time", r.time], ["Location", r.loc], ["Conductor / Soloist", r.conductor]],
+          fields: [["Date", (r.day ? r.day + ", " : "") + r.date], ["Time", r.time], ["Location", r.loc],
+            ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
           details: r.details, ics: ev
         }
       });
       shown++;
     });
-    banner.hidden = true;
+    if (opts.banner) { banner.textContent = opts.banner; banner.hidden = false; } else { banner.hidden = true; }
     if (shown) { list.innerHTML = html; status.hidden = true; }
-    else { list.innerHTML = ""; status.textContent = q ? "No services match your search." : "No services scheduled."; status.hidden = false; }
-    viewFeedKey = feedKey || "";
-    announce(shown + (shown === 1 ? " service" : " services") + (q ? " match your search." : " shown."));
+    else { list.innerHTML = ""; status.textContent = q ? ("No " + noun + "s match your search.") : (opts.emptyMsg || "Nothing scheduled."); status.hidden = false; }
+    viewFeedKey = opts.feedKey || "";
+    var ann = shown + " " + noun + (shown === 1 ? "" : "s") + (q ? " match your search." : " shown.");
+    if (opts.banner) ann = opts.banner + " " + ann;   // explain the "showing next day" jump to AT
+    announce(ann);
     return shown;
   }
 
   /* ---- General Information (dining + dress code + library documents) ---- */
-  function isHeadingLine(l) { return l && !/[.:]/.test(l) && l.split(/\s+/).length <= 4; }
+  // A short label line (<=4 words, no inner punctuation) is a heading. A single
+  // trailing colon is allowed (e.g. "Dress Code:") so it still reads as a heading.
+  function isHeadingLine(l) {
+    var t = (l || "").replace(/:\s*$/, "");
+    return t && !/[.:]/.test(t) && t.split(/\s+/).length <= 4;
+  }
 
   // First http(s) URL cell in a row (a Library Documents link can sit in any column).
   function rowDocUrl(r) {
@@ -437,27 +549,52 @@
       if (!a && !url) { prevBlank = true; return; }
       if (url) { blocks.push({ type: "doc", title: a, url: url }); prevBlank = false; started = true; return; }
       var line = a.replace(/\s*\n\s*/g, " ").trim();   // un-wrap soft-wrapped sheet cells
-      if (isHeadingLine(line)) blocks.push({ type: (prevBlank || !started) ? "major" : "sub", text: line });
+      if (isHeadingLine(line)) blocks.push({ type: (prevBlank || !started) ? "major" : "sub", text: line.replace(/:\s*$/, "") });
       else blocks.push({ type: "para", text: line });
       prevBlank = false; started = true;
     });
     return blocks;
   }
 
-  function renderInfo() {
+  // The Faculty-Portal "General-Information" tab is a single sheet whose major
+  // headings (Dress Code / Library Documents / Wifi Access / Key Replacement)
+  // each become a General Information pill. Group the parsed blocks by major head.
+  function infoSections() {
+    var blocks = parseInfoBlocks(infoRows), out = [], cur = null;
+    blocks.forEach(function (b) {
+      if (b.type === "major") { cur = { head: b.text, blocks: [] }; out.push(cur); }
+      else { if (!cur) { cur = { head: "", blocks: [] }; out.push(cur); } cur.blocks.push(b); }
+    });
+    return out;
+  }
+  // Render a list of parsed info blocks (sub-heads, docs, paragraphs) to HTML.
+  // Text blocks sit in a card; documents render as download buttons (roster style).
+  function renderInfoBlocksHTML(blocks) {
+    var html = "", cardOpen = false;
+    function closeCard() { if (cardOpen) { html += "</div>"; cardOpen = false; } }
+    function openCard() { if (!cardOpen) { html += '<div class="efmfp-info__card">'; cardOpen = true; } }
+    blocks.forEach(function (b) {
+      if (b.type === "major") { closeCard(); html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(b.text) + "</div>"; }
+      else if (b.type === "sub") { openCard(); html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(b.text) + "</div>"; }
+      else if (b.type === "doc") { closeCard(); html += docButtonHTML(b.title, b.url); }
+      else { openCard(); var lab = b.text.match(/^([A-Z][a-z]+):\s*(.*)$/); html += lab ? "<p><b>" + esc(lab[1]) + ":</b> " + esc(lab[2]) + "</p>" : "<p>" + esc(b.text) + "</p>"; }
+    });
+    closeCard();
+    return html;
+  }
+
+  // General Information -> "Dining Hours" pill (from the Master Calendar "General
+  // Information" tab). The tab's own title becomes the section head; day ranges
+  // are sub-heads; Breakfast/Lunch/Dinner/Brunch lines are meal rows; other lines
+  // are paragraphs.
+  function renderDining() {
     banner.hidden = true; status.hidden = true;
     var html = '<div class="efmfp-info">';
-
-    // Dining (from the Master Calendar "General Information" tab). The tab's own
-    // title (e.g. "Dining Hall Hours (Located in Founders Hall)" or "Dining
-    // Schedule") becomes the section head; day ranges (Monday-Friday, Weekends,
-    // ...) are sub-heads; Breakfast/Lunch/Dinner/Brunch lines are meal rows; any
-    // other line (e.g. a meal-plan note) is a paragraph.
     var dl = diningLines.filter(function (l) { return l !== ""; })
       .filter(function (l) { return !/^general information$/i.test(l); });
     var diningHead = "Dining";
     for (var di = 0; di < dl.length; di++) { if (/^dining\b/i.test(dl[di])) { diningHead = dl[di]; dl.splice(di, 1); break; } }
-    html += '<div class="efmfp-info__head" role="heading" aria-level="2">' + esc(diningHead) + "</div>";
+    html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(diningHead) + "</div>";
     if (dl.length) {
       html += '<div class="efmfp-info__card">';
       dl.forEach(function (l) {
@@ -465,31 +602,115 @@
         var dayHdr = !meal && !/\d/.test(l) && l.split(/\s+/).length <= 6 &&
           /(weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(l);
         if (meal) html += '<div class="efmfp-info__meal"><b>' + esc(meal[1]) + "</b><span>" + esc(meal[2]) + "</span></div>";
-        else if (dayHdr) html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
+        else if (dayHdr) html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(l) + "</div>";
         else html += "<p>" + esc(l) + "</p>";
       });
       html += "</div>";
     } else {
       html += "<p>Dining information will appear here once posted in the master calendar.</p>";
     }
-
-    // Dress Code, Library Documents, and any future sections — rendered in sheet
-    // order from the Faculty-Portal "General-Information" tab. Text sections sit
-    // in a card; documents render as download buttons (same style as rosters).
-    var blocks = parseInfoBlocks(infoRows), cardOpen = false;
-    function closeCard() { if (cardOpen) { html += "</div>"; cardOpen = false; } }
-    function openCard() { if (!cardOpen) { html += '<div class="efmfp-info__card">'; cardOpen = true; } }
-    blocks.forEach(function (b) {
-      if (b.type === "major") { closeCard(); html += '<div class="efmfp-info__head" role="heading" aria-level="2">' + esc(b.text) + "</div>"; }
-      else if (b.type === "sub") { openCard(); html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(b.text) + "</div>"; }
-      else if (b.type === "doc") { closeCard(); html += docButtonHTML(b.title, b.url); }
-      else { openCard(); var lab = b.text.match(/^([A-Z][a-z]+):\s*(.*)$/); html += lab ? "<p><b>" + esc(lab[1]) + ":</b> " + esc(lab[2]) + "</p>" : "<p>" + esc(b.text) + "</p>"; }
-    });
-    closeCard();
-
     html += "</div>";
     list.innerHTML = html;
-    announce("General information shown.");
+    announce("Dining hours shown.");
+    syncBox();
+  }
+
+  // General Information -> "Dress Code" / "Wifi Access" / "Keys" / "Library" pills:
+  // the matching major section of the Faculty-Portal "General-Information" tab.
+  function renderInfoSection(sub) {
+    banner.hidden = true; status.hidden = true;
+    var secs = infoSections(), match = null;
+    for (var i = 0; i < secs.length; i++) {
+      var h = secs[i].head.toLowerCase();
+      if (sub.match.some(function (m) { return h.indexOf(m) !== -1; })) { match = secs[i]; break; }
+    }
+    if (!match) {
+      list.innerHTML = "";
+      status.textContent = "This information will appear here once it is posted.";
+      status.hidden = false;
+      announce(sub.label + " will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var html = '<div class="efmfp-info">';
+    html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
+    html += renderInfoBlocksHTML(match.blocks);
+    html += "</div>";
+    list.innerHTML = html;
+    announce(sub.label + " shown.");
+    syncBox();
+  }
+
+  /* ---- Auditions & Classes info tabs (from the 2026 portal) ------------- */
+  // Find the "Show/Hide" cell, and read the value directly below it. A pill with
+  // showWhen appears only when its tab's Show/Hide value reads "Yes" (build()).
+  function showHideCol(rows) {
+    for (var i = 0; i < (rows || []).length; i++)
+      for (var j = 0; j < rows[i].length; j++)
+        if (clean(rows[i][j]).toLowerCase() === "show/hide") return { row: i, col: j };
+    return null;
+  }
+  function showHideValue(rows) {
+    var sh = showHideCol(rows); if (!sh) return "";
+    var below = rows[sh.row + 1] && rows[sh.row + 1][sh.col];
+    return clean(below);
+  }
+  // These tabs are informational (a title, schedule lines, an instrument ->
+  // location table), not event calendars. Render generically: the first cell is
+  // the heading, single-cell label rows are sub-heads, single-cell content rows
+  // are paragraphs, and label+value rows become key/value rows.
+  function renderInfoTab(sub) {
+    banner.hidden = true; status.hidden = true;
+    var rows = infoTabs[sub.source];
+    if (!rows || !rows.length) {
+      list.innerHTML = "";
+      status.textContent = "This information will appear here once it is posted.";
+      status.hidden = false;
+      announce(sub.label + " will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var sh = showHideCol(rows), shCol = sh ? sh.col : -1;
+    var html = '<div class="efmfp-info">', first = true;
+    rows.forEach(function (r) {
+      var a = clean(r[0]);
+      var rest = r.map(function (c, ci) { return (ci === 0 || ci === shCol) ? "" : clean(c); }).filter(Boolean);
+      if (!a && !rest.length) return;                              // blank (or the Show/Hide value) row
+      if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
+      if (rest.length) {                                           // label + value -> key/value row
+        html += '<div class="efmfp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
+      } else if (first) {                                          // first cell = the tab title
+        html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(a) + "</div>";
+      } else if (/:\s*$/.test(a) || (a.split(/\s+/).length <= 4 && !/\d/.test(a))) {   // a section label
+        html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(a.replace(/:\s*$/, "")) + "</div>";
+      } else {
+        html += "<p>" + esc(a) + "</p>";                           // a schedule / content line
+      }
+      first = false;
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce(sub.label + " shown.");
+    syncBox();
+  }
+
+  /* ---- Campus Map (from the 2026 portal) ------------------------------- */
+  function renderMap() {
+    banner.hidden = true; status.hidden = true;
+    list.innerHTML =
+      '<div class="efmfp-map">' +
+        '<a class="efmfp-map__frame" href="' + esc(MAP_IMAGE_URL) + '" target="_blank" rel="noopener noreferrer" ' +
+          'aria-label="Open the full-size Guilford College campus map in a new tab">' +
+          '<img src="' + esc(MAP_IMAGE_URL) + '" loading="lazy" ' +
+            'alt="Guilford College campus map: an aerial view of campus buildings and parking lots, with a lettered building legend.">' +
+        '</a>' +
+        '<p class="efmfp-map__hint">Tap the map to open it full size. EFM venues: <b>Dana Auditorium</b> (Q) holds the ' +
+          'Choir Room and Moon Room; <b>Sternberger Auditorium</b> is in Founders Hall (I); the <b>Carnegie Room</b> ' +
+          'is in Hege (C); <b>Ragan-Brown Field House</b> is L1.</p>' +
+        '<a class="efmfp-modal__cal efmfp-map__pdf" href="' + esc(MAP_PDF_URL) + '" target="_blank" rel="noopener noreferrer">Download map (PDF)</a>' +
+      '</div>';
+    announce("Campus map shown.");
+    syncBox();
   }
 
   /* ---- contact cards (faculty / subs / fellows) ------------------------ */
@@ -543,7 +764,7 @@
 
   function renderCards(people, opts) {
     list.innerHTML = ""; banner.hidden = true; status.hidden = true;
-    if (!people.length) { status.textContent = opts.empty || "Nothing to display yet."; status.hidden = false; return; }
+    if (!people.length) { status.textContent = opts.empty || "Nothing to display yet."; status.hidden = false; announce(status.textContent); return; }
     var wrap = document.createElement("div"); wrap.className = "efmfp-contact";
     var frag = document.createDocumentFragment();
     if (opts.grouped) {
@@ -654,7 +875,7 @@
     var svcList = svcWrap.querySelector("#efmfp-roster-svc");
     // render agenda into svcList (temporarily retarget the shared list pointer)
     var saved = list; list = svcList;
-    renderAgenda(svc, "");        // no subscribe for a week subset; .ics export covers it
+    renderAgenda(svc, { feedKey: "", noun: "service", emptyMsg: "No EFO services for this week yet." });   // .ics export covers the subset
     list = saved;
     viewLabel = roster.title + " EFO Services";
     updateICSButton();
@@ -666,15 +887,40 @@
     var sub = currentSub();
     modalData = []; viewEvents = []; viewLabel = ""; viewFeedKey = "";
     var k = sub.kind;
-    var showControls = (k === "ensemble" || k === "roster");
+    // Search + Add-to-Calendar belong to the agenda views (schedules + rooms).
+    var showControls = (k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday");
     if (controls) controls.hidden = !showControls;
 
-    if (k === "info") renderInfo();
+    if (k === "dining") renderDining();
+    else if (k === "infoSection") renderInfoSection(sub);
+    else if (k === "infoTab") renderInfoTab(sub);
+    else if (k === "map") renderMap();
     else if (k === "ensemble") {
-      viewLabel = "EFM " + sub.code;
-      renderAgenda(ensembles[sub.code] || [], FEED_VIEWS[sub.code] || "");
+      viewLabel = sub.code === "OUT" ? "EFM Outreach" : "EFM " + sub.code;
+      renderAgenda(ensembles[sub.code] || [], {
+        feedKey: FEED_VIEWS[sub.code] || "",
+        noun: sub.code === "OUT" ? "concert" : "service",
+        emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled."
+      });
     }
     else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.roster); }
+    else if (k === "roomsToday") {
+      var t = todayRows(null);
+      var roomed = t.rows.filter(function (r) { return r.roomTokens.length > 0; });
+      roomed.sort(function (a, b) {
+        var ai = ROOM_ORDER.indexOf(a.roomTokens[0]), bi = ROOM_ORDER.indexOf(b.roomTokens[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.seq - b.seq;
+      });
+      viewLabel = "Room Schedule (Today)";
+      // Only surface the "showing the next scheduled day" note when that day
+      // actually has room assignments to show (otherwise the empty state stands alone).
+      renderAgenda(roomed, { groupByRoom: true, singleDay: true, banner: roomed.length ? t.banner : "", noun: "event", emptyMsg: "No room assignments scheduled for today." });
+    }
+    else if (k === "room") {
+      viewLabel = sub.label + " Schedule";
+      renderAgenda(allRows.filter(function (r) { return r.roomTokens.indexOf(sub.code) !== -1; }),
+        { noun: "event", emptyMsg: "No events scheduled in this room." });
+    }
     else if (k === "facultyCards") renderCards(facultyPeople, { grouped: true, avatar: true, empty: "Faculty contacts will appear here once posted." });
     else if (k === "subCards") renderCards(subPeople, { grouped: false, avatar: false, empty: "Substitute contacts will appear here once posted." });
     else if (k === "fellowCards") renderCards(fellowPeople, { grouped: false, avatar: true, empty: "Orchestral Fellow contacts will appear here once posted." });
@@ -767,16 +1013,21 @@
   }
 
   /* ---- parsing --------------------------------------------------------- */
-  // EFO/ECP tab -> service rows. Header row is the one whose first cell is "Date".
+  // EFO/ECP/Outreach tab -> service rows. The header row is the first row whose
+  // cells include both a "Date" and a "Time" column (EFO/ECP put Date first;
+  // Outreach Concerts uses "Concert Title, Location, Date, Time, Details").
   function parseEnsemble(rows) {
     rows = rows || []; var headerIdx = -1;
-    for (var i = 0; i < rows.length; i++) { if (clean(rows[i][0]) === "Date") { headerIdx = i; break; } }
+    for (var i = 0; i < rows.length; i++) {
+      var lc = rows[i].map(function (x) { return clean(x).toLowerCase(); });
+      if (clean(rows[i][0]) === "Date" || (lc.indexOf("date") !== -1 && lc.indexOf("time") !== -1)) { headerIdx = i; break; }
+    }
     if (headerIdx === -1) return [];
     var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
     function col() { for (var a = 0; a < arguments.length; a++) { var idx = hdr.indexOf(arguments[a]); if (idx !== -1) return idx; } return -1; }
     var iDate = col("date"), iDay = col("day"), iTime = col("time"), iRoom = col("room"),
         iRoomName = col("room name", "location", "room/location"), iCond = col("conductor / soloist", "conductor/soloist", "conductor", "soloist"),
-        iEvent = col("event", "title"), iDetails = col("details", "notes");
+        iEvent = col("event", "title", "concert title", "concert"), iDetails = col("details", "notes");
     var out = [], lastDate = "", lastDay = "", seq = 0;
     for (var j = headerIdx + 1; j < rows.length; j++) {
       var c = rows[j]; if (!c.join("").trim()) continue;
@@ -784,7 +1035,7 @@
       var day = clean(iDay !== -1 ? c[iDay] : "") || (clean(c[iDate]) ? "" : lastDay);
       lastDate = date; lastDay = day;
       var roomName = clean(iRoomName !== -1 ? c[iRoomName] : ""), roomCode = clean(iRoom !== -1 ? c[iRoom] : "");
-      var loc = roomName || roomCode;
+      var loc = roomName || roomLabel(roomCode);   // map a bare room code (e.g. "D") to its full name
       var key = dateKey(date);
       var entry = {
         seq: seq++, date: date, day: day, key: key, time: clean(iTime !== -1 ? c[iTime] : ""),
@@ -798,6 +1049,91 @@
     }
     out.sort(function (a, b) { var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key; return ka - kb || a.startMin - b.startMin || a.seq - b.seq; });
     return out;
+  }
+
+  /* ---- Room Schedule: full Master Calendar + Legend (from the 2026 portal) -- */
+  // Legend "Rooms / Locations" section -> override the room-code names.
+  function applyLegend(rows) {
+    var section = "";
+    (rows || []).forEach(function (r) {
+      var a = clean(r[0]), b = clean(r[1]);
+      if (/^Rooms/i.test(a)) { section = "rooms"; return; }
+      if (/^Ensembles/i.test(a)) { section = "ens"; return; }
+      if (!a || !b) return;
+      if (section === "rooms") ROOM_NAMES[a] = b;
+    });
+  }
+
+  // Full Master Calendar tab -> allRows (every event, with room + ensemble + type).
+  // Columns: Date, Day, Time, Room, Location, Ensemble, Conductor / Soloist, Type,
+  // Event, Details. Best-effort: a missing/unparseable tab just leaves the Room
+  // Schedule empty rather than throwing.
+  function parseCalendar(rows) {
+    rows = rows || [];
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) { if (clean(rows[i][0]) === "Date") { headerIdx = i; break; } }
+    if (headerIdx === -1) return;
+    var lastDate = "", lastDay = "", seq = 0;
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j];
+      if (!c.join("").trim()) continue;
+      var date = clean(c[0]) || lastDate;
+      var day = clean(c[1]) || (clean(c[0]) ? "" : lastDay);
+      lastDate = date; lastDay = day;
+      var roomRaw = clean(c[3]), location = clean(c[4]);
+      var roomTokens = tokens(roomRaw);
+      var roomFull = roomTokens.map(roomLabel).join(" / ");
+      var loc = (location && location !== roomRaw) ? (roomFull ? roomFull + " - " + location : location) : roomFull;
+      var key = dateKey(date);
+      var entry = {
+        seq: seq++, date: date, day: day, key: key,
+        time: clean(c[2]), startMin: startMinutes(clean(c[2])), loc: loc,
+        roomTokens: roomTokens,
+        ensemble: clean(c[5]), ensTokens: tokens(clean(c[5])),
+        conductor: clean(c[6]), type: clean(c[7]), event: clean(c[8]), details: clean(c[9])
+      };
+      entry.haystack = [entry.date, entry.day, entry.time, entry.loc, entry.ensemble,
+        entry.conductor, entry.type, entry.event, entry.details].join(" ").toLowerCase();
+      allRows.push(entry);
+      roomTokens.forEach(function (t) { seenRooms[t] = true; });
+    }
+    allRows.sort(function (a, b) { var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key; return ka - kb || a.startMin - b.startMin || a.seq - b.seq; });
+    allRows.forEach(function (r, i) { r.seq = i; });
+  }
+
+  // Append a per-room pill to the Room Schedule tab for every room actually used,
+  // in ROOM_ORDER (then any extras), after the calendar has been parsed.
+  function appendRoomTabs() {
+    var roomsTab = null;
+    for (var t = 0; t < NAV.length; t++) {
+      if (NAV[t].subs.some(function (s) { return s.kind === "roomsToday"; })) { roomsTab = NAV[t]; break; }
+    }
+    if (!roomsTab) return;
+    roomsTab.subs = roomsTab.subs.filter(function (s) { return s.kind !== "room"; });   // idempotent if build re-runs
+    ROOM_ORDER.concat(Object.keys(seenRooms).filter(function (r) { return ROOM_ORDER.indexOf(r) === -1; }))
+      .forEach(function (code) { if (seenRooms[code]) roomsTab.subs.push({ label: roomLabel(code), kind: "room", code: code }); });
+  }
+
+  // Today's rows (or the next scheduled day, with a banner explaining the jump).
+  // codes === null -> every ensemble; otherwise keep rows in those ensemble codes
+  // (plus untagged rows). Used by the Room Schedule "Today" pill.
+  function todayRows(codes) {
+    var tk = todayKey();
+    var keys = allRows.map(function (r) { return r.key; });
+    var bannerMsg = "", useKey = tk;
+    if (tk === null || keys.indexOf(tk) === -1) {
+      var future = allRows.filter(function (r) { return tk !== null && r.key !== null && r.key >= tk; });
+      useKey = future.length ? future[0].key : (allRows.length ? allRows[0].key : null);
+      var sample = allRows.filter(function (r) { return r.key === useKey; })[0];
+      if (sample) bannerMsg = "No events scheduled today. Showing the next scheduled day: " + sample.date + ".";
+    }
+    var rows = allRows.filter(function (r) {
+      if (r.key !== useKey) return false;
+      if (codes === null) return true;
+      if (r.ensTokens.length === 0) return true;
+      return r.ensTokens.some(function (t) { return codes.indexOf(t) !== -1; });
+    });
+    return { rows: rows, banner: bannerMsg, singleDay: true };
   }
 
   function parseRosters(rows) {
@@ -957,18 +1293,37 @@
     // photos (best-effort)
     if (data.facultyPhotos) attachPhotos(facultyPeople, photoMap(data.facultyPhotos));
     if (data.fellowPhotos) attachPhotos(fellowPeople, photoMap(data.fellowPhotos));
-    // calendar ensembles
+    // legend (room-code names) before parsing the full master calendar
+    if (data.legend) applyLegend(data.legend);
+    // calendar ensembles (EFO/ECP standard layout, Outreach Concerts alternate)
     ensembles.EFO = parseEnsemble(data.EFO);
     ensembles.ECP = parseEnsemble(data.ECP);
+    ensembles.OUT = parseEnsemble(data.OUT);
     buildAnchors();
+
+    // Auditions & Classes info tabs + conditional pills: a showWhen pill stays only
+    // when its tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
+    ["placement", "sectionals", "studio", "concerto"].forEach(function (key) { infoTabs[key] = data[key] || null; });
+    NAV.forEach(function (t) {
+      t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
+    });
+    NAV = NAV.filter(function (t) { return t.subs.length; });
+    NAV.forEach(function (t) { if (subSel[t.id] >= t.subs.length) subSel[t.id] = 0; });
+
+    // full master calendar -> Room Schedule (today + per-room pills)
+    parseCalendar(data.master);
+    appendRoomTabs();
+
     // rosters -> appended to the Calendar tab as sub-tabs (only Release == Yes);
     // unreleased weeks simply don't appear, so there is no empty Rosters tab.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
     var released = rostersAll.filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); });
     var calendarTab = NAV.filter(function (t) { return t.id === "calendar"; })[0];
-    calendarTab.subs = calendarTab.subs.slice(0, 2);   // EFO, ECP (idempotent if build re-runs)
-    released.forEach(function (o) { calendarTab.subs.push({ label: o.title, kind: "roster", roster: o }); });
-    if (subSel.calendar >= calendarTab.subs.length) subSel.calendar = 0;
+    if (calendarTab) {
+      calendarTab.subs = calendarTab.subs.filter(function (s) { return s.kind !== "roster"; });   // idempotent if build re-runs
+      released.forEach(function (o) { calendarTab.subs.push({ label: o.title, kind: "roster", roster: o }); });
+      if (subSel.calendar >= calendarTab.subs.length) subSel.calendar = 0;
+    }
     // info text: dining (master calendar) + the Faculty-Portal General-Information tab (full rows)
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
     infoRows = data.info || [];
@@ -995,7 +1350,14 @@
         info: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.info)]),
         EFO: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.EFO)]),
         ECP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.ECP)]),
+        OUT: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.OUT)]),
         generalInfo: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.generalInfo)]),
+        master: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.master)]),
+        legend: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.legend)]),
+        placement: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.placement)]),
+        sectionals: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.sectionals)]),
+        studio: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.studio)]),
+        concerto: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.concerto)]),
         facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
         fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
       };

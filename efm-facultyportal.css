@@ -35,9 +35,13 @@
   }
 
   /* --- top-level tabs: underline --- */
+  /* 7 tabs: "safe center" keeps the bar centered when it fits but falls back to
+     start-aligned (never clipping the first/active tab) when it overflows; the
+     active tab is also scrolled into view by the script. Gap + font are trimmed
+     so all 7 fit on a normal desktop; on narrow tablets the bar stays swipeable. */
   #efm-faculty-portal .efmfp__tabs {
-    display: flex; flex-wrap: nowrap; justify-content: center;
-    gap: clamp(12px, 2vw, 30px);
+    display: flex; flex-wrap: nowrap; justify-content: safe center;
+    gap: clamp(8px, 1.3vw, 18px);
     border-bottom: 2px solid var(--efmfp-rule); margin: 0 0 18px;
     overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
@@ -46,7 +50,7 @@
     appearance: none; background: transparent; border: 0; cursor: pointer;
     flex: 0 0 auto;
     font-family: var(--efmfp-name-font); color: var(--efmfp-role);
-    font-size: clamp(14px, 0.5vw + 12px, 18px); font-weight: 400;
+    font-size: clamp(13px, 0.4vw + 11px, 16.5px); font-weight: 400;
     letter-spacing: .005em; line-height: 1.2;
     padding: 13px 2px 12px; margin-bottom: -2px;
     border-bottom: 3px solid transparent;
@@ -124,6 +128,13 @@
     text-align: center; margin: 26px 0 14px;
   }
   #efm-faculty-portal .efmfp-month:first-child { margin-top: 4px; }
+  /* room-name group headers (Room Schedule tab) */
+  #efm-faculty-portal .efmfp-group {
+    font-family: var(--efmfp-title-font); color: var(--efmfp-ink);
+    font-size: clamp(18px, 1.6vw + 12px, 22px); font-weight: 400; line-height: 1.1;
+    margin: 24px 0 12px; padding-bottom: 7px; border-bottom: 2px solid var(--efmfp-rule);
+  }
+  #efm-faculty-portal .efmfp-group:first-child { margin-top: 4px; }
 
   /* --- agenda rows (calendar + roster services) --- */
   #efm-faculty-portal .efmfp-row {
@@ -274,6 +285,31 @@
     margin: 24px 0 12px;
   }
 
+  /* --- Auditions & Classes info tabs: key/value rows --- */
+  #efm-faculty-portal .efmfp-kv {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 8px 2px; border-bottom: 1px solid var(--efmfp-rule);
+  }
+  #efm-faculty-portal .efmfp-info__sub + .efmfp-kv { border-top: 0; }
+  #efm-faculty-portal .efmfp-kv b {
+    flex: 0 0 auto; min-width: 150px; color: var(--efmfp-ink);
+    font-family: var(--efmfp-name-font); font-weight: 400; font-size: 14.5px; line-height: 1.4;
+  }
+  #efm-faculty-portal .efmfp-kv span { color: #2b3042; font-size: 14.5px; line-height: 1.45; }
+
+  /* --- campus map tab --- */
+  #efm-faculty-portal .efmfp-map { max-width: 760px; margin: 0 auto; }
+  #efm-faculty-portal .efmfp-map__frame {
+    display: block; border: 1px solid var(--efmfp-rule); border-radius: 12px; overflow: hidden;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #efm-faculty-portal .efmfp-map__frame img { display: block; width: 100%; height: auto; }
+  #efm-faculty-portal .efmfp-map__frame:hover { border-color: var(--efmfp-ink); box-shadow: 0 6px 18px rgba(9, 12, 38, .08); }
+  #efm-faculty-portal .efmfp-map__frame:focus-visible { outline: 2px solid var(--efmfp-hover); outline-offset: 2px; }
+  #efm-faculty-portal .efmfp-map__hint { color: var(--efmfp-role); font-size: 13.5px; line-height: 1.5; margin: 14px 0; }
+  #efm-faculty-portal .efmfp-map__hint b { color: var(--efmfp-ink); font-family: var(--efmfp-name-font); font-weight: 400; }
+  #efm-faculty-portal .efmfp-map__pdf { display: inline-block; }
+
   /* --- details modal (calendar event) --- */
   #efm-faculty-portal .efmfp-modal {
     position: fixed; inset: 0; z-index: 99999; padding: 18px;
@@ -345,6 +381,16 @@
   #efm-faculty-portal .efmfp-cal__hint { color: var(--efmfp-role); font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
   body.efmfp-modal-open { overflow: hidden; }
 
+  /* --- tablet: let agenda rows wrap so chips drop under the title --- */
+  @media (max-width: 720px) {
+    #efm-faculty-portal .efmfp-row { flex-wrap: wrap; row-gap: 8px; padding: 11px 12px; }
+    #efm-faculty-portal .efmfp-row__info { flex: 1 1 0; }
+    #efm-faculty-portal .efmfp-row__meta {
+      flex: 1 1 100%; max-width: none; justify-content: flex-start;
+      margin-left: 60px; /* aligns chips under the title, past the date block */
+    }
+  }
+
   /* --- phone --- */
   @media (max-width: 600px) {
     #efm-faculty-portal.efmfp { padding: 8px 12px 30px; }
@@ -365,4 +411,6 @@
     #efm-faculty-portal .efmfp__ics { flex: 1 1 100%; min-height: 48px; text-align: center; font-size: 15px; }
     #efm-faculty-portal .efmfp-row { padding: 14px; gap: 13px; border-radius: 14px; }
     #efm-faculty-portal .efmfp-card { padding: 13px 14px; gap: 13px; }
+    #efm-faculty-portal .efmfp-kv { flex-direction: column; gap: 1px; padding: 9px 2px; }
+    #efm-faculty-portal .efmfp-kv b { min-width: 0; }
   }
