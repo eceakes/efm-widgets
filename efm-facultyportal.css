@@ -277,7 +277,7 @@
   #efm-faculty-portal .efmfp-roster__pdf {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
     background: var(--efmfp-soft); border: 1px solid var(--efmfp-rule); border-radius: 14px;
-    padding: 16px 20px; margin: 0 0 8px;
+    padding: 16px 20px; margin: 0 0 8px; text-align: left;   /* keep name + meta left even inside a centered section */
   }
   #efm-faculty-portal .efmfp-roster__pdf-name {
     font-family: var(--efmfp-name-font); color: var(--efmfp-ink); font-size: 17px; line-height: 1.2;
