@@ -448,16 +448,24 @@
     banner.hidden = true; status.hidden = true;
     var html = '<div class="efmfp-info">';
 
-    // Dining (from the Master Calendar "General Information" tab)
-    html += '<div class="efmfp-info__head" role="heading" aria-level="2">Dining</div>';
+    // Dining (from the Master Calendar "General Information" tab). The tab's own
+    // title (e.g. "Dining Hall Hours (Located in Founders Hall)" or "Dining
+    // Schedule") becomes the section head; day ranges (Monday-Friday, Weekends,
+    // ...) are sub-heads; Breakfast/Lunch/Dinner/Brunch lines are meal rows; any
+    // other line (e.g. a meal-plan note) is a paragraph.
     var dl = diningLines.filter(function (l) { return l !== ""; })
-      .filter(function (l) { return !/^general information$/i.test(l) && !/^dining schedule$/i.test(l); });
+      .filter(function (l) { return !/^general information$/i.test(l); });
+    var diningHead = "Dining";
+    for (var di = 0; di < dl.length; di++) { if (/^dining\b/i.test(dl[di])) { diningHead = dl[di]; dl.splice(di, 1); break; } }
+    html += '<div class="efmfp-info__head" role="heading" aria-level="2">' + esc(diningHead) + "</div>";
     if (dl.length) {
       html += '<div class="efmfp-info__card">';
       dl.forEach(function (l) {
-        var meal = l.match(/^(Breakfast|Brunch|Lunch|Dinner|Snack|Coffee)\b[:\s]*(.*)$/i);
-        if (/^(WEEKDAYS|WEEKENDS)/i.test(l)) html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
-        else if (meal) html += '<div class="efmfp-info__meal"><b>' + esc(meal[1]) + "</b><span>" + esc(meal[2]) + "</span></div>";
+        var meal = l.match(/^(Breakfast|Brunch|Lunch|Dinner|Supper|Snack|Coffee|Tea)\b[:\s]*(.*)$/i);
+        var dayHdr = !meal && !/\d/.test(l) && l.split(/\s+/).length <= 6 &&
+          /(weekday|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(l);
+        if (meal) html += '<div class="efmfp-info__meal"><b>' + esc(meal[1]) + "</b><span>" + esc(meal[2]) + "</span></div>";
+        else if (dayHdr) html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
         else html += "<p>" + esc(l) + "</p>";
       });
       html += "</div>";

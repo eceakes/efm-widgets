@@ -539,7 +539,10 @@
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
     lines.forEach(function (l) {
-      var heading = (l === l.toUpperCase() && /[A-Z]/.test(l)) || (!/\d/.test(l) && l.length < 30);
+      // A line is a heading if it's ALL CAPS, a short label, or the dining title
+      // (e.g. "Dining Hall Hours (Located in Founders Hall)") which is too long for
+      // the short-label rule but should still read as a heading.
+      var heading = (l === l.toUpperCase() && /[A-Z]/.test(l)) || (!/\d/.test(l) && l.length < 30) || /^dining (hall hours|schedule)\b/i.test(l);
       // role=heading DIV (not <h3>) so the site's global heading theme can't recolor it
       html += heading
         ? '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(l) + "</div>"
