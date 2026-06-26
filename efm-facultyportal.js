@@ -33,13 +33,16 @@
   // Known gids (fallback). Tab names are looked up by name first when the
   // published directory is readable, so a sheet rebuild that changes gids still
   // works; if the directory can't be read, these gids are used directly.
+  // Tab names match the published directory (so a rebuild that changes gids still
+  // resolves by name); gids are the fallback. The "General-Information" tab holds
+  // the Dress Code + Library Documents sections (dining comes from the calendar).
   var FP_TABS = {
-    faculty: { name: "Faculty", gid: "0" },
-    dress:   { name: "Dress Code", gid: "1025224143" },
-    subs:    { name: "Subs", gid: "1288329624" },
+    faculty: { name: "FacultyContact", gid: "0" },
+    info:    { name: "General-Information", gid: "1025224143" },
+    subs:    { name: "Weekly-EFO-Subs", gid: "1288329624" },
     rosters: { name: "Rosters", gid: "1681602909" },
     staff:   { name: "Staff", gid: "1949353186" },
-    fellows: { name: "Orchestral Fellows", gid: "752003554" }
+    fellows: { name: "Orchestral-Fellows", gid: "752003554" }
   };
 
   // The Master Calendar (same document that feeds the 2026 portal). EFO/ECP are
@@ -83,11 +86,12 @@
   var NAV = [
     { id: "info", label: "General Information", subs: [
       { label: "General Information", kind: "info" } ] },
+    // Calendar holds the ensemble schedules AND the released roster weeks — a
+    // roster week is appended here as a sub-tab only when its Release column is
+    // "Yes" (build()), so unreleased rosters simply don't appear.
     { id: "calendar", label: "Calendar", subs: [
       { label: "EFO", kind: "ensemble", code: "EFO" },
       { label: "ECP", kind: "ensemble", code: "ECP" } ] },
-    { id: "rosters", label: "Rosters", subs: [
-      { label: "Rosters", kind: "rostersEmpty" } ] },   // rebuilt after data loads
     { id: "facultyc", label: "Faculty Contact", subs: [
       { label: "Faculty", kind: "facultyCards" },
       { label: "Subs", kind: "subCards" },
@@ -304,8 +308,8 @@
   var subPeople = [];
   var fellowPeople = [];
   var staffPeople = [];
-  var diningLines = [];    // raw lines from Master Calendar General Information
-  var dressLines = [];     // raw lines from Faculty-Portal Dress Code
+  var diningLines = [];    // raw lines from Master Calendar General Information (dining)
+  var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
 
   var modalData = [], viewEvents = [], viewLabel = "", viewFeedKey = "";
   var topSel = NAV[0].id, subSel = {};
@@ -406,54 +410,74 @@
     return shown;
   }
 
-  /* ---- General Information (dining + dress) ----------------------------- */
+  /* ---- General Information (dining + dress code + library documents) ---- */
   function isHeadingLine(l) { return l && !/[.:]/.test(l) && l.split(/\s+/).length <= 4; }
+
+  // First http(s) URL cell in a row (a Library Documents link can sit in any column).
+  function rowDocUrl(r) {
+    for (var i = 0; i < (r ? r.length : 0); i++) { var c = clean(r[i]); if (/^https?:\/\//i.test(c)) return safeUrl(c); }
+    return "";
+  }
+  // The roster-style "awesome download button", reused for Library Documents.
+  function docButtonHTML(title, url) {
+    var isPdf = /\.pdf(\?|#|$)/i.test(url);
+    return '<div class="efmfp-roster__pdf"><div>' +
+        '<div class="efmfp-roster__pdf-name">' + esc(title || "Document") + "</div>" +
+        '<div class="efmfp-roster__pdf-meta">' + (isPdf ? "PDF document" : "Document") + "</div></div>" +
+        '<a class="efmfp-roster__btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">View / Download' + (isPdf ? " PDF" : "") + "</a></div>";
+  }
+  // Parse the Faculty-Portal "General-Information" tab into ordered blocks. A
+  // heading line that follows a blank row (or is first) is a major section head;
+  // an in-section heading line is a sub-head; a row carrying a URL is a download;
+  // everything else is a paragraph. Sections are separated by a blank row.
+  function parseInfoBlocks(rows) {
+    var blocks = [], prevBlank = true, started = false;
+    (rows || []).forEach(function (r) {
+      var a = clean(r[0]), url = rowDocUrl(r);
+      if (!a && !url) { prevBlank = true; return; }
+      if (url) { blocks.push({ type: "doc", title: a, url: url }); prevBlank = false; started = true; return; }
+      var line = a.replace(/\s*\n\s*/g, " ").trim();   // un-wrap soft-wrapped sheet cells
+      if (isHeadingLine(line)) blocks.push({ type: (prevBlank || !started) ? "major" : "sub", text: line });
+      else blocks.push({ type: "para", text: line });
+      prevBlank = false; started = true;
+    });
+    return blocks;
+  }
 
   function renderInfo() {
     banner.hidden = true; status.hidden = true;
     var html = '<div class="efmfp-info">';
 
-    // Dining (from the Master Calendar General Information tab)
+    // Dining (from the Master Calendar "General Information" tab)
     html += '<div class="efmfp-info__head" role="heading" aria-level="2">Dining</div>';
-    var dl = diningLines.filter(function (l) { return l !== ""; });
-    // drop a leading "General Information" / "Dining Schedule" label line
-    dl = dl.filter(function (l) { return !/^general information$/i.test(l) && !/^dining schedule$/i.test(l); });
+    var dl = diningLines.filter(function (l) { return l !== ""; })
+      .filter(function (l) { return !/^general information$/i.test(l) && !/^dining schedule$/i.test(l); });
     if (dl.length) {
       html += '<div class="efmfp-info__card">';
       dl.forEach(function (l) {
         var meal = l.match(/^(Breakfast|Brunch|Lunch|Dinner|Snack|Coffee)\b[:\s]*(.*)$/i);
-        if (/^(WEEKDAYS|WEEKENDS)/i.test(l)) {
-          html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
-        } else if (meal) {
-          html += '<div class="efmfp-info__meal"><b>' + esc(meal[1]) + "</b><span>" + esc(meal[2]) + "</span></div>";
-        } else {
-          html += "<p>" + esc(l) + "</p>";
-        }
+        if (/^(WEEKDAYS|WEEKENDS)/i.test(l)) html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
+        else if (meal) html += '<div class="efmfp-info__meal"><b>' + esc(meal[1]) + "</b><span>" + esc(meal[2]) + "</span></div>";
+        else html += "<p>" + esc(l) + "</p>";
       });
       html += "</div>";
     } else {
-      html += '<p>Dining information will appear here once posted in the master calendar.</p>';
+      html += "<p>Dining information will appear here once posted in the master calendar.</p>";
     }
 
-    // Dress Code (from the Faculty-Portal sheet)
-    html += '<div class="efmfp-info__head" role="heading" aria-level="2">Dress Code</div>';
-    var ds = dressLines.filter(function (l) { return l !== ""; });
-    ds = ds.filter(function (l) { return !/^dress code$/i.test(l); });
-    if (ds.length) {
-      html += '<div class="efmfp-info__card">';
-      ds.forEach(function (l) {
-        l = l.replace(/\s*\n\s*/g, " ").trim();   // un-wrap soft-wrapped sheet cells
-        if (isHeadingLine(l)) {
-          html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(l) + "</div>";
-        } else {
-          var lab = l.match(/^([A-Z][a-z]+):\s*(.*)$/);
-          html += lab ? "<p><b>" + esc(lab[1]) + ":</b> " + esc(lab[2]) + "</p>" : "<p>" + esc(l) + "</p>";
-        }
-      });
-      html += "</div>";
-    } else {
-      html += '<p>Dress code information will appear here once posted.</p>';
-    }
+    // Dress Code, Library Documents, and any future sections — rendered in sheet
+    // order from the Faculty-Portal "General-Information" tab. Text sections sit
+    // in a card; documents render as download buttons (same style as rosters).
+    var blocks = parseInfoBlocks(infoRows), cardOpen = false;
+    function closeCard() { if (cardOpen) { html += "</div>"; cardOpen = false; } }
+    function openCard() { if (!cardOpen) { html += '<div class="efmfp-info__card">'; cardOpen = true; } }
+    blocks.forEach(function (b) {
+      if (b.type === "major") { closeCard(); html += '<div class="efmfp-info__head" role="heading" aria-level="2">' + esc(b.text) + "</div>"; }
+      else if (b.type === "sub") { openCard(); html += '<div class="efmfp-info__sub" role="heading" aria-level="3">' + esc(b.text) + "</div>"; }
+      else if (b.type === "doc") { closeCard(); html += docButtonHTML(b.title, b.url); }
+      else { openCard(); var lab = b.text.match(/^([A-Z][a-z]+):\s*(.*)$/); html += lab ? "<p><b>" + esc(lab[1]) + ":</b> " + esc(lab[2]) + "</p>" : "<p>" + esc(b.text) + "</p>"; }
+    });
+    closeCard();
 
     html += "</div>";
     list.innerHTML = html;
@@ -647,7 +671,6 @@
     else if (k === "subCards") renderCards(subPeople, { grouped: false, avatar: false, empty: "Substitute contacts will appear here once posted." });
     else if (k === "fellowCards") renderCards(fellowPeople, { grouped: false, avatar: true, empty: "Orchestral Fellow contacts will appear here once posted." });
     else if (k === "staffCards") renderStaffCards();
-    else if (k === "rostersEmpty") { banner.hidden = true; status.textContent = "No rosters have been released yet. Released rosters will appear here as sub-tabs."; status.hidden = false; list.innerHTML = ""; }
     updateICSButton();
     syncBox();
   }
@@ -930,17 +953,17 @@
     ensembles.EFO = parseEnsemble(data.EFO);
     ensembles.ECP = parseEnsemble(data.ECP);
     buildAnchors();
-    // rosters -> sub-tabs (only Release == Yes)
+    // rosters -> appended to the Calendar tab as sub-tabs (only Release == Yes);
+    // unreleased weeks simply don't appear, so there is no empty Rosters tab.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
     var released = rostersAll.filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); });
-    var rostersTab = NAV.filter(function (t) { return t.id === "rosters"; })[0];
-    rostersTab.subs = released.length
-      ? released.map(function (o) { return { label: o.title, kind: "roster", roster: o }; })
-      : [{ label: "Rosters", kind: "rostersEmpty" }];
-    if (subSel.rosters >= rostersTab.subs.length) subSel.rosters = 0;
-    // info text
+    var calendarTab = NAV.filter(function (t) { return t.id === "calendar"; })[0];
+    calendarTab.subs = calendarTab.subs.slice(0, 2);   // EFO, ECP (idempotent if build re-runs)
+    released.forEach(function (o) { calendarTab.subs.push({ label: o.title, kind: "roster", roster: o }); });
+    if (subSel.calendar >= calendarTab.subs.length) subSel.calendar = 0;
+    // info text: dining (master calendar) + the Faculty-Portal General-Information tab (full rows)
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
-    dressLines = data.dress ? data.dress.map(function (r) { return clean(r[0]); }) : [];
+    infoRows = data.info || [];
 
     searchBox.addEventListener("input", renderList);
     renderNav();
@@ -961,7 +984,7 @@
         fellows: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.fellows)]),
         staff: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.staff)]),
         rosters: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.rosters)]),
-        dress: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.dress)]),
+        info: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.info)]),
         EFO: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.EFO)]),
         ECP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.ECP)]),
         generalInfo: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.generalInfo)]),
