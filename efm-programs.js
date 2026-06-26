@@ -56,7 +56,7 @@
   function safeUrl(u){ u=String(u==null?"":u).trim();
     if(/^(javascript|data|vbscript):/i.test(u)) return "";
     if(/^[\\/]{2}/.test(u) || /^\\/.test(u)) return "";   /* block //host, \\host, /\host, \host (protocol-relative / open-redirect) */
-    if(/^(https?:|#|\/|\.\/|\.\.\/)/i.test(u)) return u;
+    if(/^(https?:\/\/|#|\/|\.\/|\.\.\/)/i.test(u)) return u;
     if(/^[a-z0-9.\-]+\.[a-z]{2,}([\/?#].*)?$/i.test(u)) return "https://"+u;   /* bare domain */
     return "";
   }
@@ -161,7 +161,7 @@
   function ymd(d){ return d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
   function localStampDate(dt){ return dt.getFullYear()+pad2(dt.getMonth()+1)+pad2(dt.getDate())+"T"+pad2(dt.getHours())+pad2(dt.getMinutes())+"00"; }
   function utcStampNow(){ var d=new Date(); return d.getUTCFullYear()+pad2(d.getUTCMonth()+1)+pad2(d.getUTCDate())+"T"+pad2(d.getUTCHours())+pad2(d.getUTCMinutes())+pad2(d.getUTCSeconds())+"Z"; }
-  function icsEscape(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/,/g,"\\,").replace(/;/g,"\\;"); }
+  function icsEscape(s){ return String(s==null?"":s).replace(/\\/g,"\\\\").replace(/\r\n?|\n/g,"\\n").replace(/,/g,"\\,").replace(/;/g,"\\;"); }
   function calTimes(g){ var d=g.date, t=parseTimeStr(g.time);
     if(t){ var s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),t.h,t.m); return { allDay:false, s:s, e:new Date(s.getTime()+CAL_DURATION_MIN*60000) }; }
     return { allDay:true, s:d, e:new Date(d.getFullYear(),d.getMonth(),d.getDate()+1) }; }
@@ -220,7 +220,7 @@
   function renderGroup(g, isPast){
     var art=document.createElement("article"); art.className="efmpr-group"+(isPast?" efmpr-group--past":""); art.id=g.anchorId;
     if(g.image){ art.innerHTML='<div class="efmpr-group__banner">'+
-        '<img src="'+escapeHtml(g.image)+'" alt="" loading="lazy">'+
+        '<img src="'+escapeHtml(g.image)+'" alt="" loading="lazy" referrerpolicy="no-referrer">'+
         (g.date?'<span class="efmpr-group__badge" aria-hidden="true"><b>'+g.date.getDate()+'</b><span>'+MON3[g.date.getMonth()].toUpperCase()+'</span></span>':'')+
       '</div>'; }
     var body=document.createElement("div"); body.className="efmpr-group__body";
@@ -259,7 +259,7 @@
           (PROGRAM_BOOK_BLURB?'<div class="efmpr-book__blurb">'+escapeHtml(PROGRAM_BOOK_BLURB)+'</div>':'')+'</div>'+
         '<a class="efmpr-book__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" download data-book-dl aria-label="View or download '+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF, opens in a new tab)">'+downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
       '</div>'+
-      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF document viewer)" loading="lazy" data-src="'+escapeHtml(url)+'#view=FitH"></iframe>'+
+      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF document viewer)" loading="lazy" referrerpolicy="no-referrer" data-src="'+escapeHtml(url)+'#view=FitH"></iframe>'+
         '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a></p></div>';
     panelEl.appendChild(card);
     bookFrame=card.querySelector(".efmpr-book__frame");
