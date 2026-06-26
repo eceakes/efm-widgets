@@ -502,13 +502,25 @@
     var wrap = document.createElement("div"); wrap.className = "efmfp-contact";
     var frag = document.createDocumentFragment();
     if (opts.grouped) {
+      // Group + order EXACTLY like the public Faculty page: section grouping and
+      // within-section order both come from the roster sheet (rosterSection /
+      // rosterOrder), with the contact-sheet instrument/section as a fallback for
+      // anyone not on the roster (they sort to the end of their section).
       var groups = {}, order = [];
-      people.forEach(function (p) { var s = p.section || "Faculty"; if (!groups[s]) { groups[s] = []; order.push(s); } groups[s].push(p); });
+      people.forEach(function (p, i) {
+        var s = p.rosterSection || p.section || "Faculty";
+        if (!groups[s]) { groups[s] = []; order.push(s); }
+        p._idx = i; groups[s].push(p);
+      });
       order.sort(function (a, b) {
         var ia = SECTION_ORDER.indexOf(a), ib = SECTION_ORDER.indexOf(b);
         if (ia === -1 && ib === -1) return 0; if (ia === -1) return 1; if (ib === -1) return -1; return ia - ib;
       });
       order.forEach(function (s) {
+        groups[s].sort(function (a, b) {
+          var ao = a.rosterOrder == null ? 1e9 : a.rosterOrder, bo = b.rosterOrder == null ? 1e9 : b.rosterOrder;
+          return ao - bo || a._idx - b._idx;
+        });
         var sec = document.createElement("div"); sec.className = "efmfp-section";
         var h = document.createElement("div"); h.className = "efmfp-section__head"; h.setAttribute("role", "heading"); h.setAttribute("aria-level", "2"); h.textContent = s;
         sec.appendChild(h);
@@ -812,33 +824,39 @@
     return s;
   }
 
-  // Build a name -> photo URL map from a photo sheet (columns: name, photo).
-  // map: full-name + first|last keys. lastMap: surname -> photo, but only kept
-  // when that surname is unambiguous in the sheet (used as a last-resort join so
-  // a nickname like Rick/Richard still lands the right headshot).
+  // Build a name -> {photo, section, order} map from a roster/photo sheet.
+  // map keyed by full-name + first|last; lastMap by surname (only when that
+  // surname is unambiguous, so a nickname like Rick/Richard still lands the right
+  // entry). `order` is the sheet row index and `section` the sheet's own section,
+  // so faculty can be grouped + ordered EXACTLY like the public Faculty page.
   function photoMap(rows) {
     var t = tableObjects(rows), map = {}, lastMap = {}, lastSeen = {};
-    t.items.forEach(function (o) {
+    t.items.forEach(function (o, idx) {
       var name = field(o, ["name", "full name", "faculty", "artist"]);
-      var photo = field(o, ["photo", "headshot", "image", "picture", "photo url", "image url", "headshot url"]);
-      if (!name || !photo) return;
-      nameKeys(name).forEach(function (k) { if (!(k in map)) map[k] = photo; });
+      if (!name) return;
+      var entry = {
+        photo: field(o, ["photo", "headshot", "image", "picture", "photo url", "image url", "headshot url"]),
+        section: field(o, ["section", "group", "group name", "department", "instrument group", "instrument section"]),
+        order: idx
+      };
+      nameKeys(name).forEach(function (k) { if (!(k in map)) map[k] = entry; });
       var toks = normName(name).split(" ");
-      if (toks.length > 1) { var ln = toks[toks.length - 1]; lastSeen[ln] = (lastSeen[ln] || 0) + 1; lastMap[ln] = lastSeen[ln] === 1 ? photo : null; }
+      if (toks.length > 1) { var ln = toks[toks.length - 1]; lastSeen[ln] = (lastSeen[ln] || 0) + 1; lastMap[ln] = lastSeen[ln] === 1 ? entry : null; }
     });
     return { map: map, lastMap: lastMap };
   }
+  // Stamp each person with their matched roster photo + section + row order.
   function attachPhotos(people, pm) {
     var lastCount = {};
     people.forEach(function (p) { var t = normName(p.name).split(" "); if (t.length > 1) { var ln = t[t.length - 1]; lastCount[ln] = (lastCount[ln] || 0) + 1; } });
     people.forEach(function (p) {
-      var keys = nameKeys(p.name), hit = "";
-      for (var i = 0; i < keys.length; i++) { if (pm.map[keys[i]]) { hit = pm.map[keys[i]]; break; } }
-      if (!hit) {
+      var keys = nameKeys(p.name), e = null;
+      for (var i = 0; i < keys.length; i++) { if (pm.map[keys[i]]) { e = pm.map[keys[i]]; break; } }
+      if (!e) {
         var t = normName(p.name).split(" ");
-        if (t.length > 1) { var ln = t[t.length - 1]; if (lastCount[ln] === 1 && pm.lastMap[ln]) hit = pm.lastMap[ln]; }
+        if (t.length > 1) { var ln = t[t.length - 1]; if (lastCount[ln] === 1 && pm.lastMap[ln]) e = pm.lastMap[ln]; }
       }
-      if (hit) p.photo = hit;
+      if (e) { if (e.photo) p.photo = e.photo; p.rosterOrder = e.order; if (e.section) p.rosterSection = e.section; }
     });
   }
 
