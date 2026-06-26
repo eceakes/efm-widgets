@@ -603,9 +603,9 @@
       var a = (r[0] || "").trim();
       var rest = r.map(function (c, ci) { return (ci === 0 || ci === shCol) ? "" : (c || "").trim(); }).filter(Boolean);
       if (!a && !rest.length) return;                            // blank (or the Show/Hide value) row
-      if (!a) { html += "<p>" + esc(rest.join(" &#183; ")) + "</p>"; return; }
+      if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
       if (rest.length) {                                         // label + value -> key/value row
-        html += '<div class="efmp-kv"><b>' + esc(a) + "</b><span>" + esc(rest.join(" &#183; ")) + "</span></div>";
+        html += '<div class="efmp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
       } else if (first) {                                        // first cell = the tab title
         html += '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(a) + "</div>";
       } else if (/:\s*$/.test(a) || (a.split(/\s+/).length <= 4 && !/\d/.test(a))) {   // a section label
