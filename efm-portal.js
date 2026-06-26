@@ -71,7 +71,8 @@
   // Tab order (left -> right). NAV[0] is also the default tab shown on load.
   var NAV = [
     { id: "info", label: "General Information", subs: [
-      { label: "Overview", kind: "info" } ] },
+      { label: "Dining Hall", kind: "dining" },
+      { label: "Staff Contacts", kind: "staffList" } ] },
     { id: "students", label: "Students", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
@@ -499,12 +500,15 @@
     finishList(html, shown, res.banner);
   }
 
-  function renderInfo() {
+  // General Information -> "Dining Hall" pill: the dining content from the Master
+  // Calendar "General Information" tab.
+  function renderDining() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     var html = '<div class="efmp-info">';
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
+    if (!lines.length) html += "<p>Dining hall hours will appear here once posted.</p>";
     lines.forEach(function (l) {
       // A line is a heading if it's ALL CAPS, a short label, or the dining title
       // (e.g. "Dining Hall Hours (Located in Founders Hall)") which is too long for
@@ -515,34 +519,45 @@
         ? '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(l) + "</div>"
         : "<p>" + esc(l) + "</p>";
     });
-    if (staff.length) {
-      html += '<div class="efmp-info__head" role="heading" aria-level="3">Staff</div>';
-      staff.forEach(function (g) {
-        if (g.dept) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.dept) + "</div>";
-        html += '<div class="efmp-cards">';
-        g.people.forEach(function (p) {
-          // A contact makes the whole card a tap target: mailto: for an email,
-          // tel: for a phone (so on a phone it opens mail / the dialer). The
-          // action word is a visually-hidden prefix (not aria-label) so the link's
-          // accessible name keeps the name + title + office a screen reader needs.
-          var href = "", action = "", contact = (p.contact || "").trim();
-          if (contact && /@/.test(contact)) { href = "mailto:" + contact; action = "Email"; }
-          else if (contact && /\d/.test(contact)) { href = "tel:" + contact.replace(/[^\d+]/g, ""); action = "Call"; }
-          var inner =
-            (href ? '<span class="efmp__sr">' + action + " </span>" : "") +
-            '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
-            (p.title ? '<div class="efmp-card__title">' + esc(p.title) + "</div>" : "") +
-            (p.office ? '<div class="efmp-card__office">' + esc(p.office) + "</div>" : "") +
-            (contact ? '<div class="efmp-card__contact">' + esc(contact) + "</div>" : "");
-          html += href
-            ? '<a class="efmp-card efmp-card--link" href="' + esc(href) + '">' + inner + "</a>"
-            : '<div class="efmp-card">' + inner + "</div>";
-        });
-        html += "</div>";
-      });
-    }
     html += "</div>";
     list.innerHTML = html;
+    announce("Dining hall hours shown.");
+  }
+
+  // General Information -> "Staff Contacts" pill: the staff directory cards,
+  // grouped by department, each a tap-to-email / tap-to-call target.
+  function renderStaffList() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    if (!staff.length) { finishList("", 0, "", "Staff contacts will appear here once posted."); return; }
+    var html = '<div class="efmp-info">', people = 0;
+    staff.forEach(function (g) {
+      if (g.dept) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.dept) + "</div>";
+      html += '<div class="efmp-cards">';
+      g.people.forEach(function (p) {
+        // A contact makes the whole card a tap target: mailto: for an email,
+        // tel: for a phone (so on a phone it opens mail / the dialer). The
+        // action word is a visually-hidden prefix (not aria-label) so the link's
+        // accessible name keeps the name + title + office a screen reader needs.
+        var href = "", action = "", contact = (p.contact || "").trim();
+        if (contact && /@/.test(contact)) { href = "mailto:" + contact; action = "Email"; }
+        else if (contact && /\d/.test(contact)) { href = "tel:" + contact.replace(/[^\d+]/g, ""); action = "Call"; }
+        var inner =
+          (href ? '<span class="efmp__sr">' + action + " </span>" : "") +
+          '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
+          (p.title ? '<div class="efmp-card__title">' + esc(p.title) + "</div>" : "") +
+          (p.office ? '<div class="efmp-card__office">' + esc(p.office) + "</div>" : "") +
+          (contact ? '<div class="efmp-card__contact">' + esc(contact) + "</div>" : "");
+        html += href
+          ? '<a class="efmp-card efmp-card--link" href="' + esc(href) + '">' + inner + "</a>"
+          : '<div class="efmp-card">' + inner + "</div>";
+        people++;
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce(people + " staff contacts shown.");
   }
 
   function renderMap() {
@@ -627,9 +642,10 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "infoTab");   // no search/export on map + info tabs
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
-    else if (sub.kind === "info") renderInfo();
+    else if (sub.kind === "dining") renderDining();
+    else if (sub.kind === "staffList") renderStaffList();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
