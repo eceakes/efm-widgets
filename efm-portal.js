@@ -73,12 +73,11 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining Hall", kind: "dining" },
       { label: "Staff Contacts", kind: "staffList" } ] },
-    { id: "students", label: "Students", subs: [
+    { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
-      { label: "GSO Schedule", kind: "ensemble", code: "GSO" } ] },
-    { id: "concerts", label: "Concerts", subs: [
-      { label: "Concerts", kind: "type", value: "Concert / Performance" } ] },
+      { label: "GSO Schedule", kind: "ensemble", code: "GSO" },
+      { label: "All Concerts", kind: "type", value: "Concert / Performance" } ] },
     // One grouped tab; the four info pages are sub-tab pills. A pill carrying
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
