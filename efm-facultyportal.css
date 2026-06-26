@@ -78,6 +78,12 @@
     background: var(--efmfp-ink); border-color: var(--efmfp-ink); color: #fff;
   }
   #efm-faculty-portal .efmfp__subtabs button:focus-visible { outline: 2px solid var(--efmfp-hover); outline-offset: 2px; }
+  /* 3rd-level week nav under "Eastern Festival Orchestra": tighter, smaller pills
+     sitting just under the ensemble pills. (hidden needs an explicit rule because
+     the base .efmfp__subtabs sets display:flex, which would override [hidden].) */
+  #efm-faculty-portal .efmfp__subtabs--week { margin: -8px 0 18px; gap: 6px; }
+  #efm-faculty-portal .efmfp__subtabs--week[hidden] { display: none; }
+  #efm-faculty-portal .efmfp__subtabs--week button { font-size: 12.5px; padding: 6px 13px; }
 
   /* --- search + calendar export (calendar tab only) --- */
   #efm-faculty-portal .efmfp__controls {

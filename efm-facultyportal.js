@@ -126,13 +126,15 @@
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
       { label: "Library", kind: "infoSection", match: ["library"] } ] },
-    // Calendar holds the ensemble schedules, Outreach concerts, AND the released
-    // roster weeks — a roster week is appended here as a sub-tab only when its
-    // Release column is "Yes" (build()), so unreleased rosters simply don't appear.
+    // Calendar: ensemble schedules + Outreach + All Events (the whole festival).
+    // The "Eastern Festival Orchestra" pill (weeks: true) reveals a 3rd-level week
+    // nav of the released roster weeks; with no week chosen it shows the full EFO
+    // schedule, and a week shows that week's roster + services (build() / renderNav).
     { id: "calendar", label: "Calendar", subs: [
-      { label: "EFO", kind: "ensemble", code: "EFO" },
-      { label: "ECP", kind: "ensemble", code: "ECP" },
-      { label: "Outreach", kind: "ensemble", code: "OUT" } ] },
+      { label: "Eastern Festival Orchestra", kind: "ensemble", code: "EFO", weeks: true },
+      { label: "Eastern Chamber Players", kind: "ensemble", code: "ECP" },
+      { label: "Outreach", kind: "ensemble", code: "OUT" },
+      { label: "All Events", kind: "allEvents" } ] },
     // One grouped tab; the four info pages are sub-tab pills. A pill carrying
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
@@ -358,6 +360,8 @@
   var ensembles = {};      // code -> [serviceRow]
   var efoAnchors = {};     // concert number -> dateKey (for roster week inference)
   var rostersAll = [];     // [{title, link, release}]
+  var calendarWeeks = [];  // released roster weeks -> 3rd-level nav under Eastern Festival Orchestra
+  var weekSel = null;      // selected EFO week index, or null = full EFO schedule
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
   var subPeople = [];
   var fellowPeople = [];
@@ -372,7 +376,7 @@
   var topSel = NAV[0].id, subSel = {};
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
-  var root, topnav, subnav, list, status, banner, searchBox, controls, icsBtn, modal, srLive, lastFocus;
+  var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, icsBtn, modal, srLive, lastFocus;
 
   function currentTop() { for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i]; return NAV[0]; }
   function currentSub() { var t = currentTop(); return t.subs[subSel[t.id]] || t.subs[0]; }
@@ -389,8 +393,9 @@
     // The full rebuild destroys the button the user just activated; remember whether
     // focus was on a nav control so we can put it back on the new active button.
     var ae = document.activeElement;
-    var refocus = ae && (ae.parentNode === topnav || ae.parentNode === subnav)
-      ? (ae.parentNode === topnav ? "top" : "sub") : null;
+    var refocus = ae && ae.parentNode === topnav ? "top"
+      : ae && ae.parentNode === subnav ? "sub"
+      : ae && subnav2 && ae.parentNode === subnav2 ? "sub2" : null;
     topnav.innerHTML = "";
     NAV.forEach(function (t) {
       var b = document.createElement("button");
@@ -408,15 +413,37 @@
         b.type = "button"; b.textContent = s.label;
         var on = i === subSel[top.id]; b.className = on ? "efmfp-active" : "";
         if (on) b.setAttribute("aria-current", "true");
-        b.onclick = function () { subSel[top.id] = i; renderNav(); renderList(); };
+        // Switching ensembles resets the EFO week selection back to the full schedule.
+        b.onclick = function () { subSel[top.id] = i; if (top.id === "calendar") weekSel = null; renderNav(); renderList(); };
         subnav.appendChild(b);
       });
+    }
+    // 3rd-level: the released roster weeks, shown only when the active calendar
+    // sub is "Eastern Festival Orchestra" (weeks: true).
+    if (subnav2) {
+      subnav2.innerHTML = "";
+      var activeSub = top.subs[subSel[top.id]];
+      if (top.id === "calendar" && activeSub && activeSub.weeks && calendarWeeks.length) {
+        subnav2.hidden = false;
+        calendarWeeks.forEach(function (w, i) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = w.label;
+          var on = i === weekSel; b.className = on ? "efmfp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          // Clicking the active week toggles back to the full EFO schedule.
+          b.onclick = function () { weekSel = (weekSel === i ? null : i); renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else {
+        subnav2.hidden = true;
+      }
     }
     scrollActiveTabIntoView();
     // Restore keyboard focus to the active control so a tab/pill switch doesn't
     // drop focus to <body> (only when focus was already in the nav, never on load).
     if (refocus) {
-      var target = (refocus === "top" ? topnav : subnav).querySelector(".efmfp-active");
+      var cont = refocus === "top" ? topnav : refocus === "sub2" ? subnav2 : subnav;
+      var target = (cont && cont.querySelector(".efmfp-active")) || (refocus === "sub2" ? subnav.querySelector(".efmfp-active") : null);
       if (target) try { target.focus(); } catch (e) {}
     }
   }
@@ -937,7 +964,7 @@
     modalData = []; viewEvents = []; viewLabel = ""; viewFeedKey = "";
     var k = sub.kind;
     // Search + Add-to-Calendar belong to the agenda views (schedules + rooms).
-    var showControls = (k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday");
+    var showControls = (k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday" || k === "allEvents");
     if (controls) controls.hidden = !showControls;
 
     if (k === "dining") renderDining();
@@ -946,12 +973,23 @@
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "map") renderMap();
     else if (k === "ensemble") {
-      viewLabel = sub.code === "OUT" ? "EFM Outreach" : "EFM " + sub.code;
-      renderAgenda(ensembles[sub.code] || [], {
-        feedKey: FEED_VIEWS[sub.code] || "",
-        noun: sub.code === "OUT" ? "concert" : "service",
-        emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled."
-      });
+      // Eastern Festival Orchestra: a chosen week shows that week's roster +
+      // services; with no week chosen it shows the full EFO schedule.
+      if (sub.weeks && weekSel != null && calendarWeeks[weekSel]) {
+        viewLabel = calendarWeeks[weekSel].roster.title;
+        renderRoster(calendarWeeks[weekSel].roster);
+      } else {
+        viewLabel = sub.code === "OUT" ? "EFM Outreach" : "EFM " + sub.code;
+        renderAgenda(ensembles[sub.code] || [], {
+          feedKey: FEED_VIEWS[sub.code] || "",
+          noun: sub.code === "OUT" ? "concert" : "service",
+          emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled."
+        });
+      }
+    }
+    else if (k === "allEvents") {
+      viewLabel = "EFM Full Schedule";
+      renderAgenda(allRows, { feedKey: "all", noun: "event", emptyMsg: "No events scheduled." });
     }
     else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.roster); }
     else if (k === "roomsToday") {
@@ -1364,16 +1402,13 @@
     parseCalendar(data.master);
     appendRoomTabs();
 
-    // rosters -> appended to the Calendar tab as sub-tabs (only Release == Yes);
-    // unreleased weeks simply don't appear, so there is no empty Rosters tab.
+    // Released roster weeks (Release == Yes) become the 3rd-level week nav under
+    // "Eastern Festival Orchestra" (renderNav); unreleased weeks simply don't appear.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
-    var released = rostersAll.filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); });
-    var calendarTab = NAV.filter(function (t) { return t.id === "calendar"; })[0];
-    if (calendarTab) {
-      calendarTab.subs = calendarTab.subs.filter(function (s) { return s.kind !== "roster"; });   // idempotent if build re-runs
-      released.forEach(function (o) { calendarTab.subs.push({ label: o.title, kind: "roster", roster: o }); });
-      if (subSel.calendar >= calendarTab.subs.length) subSel.calendar = 0;
-    }
+    calendarWeeks = rostersAll
+      .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
+      .map(function (o) { return { label: o.title, roster: o }; });
+    if (weekSel != null && weekSel >= calendarWeeks.length) weekSel = null;
     // info text: dining (master calendar) + the Faculty-Portal General-Information tab (full rows)
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
     infoRows = data.info || [];
@@ -1431,6 +1466,15 @@
     searchBox = document.getElementById("efmfp-search");
     controls = root.querySelector(".efmfp__controls");
     if (!topnav || !list) return;
+
+    // 3rd-level week nav (injected just under the sub-pills); shown only for the
+    // "Eastern Festival Orchestra" pill, which carries the released roster weeks.
+    subnav2 = document.createElement("nav");
+    subnav2.id = "efmfp-subnav2";
+    subnav2.className = "efmfp__subtabs efmfp__subtabs--week";
+    subnav2.setAttribute("aria-label", "Week");
+    subnav2.hidden = true;
+    if (subnav && subnav.parentNode) subnav.parentNode.insertBefore(subnav2, subnav.nextSibling);
 
     srLive = document.createElement("div");
     srLive.className = "efmfp__sr"; srLive.setAttribute("aria-live", "polite"); srLive.setAttribute("aria-atomic", "true");
