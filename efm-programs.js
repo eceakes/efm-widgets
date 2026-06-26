@@ -2,27 +2,27 @@
   "use strict";
 
   /* ====================== CONFIG ======================
-     Concert Programs page (e.g. /programs). Two tabs:
-       • Concert Programs — driven by the "EventGridToWebsite" tab (every
-         concert: real title + date + image). Program/insert PDFs come from
-         the "Programs" tab and attach to a concert by matching title + date.
-       • Masterclasses — driven by the "Masterclasses" tab (image + date +
-         title + Program URL).
-     Each tab splits into Upcoming / Past. Images are pulled from the event
-     grid. Columns are matched by HEADER NAME (see *_ALIASES), order-free.
+     Concert Programs page (e.g. /programs). Three tabs:
+       • Concert Programs — driven by the "EventGridToWebsite" tab. Each concert
+         shows its image + title + date, and a download for its "Program URL"
+         (plus any "Insert URL"). No separate sheet needed.
+       • Masterclasses — driven by the "Masterclasses" tab (image + date + title
+         + Program URL).
+       • Program Book — one season-wide PDF, shown inline + downloadable.
+     Each tab splits into Upcoming / Past. Columns are matched by HEADER NAME.
 
-     "Programs" tab columns: Concert | Date | Type | Title | PDF URL
-       (+ optional Description, Anchor, Image). Concert should match the
-       concert's Title in EventGridToWebsite. Type = "Program" or "Insert".
+     To add a concert program: in the EventGridToWebsite tab, paste the PDF link
+     into a "Program URL" column on that concert's row. (Optional: "Insert URL"
+     for one or more inserts — separate multiple links with a comma or newline;
+     "Anchor" for a stable QR/deep-link slug.)
   */
   var WORKBOOK = "1zjhmDd9mhYNryry7oEd6yht0rar-QMS54yv6I_V8n-s";
   function csvUrl(tab){ return "https://docs.google.com/spreadsheets/d/"+WORKBOOK+"/gviz/tq?tqx=out:csv&sheet="+encodeURIComponent(tab); }
   var EVENTS_CSV      = csvUrl("EventGridToWebsite");
-  var PROGRAMS_CSV    = csvUrl("Programs");
   var MASTERCLASS_CSV = csvUrl("Masterclasses");
 
   var MODULE_TITLE = "Concert Programs";          /* "" hides it */
-  var INTRO        = "Download the program and inserts for each concert and masterclass of the season.";  /* "" hides */
+  var INTRO        = "Download the program for each concert and masterclass of the season.";  /* "" hides */
 
   var TABS = [{key:"concerts",label:"Concert Programs"},{key:"masterclasses",label:"Masterclasses"},{key:"programbook",label:"Program Book"}];
   var DEFAULT_TAB = "concerts";
@@ -62,7 +62,7 @@
   }
   function httpUrl(u){ u=safeUrl(u); return /^https?:\/\//i.test(u)?u:""; }   /* a real, downloadable resource (not a bare anchor) */
 
-  /* tiny safe Markdown for descriptions */
+  /* tiny safe Markdown for descriptions (handles <br>, **bold**, *italic*, [text](url), - bullets) */
   function mdInline(t){ var L=[];
     t=t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,function(_,x,u){ var s=safeUrl(u)||"#"; L.push('<a href="'+s+'" target="_blank" rel="noopener noreferrer">'+x+'</a>'); return "\x00"+(L.length-1)+"\x00"; });
     t=t.replace(/(\*\*|__)(?=\S)([\s\S]+?\S)\1/g,"<strong>$2</strong>");
@@ -89,44 +89,26 @@
     Object.keys(aliases).forEach(function(f){ if(m[f]===undefined && aliases[f].indexOf(k)!==-1) m[f]=i; }); }); return m; }
   function cell(r,i){ return i===undefined?"":String(r[i]==null?"":r[i]).trim(); }
 
+  /* program-PDF column family (shared by concerts + masterclasses); never matches the ticket "Link" column */
+  var PROGRAM_URL_ALIASES = ["program url","program pdf","program link","program download","program file","programurl","program (pdf)","program booklet","program notes pdf"];
   var EVENT_ALIASES={
     image:["image","photo","img","picture","image url","photo url","poster","flyer","event image","thumbnail"],
     title:["title","event title","name","event name","event","headline"],
     date:["startdate","start","start date","date","event date","begins"],
-    show:["showevent","show","show event","visible","published","display","active","live"]
-  };
-  var PROGRAM_ALIASES={
-    concert:["concert","concert title","concert name","event","performance","program group","group","title"],
-    date:["date","concert date","event date","start","startdate","start date","day"],
-    type:["type","kind","item type","document type","doc type","category"],
-    title:["item title","label","document","file title","item","heading","piece title"],
-    url:["pdf url","url","link","pdf","file","file url","download","download url","program url","pdf link","href","document url"],
     desc:["description","desc","notes","about","summary","details","blurb"],
-    anchor:["anchor","slug","id","qr","qr slug","deep link","deeplink"],
-    image:["image","photo","poster","img"],
-    show:["show","showevent","show event","visible","published","display","active","live","show item"]
-  };
-  var MC_ALIASES={
-    image:["image","photo","img","picture","image url","photo url","poster","flyer","event image","thumbnail"],
-    title:["title","event title","name","event name","event","headline"],
-    date:["startdate","start","start date","date","event date","begins"],
-    url:["program url","program pdf","program link","program download","program file","programurl","program (pdf)","program booklet","pdf url","pdf"],
-    desc:["description","desc","notes","about","summary","details"],
+    url:PROGRAM_URL_ALIASES,
+    inserts:["insert url","inserts","insert","insert urls","program insert","program inserts","insert pdf","insert pdfs"],
+    anchor:["anchor","slug","program anchor","qr","qr slug","deep link","deeplink"],
     show:["showevent","show","show event","visible","published","display","active","live"]
   };
+  /* Masterclasses tab uses the same shape */
+  var MC_ALIASES=EVENT_ALIASES;
 
-  function parseEvents(rows){ if(!rows.length) return []; var m=makeMap(rows[0],EVENT_ALIASES);
-    if(m.title===undefined) return [];
-    return rows.slice(1).map(function(r){ return { title:cell(r,m.title), date:cell(r,m.date), image:cell(r,m.image), show:cell(r,m.show) }; })
-      .filter(function(e){ return e.title; }); }
-  function parsePrograms(rows){ if(!rows.length) return []; var m=makeMap(rows[0],PROGRAM_ALIASES);
-    if(m.url===undefined && m.title===undefined && m.concert===undefined) return [];
-    return rows.slice(1).map(function(r,i){ return { _key:i, concert:cell(r,m.concert), date:cell(r,m.date), type:cell(r,m.type),
-      title:cell(r,m.title), url:cell(r,m.url), desc:cell(r,m.desc), anchor:cell(r,m.anchor), image:cell(r,m.image), show:cell(r,m.show) }; }); }
-  function parseMasterclasses(rows){ if(!rows.length) return []; var m=makeMap(rows[0],MC_ALIASES);
+  function parseEventRows(rows){ if(!rows.length) return []; var m=makeMap(rows[0],EVENT_ALIASES);
     if(m.title===undefined) return [];
     return rows.slice(1).map(function(r){ return { title:cell(r,m.title), date:cell(r,m.date), image:cell(r,m.image),
-      url:cell(r,m.url), desc:cell(r,m.desc), show:cell(r,m.show) }; }).filter(function(e){ return e.title; }); }
+      desc:cell(r,m.desc), url:cell(r,m.url), inserts:cell(r,m.inserts), anchor:cell(r,m.anchor), show:cell(r,m.show) }; })
+      .filter(function(e){ return e.title; }); }
 
   /* ---- dates ---- */
   function parseDate(s){ s=String(s==null?"":s).trim(); if(!s) return null; var m;
@@ -137,13 +119,10 @@
   function fmtDate(d){ if(!d) return ""; return DOWFULL[d.getDay()]+", "+MONTHS[d.getMonth()]+" "+d.getDate()+", "+d.getFullYear(); }
   function today(){ var n=new Date(); return new Date(n.getFullYear(),n.getMonth(),n.getDate()); }
   function slug(s){ return String(s==null?"":s).toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,60); }
-  function normTitle(s){ return String(s==null?"":s).toLowerCase().replace(/[^a-z0-9]+/g,""); }
   function fileNameOf(u){ try{ var p=String(u).split(/[?#]/)[0].split("/").pop(); return decodeURIComponent(p||""); }catch(e){ return ""; } }
 
   function visible(x){ return !(String(x.show||"").trim().toLowerCase().match(/^(no|false|0|hide|hidden|off)$/)); }
-  function isInsert(it){ return /insert|addendum|supplement/i.test(it.type||""); }
   function typeLabel(it){ return plain(it.type) || "Program"; }
-  function sortItems(items){ items.sort(function(a,b){ return (isInsert(a)?1:0)-(isInsert(b)?1:0); }); }
 
   /* ---- analytics (no-op without gtag/dataLayer) ---- */
   function utmParams(){ var p={}; try{ var s=new URLSearchParams(location.search);
@@ -152,55 +131,13 @@
     if(typeof window.gtag==="function"){ window.gtag("event", name, d); return; }
     if(window.dataLayer && typeof window.dataLayer.push==="function"){ window.dataLayer.push(Object.assign({event:name}, d)); return; } }catch(e){} }
 
-  /* ---- image index (from the event grid), for orphan-program joins ---- */
-  var imgIndex={ byTitle:{}, byDate:{} };
-  function buildImageIndex(events){ imgIndex={ byTitle:{}, byDate:{} };
-    events.forEach(function(e){ var img=safeUrl(e.image); if(!img) return; var nt=normTitle(e.title), dk=isoKey(parseDate(e.date));
-      if(nt && !imgIndex.byTitle[nt]) imgIndex.byTitle[nt]=img;
-      if(dk){ (imgIndex.byDate[dk]=imgIndex.byDate[dk]||[]).push({nt:nt,img:img}); } }); }
-  function matchImage(titleLike, dateKey){ var nc=normTitle(titleLike);
-    if(nc && imgIndex.byTitle[nc]) return imgIndex.byTitle[nc];
-    var byd=imgIndex.byDate[dateKey];
-    if(byd && byd.length){ if(byd.length===1) return byd[0].img;
-      for(var i=0;i<byd.length;i++){ if(nc && (byd[i].nt.indexOf(nc)>=0 || nc.indexOf(byd[i].nt)>=0)) return byd[i].img; }
-      return byd[0].img; }
-    if(nc){ for(var k in imgIndex.byTitle){ if(k && (k.indexOf(nc)>=0 || nc.indexOf(k)>=0)) return imgIndex.byTitle[k]; } }
-    return ""; }
-
-  /* ---- build groups ---- */
-  function programsForEvent(ev, programs){ var net=normTitle(ev.title), dk=isoKey(parseDate(ev.date));
-    return programs.filter(function(p){ var npc=normTitle(p.concert); if(!npc) return false;
-      if(npc===net) return true;
-      var pdk=isoKey(parseDate(p.date));
-      if(pdk && pdk===dk && (npc.indexOf(net)>=0 || net.indexOf(npc)>=0)) return true;
-      return false; }); }
-
-  function buildConcertGroups(events, programs){
-    var groups=[], used={};
-    events.filter(visible).forEach(function(ev){
-      var d=parseDate(ev.date);
-      var g={ title:plain(ev.title), date:d, image:safeUrl(ev.image), desc:"", anchorRaw:"", items:[] };
-      programsForEvent(ev, programs).forEach(function(p){ used[p._key]=1; if(!g.desc&&p.desc)g.desc=p.desc;
-        if(!g.image&&p.image)g.image=safeUrl(p.image); if(!g.anchorRaw&&p.anchor)g.anchorRaw=p.anchor; g.items.push(p); });
-      sortItems(g.items);
-      groups.push(g);
-    });
-    /* programs whose Concert matched no event -> keep them (grouped by concert) so nothing is lost */
-    var orphans=programs.filter(function(p){ return visible(p) && !used[p._key]; });
-    var byKey={}, order=[];
-    orphans.forEach(function(p){ var dk=isoKey(parseDate(p.date)); var k=(slug(p.concert)||"x")+"|"+dk;
-      if(!byKey[k]){ byKey[k]={ title:plain(p.concert)||"Program", date:parseDate(p.date), image:safeUrl(p.image)||matchImage(p.concert,dk), desc:"", anchorRaw:"", items:[] }; order.push(k); }
-      var g=byKey[k]; if(!g.desc&&p.desc)g.desc=p.desc; if(!g.anchorRaw&&p.anchor)g.anchorRaw=p.anchor; g.items.push(p); });
-    order.forEach(function(k){ var g=byKey[k]; sortItems(g.items); groups.push(g); });
-    return finalizeGroups(groups);
+  /* ---- build groups (a concert or masterclass = one event row + its program/insert PDFs) ---- */
+  function eventToGroup(ev){
+    var items=[]; var pu=httpUrl(ev.url); if(pu) items.push({ type:"Program", title:"Program", url:pu });
+    String(ev.inserts||"").split(/[\n,]+/).forEach(function(s){ var u=httpUrl(s); if(u) items.push({ type:"Insert", title:"Insert", url:u }); });
+    return { title:plain(ev.title), date:parseDate(ev.date), image:safeUrl(ev.image), desc:ev.desc||"", anchorRaw:ev.anchor||"", items:items };
   }
-
-  function buildMasterclassGroups(mcs){
-    var groups=mcs.filter(visible).map(function(mc){ var u=httpUrl(mc.url);
-      return { title:plain(mc.title), date:parseDate(mc.date), image:safeUrl(mc.image), desc:mc.desc||"", anchorRaw:"",
-        items: u? [{ type:"", title:"Program", url:u }] : [] }; });
-    return finalizeGroups(groups);
-  }
+  function buildGroups(eventRows){ return finalizeGroups(eventRows.filter(visible).map(eventToGroup)); }
 
   function finalizeGroups(groups){ var seen={};
     groups.forEach(function(g){ var base=slug(g.anchorRaw)||slug(g.title)||"program"; var a=base;
@@ -318,8 +255,7 @@
     try{ el.scrollIntoView({behavior:(window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches)?"auto":"smooth", block:"start"}); }catch(e){ el.scrollIntoView(); } }
 
   function render(data){
-    buildImageIndex(data.events);
-    var content={ concerts:buildConcertGroups(data.events, data.programs), masterclasses:buildMasterclassGroups(data.masterclasses),
+    var content={ concerts:buildGroups(data.events), masterclasses:buildGroups(data.masterclasses),
                   programbook: httpUrl(PROGRAM_BOOK_URL)? [{ url:httpUrl(PROGRAM_BOOK_URL) }] : [] };
     var keys=TABS.map(function(t){return t.key;}).filter(function(k){ return content[k] && content[k].length; });
     if(!keys.length){ setStatus("Programs will be posted here soon — check back closer to each concert."); return; }
@@ -355,19 +291,17 @@
     var n=0,iv=setInterval(function(){ sync(); if(++n>=16) clearInterval(iv); },250); }
 
   /* ---- boot ---- */
-  function urlOk(u){ return u && !/PASTE|YOUR_|^\s*$/.test(u); }
   function fetchRows(url){ return fetch(url,{cache:"no-store"}).then(function(r){ if(!r.ok) throw 0; return r.text(); })
     .then(function(t){ return parseCSV(t); }).catch(function(){ return []; }); }
   function headerSig(rows){ return (rows&&rows[0])? rows[0].map(function(c){ return String(c==null?"":c).trim().toLowerCase(); }).join("|") : ""; }
   function start(){
     setStatus("Loading programs…");
-    Promise.all([ fetchRows(EVENTS_CSV), fetchRows(PROGRAMS_CSV), fetchRows(MASTERCLASS_CSV) ]).then(function(res){
-      var evRows=res[0], pgRows=res[1], mcRows=res[2], evSig=headerSig(evRows);
-      /* gviz returns the FIRST sheet when a named tab doesn't exist yet — so if
-         "Programs"/"Masterclasses" come back identical to the events sheet, that
-         tab hasn't been created: treat as empty instead of rendering events as programs. */
-      if(evSig){ if(headerSig(pgRows)===evSig) pgRows=[]; if(headerSig(mcRows)===evSig) mcRows=[]; }
-      render({ events:parseEvents(evRows), programs:parsePrograms(pgRows), masterclasses:parseMasterclasses(mcRows) });
+    Promise.all([ fetchRows(EVENTS_CSV), fetchRows(MASTERCLASS_CSV) ]).then(function(res){
+      var evRows=res[0], mcRows=res[1], evSig=headerSig(evRows);
+      /* gviz returns the FIRST sheet when a named tab doesn't exist — if "Masterclasses"
+         comes back identical to the events sheet, that tab is missing: treat as empty. */
+      if(evSig && headerSig(mcRows)===evSig) mcRows=[];
+      render({ events:parseEventRows(evRows), masterclasses:parseEventRows(mcRows) });
       wire();
     });
   }
