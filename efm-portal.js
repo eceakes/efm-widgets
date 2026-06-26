@@ -89,7 +89,8 @@
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
       { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
-      { label: "Sectionals", kind: "infoTab", source: "sectionals" },
+      { label: "ESO Sectionals", kind: "sectional", code: "ESO" },
+      { label: "GSO Sectionals", kind: "sectional", code: "GSO" },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
@@ -125,6 +126,9 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
     });
   }
+
+  // Strip zero-width / bidi control chars Google Sheets sometimes injects, then trim.
+  function clean(s) { return String(s == null ? "" : s).replace(/[​-‏‪-‮⁦-⁩﻿]/g, "").trim(); }
 
   function tokens(s) {
     return s.split("/").map(function (t) { return t.trim(); }).filter(Boolean);
@@ -326,6 +330,7 @@
   var viewFeedKey = "";    // feed ?view= key for the current view ("" = no live subscribe feed)
   var infoTabs = {};       // source key -> raw rows for the info tabs (placement/sectionals/studio/concerto)
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
+  var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
 
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
@@ -659,6 +664,34 @@
     });
     return out;
   }
+
+  // ---- Sectionals (Auditions & Classes -> ESO / GSO Sectionals) ----------
+  // Parse the Sectional Rehearsals tab into { eso, gso, perc, locations,
+  // esoCoaches, gsoCoaches }. ESO/GSO/Percussion schedule lines live under
+  // "Week One Sectionals:" / "All other weeks:"; the shared location table under
+  // "Locations:"; coaches in two columns under the "...Sectional Coaches" header
+  // (ESO in column A, GSO in column C).
+  function parseSectionals(rows) {
+    var out = { eso: {}, gso: {}, perc: {}, locations: [], esoCoaches: {}, gsoCoaches: {} };
+    var mode = "";
+    (rows || []).forEach(function (r) {
+      var a = clean(r[0]), b = clean(r[1]), c = clean(r[2]);
+      if (/^week one/i.test(a)) { mode = "weekone"; return; }
+      if (/^all other weeks/i.test(a)) { mode = "other"; return; }
+      if (/^locations?:?$/i.test(a)) { mode = "loc"; return; }
+      if (/sectional coaches/i.test(a) || /sectional coaches/i.test(c)) { mode = "coach"; return; }
+      if (mode === "weekone" || mode === "other") {
+        var m = a.match(/^(ESO|GSO|Percussion)\s*:\s*(.*)$/i);
+        if (m) out[/^p/i.test(m[1]) ? "perc" : m[1].toLowerCase()][mode === "weekone" ? "weekOne" : "other"] = m[2].trim();
+      } else if (mode === "loc") {
+        if (a && b) out.locations.push({ section: a, room: b });
+      } else if (mode === "coach") {
+        var ea = a.match(/^([A-Za-z]+)\s*:\s*(.+)$/); if (ea) out.esoCoaches[ea[1].toLowerCase()] = ea[2].trim();
+        var gc = c.match(/^([A-Za-z]+)\s*:\s*(.+)$/); if (gc) out.gsoCoaches[gc[1].toLowerCase()] = gc[2].trim();
+      }
+    });
+    return out;
+  }
   // This is the STUDENT portal, so faculty-oriented content is filtered out:
   // columns headed "Show/Hide" or "Personnel" are dropped, and rows flagged
   // "Faculty Only" or naming a coordinator/director role are skipped entirely.
@@ -703,6 +736,39 @@
     announce(sub.label + " shown.");
   }
 
+  // Render one ensemble's sectionals: rehearsal times + a merged
+  // Section / Location / Coach table (shared locations + that ensemble's coaches).
+  // Percussion + Harp have no listed coach, so they show the location only.
+  function renderSectional(ens) {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var s = sectionalData;
+    if (!s || (!s.locations.length && !s.eso.weekOne && !s.gso.weekOne)) {
+      list.innerHTML = '<div class="efmp-info"><p>This information will appear here once it is posted.</p></div>';
+      announce(ens + " sectional information is not posted yet.");
+      return;
+    }
+    var sched = ens === "GSO" ? s.gso : s.eso;
+    var coaches = ens === "GSO" ? s.gsoCoaches : s.esoCoaches;
+    var html = '<div class="efmp-info">' +
+      '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(ens) + ' Sectionals</div>' +
+      '<div class="efmp-info__dept" role="heading" aria-level="4">Rehearsal Times</div>';
+    if (sched.weekOne) html += "<p><b>Week One:</b> " + esc(sched.weekOne) + "</p>";
+    if (sched.other) html += "<p><b>All other weeks:</b> " + esc(sched.other) + "</p>";
+    var perc = [s.perc.weekOne, s.perc.other].filter(Boolean);
+    if (perc.length) html += "<p><b>Percussion:</b> " + perc.map(esc).join(" &#183; ") + "</p>";
+    html += '<div class="efmp-info__dept" role="heading" aria-level="4">Sections</div>';
+    s.locations.forEach(function (loc) {
+      var coach = coaches[loc.section.toLowerCase()] || "";
+      html += '<div class="efmp-kv"><b>' + esc(loc.section) + "</b><span>" + esc(loc.room) +
+        (coach ? " &#183; " + esc(coach) : "") + "</span></div>";
+    });
+    if (!s.locations.length) html += "<p>No sections posted yet.</p>";
+    html += "</div>";
+    list.innerHTML = html;
+    announce(ens + " sectionals shown.");
+  }
+
   function renderList() {
     var top = currentTop();
     var sub = top.subs[subSel[top.id]] || top.subs[0];
@@ -710,9 +776,10 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
+    else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "chamberCoaches") renderChamberCoaches();
     else if (sub.kind === "staffList") renderStaffList();
@@ -1029,6 +1096,7 @@
     // Info tabs (raw rows) + the section -> room table used for sectional modals.
     ["placement", "sectionals", "studio", "concerto"].forEach(function (k) { infoTabs[k] = data[k] || null; });
     sectionalLocations = data.sectionals ? parseSectionalLocations(data.sectionals) : [];
+    sectionalData = parseSectionals(data.sectionals);
     // Conditional sub-tabs (Placement Auditions, Concerto Competition) appear only
     // when their tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
     NAV.forEach(function (t) {
