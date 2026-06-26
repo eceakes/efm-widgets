@@ -72,6 +72,7 @@
   var NAV = [
     { id: "info", label: "General Information", subs: [
       { label: "Dining Hall", kind: "dining" },
+      { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Staff Contacts", kind: "staffList" } ] },
     { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
@@ -507,6 +508,9 @@
     var html = '<div class="efmp-info">';
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
+    // The General Information tab also holds a "Chamber Music Coaches" roster below
+    // the dining hours (its own pill); render only the dining block here.
+    for (var di = 0; di < lines.length; di++) { if (/^chamber music coaches/i.test(lines[di])) { lines = lines.slice(0, di); break; } }
     if (!lines.length) html += "<p>Dining hall hours will appear here once posted.</p>";
     lines.forEach(function (l) {
       // A line is a heading if it's ALL CAPS, a short label, or the dining title
@@ -559,6 +563,36 @@
     announce(people + " staff contacts shown.");
   }
 
+  // General Information -> "Chamber Coaches" pill: the chamber music coaches
+  // roster (instrument groups + names) that lives below the dining hours on the
+  // General Information tab.
+  function renderChamberCoaches() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var lines = generalInfo.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (/^chamber music coaches/i.test(lines[i])) { start = i; break; } }
+    if (start < 0) { finishList("", 0, "", "Chamber music coaches will appear here once posted."); return; }
+    var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
+    var curNames = [], curSec = null;
+    function flush() {
+      if (curSec) {
+        html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(curSec) + "</div>";
+        if (curNames.length) html += "<p>" + curNames.map(esc).join(", ") + "</p>";
+      }
+      curNames = [];
+    }
+    lines.slice(start + 1).forEach(function (l) {
+      if (SECTIONS[l.toLowerCase().trim()]) { flush(); curSec = l; }
+      else curNames.push(l);
+    });
+    flush();
+    html += "</div>";
+    list.innerHTML = html;
+    announce("Chamber music coaches shown.");
+  }
+
   function renderMap() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -606,17 +640,33 @@
     });
     return out;
   }
+  // This is the STUDENT portal, so faculty-oriented content is filtered out:
+  // columns headed "Show/Hide" or "Personnel" are dropped, and rows flagged
+  // "Faculty Only" or naming a coordinator/director role are skipped entirely.
+  function dropCols(rows) {
+    var drop = {};
+    (rows || []).forEach(function (r) {
+      r.forEach(function (c, ci) { var v = (c || "").trim().toLowerCase(); if (v === "show/hide" || v === "personnel") drop[ci] = true; });
+    });
+    return drop;
+  }
+  function isFacultyRow(r) {
+    if (r.some(function (c) { return (c || "").trim().toLowerCase() === "faculty only"; })) return true;
+    return /\b(coordinator|director)\b/i.test((r[0] || "").trim());
+  }
   function renderInfoTab(sub) {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     var rows = infoTabs[sub.source];
     if (!rows || !rows.length) { finishList("", 0, "", "This information will appear here once it is posted."); return; }
-    var sh = showHideCol(rows), shCol = sh ? sh.col : -1;
+    var drop = dropCols(rows);
     var html = '<div class="efmp-info">', first = true;
     rows.forEach(function (r) {
+      if (isFacultyRow(r)) return;                               // faculty-only content stays out of the student portal
       var a = (r[0] || "").trim();
-      var rest = r.map(function (c, ci) { return (ci === 0 || ci === shCol) ? "" : (c || "").trim(); }).filter(Boolean);
-      if (!a && !rest.length) return;                            // blank (or the Show/Hide value) row
+      if (a.toLowerCase() === "instrument") return;              // the location-table column header row
+      var rest = r.map(function (c, ci) { return (ci === 0 || drop[ci]) ? "" : (c || "").trim(); }).filter(Boolean);
+      if (!a && !rest.length) return;                            // blank (or a dropped-cell) row
       if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
       if (rest.length) {                                         // label + value -> key/value row
         html += '<div class="efmp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
@@ -641,9 +691,10 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "dining") renderDining();
+    else if (sub.kind === "chamberCoaches") renderChamberCoaches();
     else if (sub.kind === "staffList") renderStaffList();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else renderAgenda(rowsForSub(sub));
