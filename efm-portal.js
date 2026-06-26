@@ -78,7 +78,8 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining Hall", kind: "dining" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
-      { label: "Staff Contacts", kind: "staffList" } ] },
+      { label: "Staff Contacts", kind: "staffList" },
+      { label: "Student Handbook", kind: "handbook" } ] },
     { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
@@ -93,8 +94,6 @@
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
-    { id: "handbook", label: "Student Handbook", subs: [
-      { label: "Handbook", kind: "handbook" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
       { label: "Today", kind: "roomsToday" } ] }  // room tabs appended after data loads
   ];
