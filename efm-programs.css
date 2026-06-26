@@ -20,17 +20,17 @@
 #efm-programs.efmpr *{ box-sizing:border-box; }
 
 #efm-programs .efmpr-title{
-  font-family:var(--efmpr-title-font); color:var(--efmpr-ink);
+  font-family:var(--efmpr-title-font); color:var(--efmpr-ink); text-align:center;
   font-size:clamp(28px,3cqi + 18px,46px); font-weight:400; line-height:1.08; letter-spacing:.005em; margin:0 0 10px;
 }
 #efm-programs .efmpr-title[hidden]{ display:none; }
-#efm-programs .efmpr-intro{ color:var(--efmpr-role); font-size:17px; line-height:1.55; margin:0 0 22px; max-width:640px; }
+#efm-programs .efmpr-intro{ color:var(--efmpr-role); font-size:17px; line-height:1.55; margin:0 auto 22px; max-width:640px; text-align:center; }
 #efm-programs .efmpr-intro[hidden]{ display:none; }
 #efm-programs .efmpr__status{ color:var(--efmpr-role); font-size:16px; padding:26px 2px; }
 #efm-programs .efmpr__status[hidden]{ display:none; }
 
 /* ---- tabs ---- */
-#efm-programs .efmpr__tabs{ display:flex; flex-wrap:wrap; gap:clamp(16px,3vw,34px); border-bottom:2px solid var(--efmpr-rule); margin:0 0 24px; }
+#efm-programs .efmpr__tabs{ display:flex; flex-wrap:wrap; justify-content:center; gap:clamp(16px,3vw,34px); border-bottom:2px solid var(--efmpr-rule); margin:0 0 24px; }
 #efm-programs .efmpr__tabs[hidden]{ display:none; }
 #efm-programs .efmpr-tab{
   appearance:none; -webkit-appearance:none; background:transparent; border:0; cursor:pointer;
