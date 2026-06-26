@@ -51,17 +51,11 @@
     { key: "announcements", tab: "Announcements" },
     { key: "generalInfo", tab: "General Information" },
     { key: "staff", tab: "Staff List" },
-    { key: "outreach", tab: "Outreach Concerts" },
     { key: "placement", tab: "Placement Auditions" },
     { key: "sectionals", tab: "Sectional Rehearsals" },
     { key: "studio", tab: "Faculty Studio Classes" },
     { key: "concerto", tab: "Concerto Competition" }
   ];
-
-  // Generic schedule tables (title column + Date/Time/Location/Details).
-  var TABLES = {
-    outreach: { titleCol: "Concert Title", empty: "No outreach concerts scheduled yet." }
-  };
 
   // Fallback room names if the Legend sheet can't be fetched/parsed.
   var ROOM_NAMES = {
@@ -84,15 +78,13 @@
       { label: "GSO Schedule", kind: "ensemble", code: "GSO" } ] },
     { id: "concerts", label: "Concerts", subs: [
       { label: "Concerts", kind: "type", value: "Concert / Performance" } ] },
-    // showWhen: tab is kept only if that info tab's Show/Hide cell says "Yes" (build()).
-    { id: "placement", label: "Placement Auditions", showWhen: "placement", subs: [
-      { label: "Placement Auditions", kind: "infoTab", source: "placement" } ] },
-    { id: "sectionals", label: "Sectionals", subs: [
-      { label: "Sectionals", kind: "infoTab", source: "sectionals" } ] },
-    { id: "studio", label: "Studio Classes", subs: [
-      { label: "Studio Classes", kind: "infoTab", source: "studio" } ] },
-    { id: "concerto", label: "Concerto Competition", showWhen: "concerto", subs: [
-      { label: "Concerto Competition", kind: "infoTab", source: "concerto" } ] },
+    // One grouped tab; the four info pages are sub-tab pills. A pill carrying
+    // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
+    { id: "programs", label: "Auditions & Classes", subs: [
+      { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
+      { label: "Sectionals", kind: "infoTab", source: "sectionals" },
+      { label: "Studio Classes", kind: "infoTab", source: "studio" },
+      { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
     { id: "rooms", label: "Room Schedule", subs: [
@@ -318,7 +310,6 @@
   // ---- state --------------------------------------------------------------
   var allRows = [];
   var seenRooms = {};
-  var aux = {};            // outreach -> {headers, items}
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
   var staff = [];          // [{ dept, people:[{name,title,contact,office}] }] from the "Staff List" tab
@@ -508,41 +499,6 @@
     finishList(html, shown, res.banner);
   }
 
-  function renderTable(sub) {
-    var t = aux[sub.source], cfg = TABLES[sub.source];
-    if (!t || !t.items.length) { finishList("", 0, "", cfg.empty); return; }
-    var q = searchBox.value.trim().toLowerCase();
-    var entries = t.items.map(function (o, i) {
-      return { o: o, key: dateKey(o.Date || ""), start: startMinutes(o.Time || ""), seq: i };
-    });
-    entries.sort(function (a, b) {
-      var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key;
-      return ka - kb || a.start - b.start || a.seq - b.seq;
-    });
-    var html = "", shown = 0, lastMonth = null;
-    entries.forEach(function (e) {
-      var o = e.o;
-      var hay = [o[cfg.titleCol], o.Date, o.Time, o.Location, o.Details].join(" ").toLowerCase();
-      if (q && hay.indexOf(q) === -1) return;
-      if (e.key !== null) {
-        var mon = Math.floor(e.key / 100);
-        if (mon !== lastMonth) { html += '<div class="efmp-month" role="heading" aria-level="3">' + MONTH_NAMES[mon - 1] + " " + YEAR + "</div>"; lastMonth = mon; }
-      }
-      var ev = { title: o[cfg.titleCol] || cfg.titleCol, dateStr: o.Date, timeStr: o.Time,
-        location: o.Location, description: o.Details || "" };
-      viewEvents.push(ev);
-      html += agendaRowHTML({
-        big: e.key !== null ? String(e.key % 100) : "", small: monthAbbr(e.key),
-        title: o[cfg.titleCol] || "(untitled)",
-        when: [o.Time, o.Location], chips: [],
-        modal: { title: o[cfg.titleCol] || cfg.titleCol,
-          fields: [["Date", o.Date], ["Time", o.Time], ["Location", o.Location]], details: o.Details, ics: ev }
-      });
-      shown++;
-    });
-    finishList(html, shown, "", "No matches.");
-  }
-
   function renderInfo() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -675,7 +631,6 @@
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "info") renderInfo();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
-    else if (sub.kind === "table") renderTable(sub);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
   }
@@ -984,13 +939,17 @@
     if (data.staff) staff = parseStaff(data.staff);
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
-    aux.outreach = data.outreach ? tableObjects(data.outreach) : null;
 
     // Info tabs (raw rows) + the section -> room table used for sectional modals.
     ["placement", "sectionals", "studio", "concerto"].forEach(function (k) { infoTabs[k] = data[k] || null; });
     sectionalLocations = data.sectionals ? parseSectionalLocations(data.sectionals) : [];
-    // Conditional tabs appear only when their tab's Show/Hide cell reads "Yes".
-    NAV = NAV.filter(function (t) { return !t.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[t.showWhen] || [])); });
+    // Conditional sub-tabs (Placement Auditions, Concerto Competition) appear only
+    // when their tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
+    NAV.forEach(function (t) {
+      t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
+    });
+    NAV = NAV.filter(function (t) { return t.subs.length; });
+    NAV.forEach(function (t) { if (subSel[t.id] >= t.subs.length) subSel[t.id] = 0; });
 
     parseCalendar(data.calendar);
     appendRoomTabs();
