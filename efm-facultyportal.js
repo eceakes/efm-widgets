@@ -121,6 +121,7 @@
     // the Faculty-Portal "General-Information" tab, matched by heading text.
     { id: "info", label: "General Information", subs: [
       { label: "Dining Hours", kind: "dining" },
+      { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
@@ -592,6 +593,9 @@
     var html = '<div class="efmfp-info">';
     var dl = diningLines.filter(function (l) { return l !== ""; })
       .filter(function (l) { return !/^general information$/i.test(l); });
+    // The General Information tab also holds a "Chamber Music Coaches" roster (its
+    // own pill); render only the dining block here.
+    for (var ci = 0; ci < dl.length; ci++) { if (/^chamber music coaches/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
     var diningHead = "Dining";
     for (var di = 0; di < dl.length; di++) { if (/^dining\b/i.test(dl[di])) { diningHead = dl[di]; dl.splice(di, 1); break; } }
     html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(diningHead) + "</div>";
@@ -612,6 +616,42 @@
     html += "</div>";
     list.innerHTML = html;
     announce("Dining hours shown.");
+    syncBox();
+  }
+
+  // General Information -> "Chamber Coaches" pill: the chamber music coaches roster
+  // (instrument groups + names) that lives below the dining hours on the Master
+  // Calendar "General Information" tab.
+  function renderChamberCoaches() {
+    banner.hidden = true; status.hidden = true;
+    var lines = diningLines.filter(function (l) { return l !== ""; }), start = -1;
+    for (var i = 0; i < lines.length; i++) { if (/^chamber music coaches/i.test(lines[i])) { start = i; break; } }
+    if (start < 0) {
+      list.innerHTML = "";
+      status.textContent = "Chamber music coaches will appear here once posted.";
+      status.hidden = false;
+      announce("Chamber music coaches will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
+    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
+    var curNames = [], curSec = null;
+    function flush() {
+      if (curSec) {
+        html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(curSec) + "</div>";
+        if (curNames.length) html += "<p>" + curNames.map(esc).join(", ") + "</p>";
+      }
+      curNames = [];
+    }
+    lines.slice(start + 1).forEach(function (l) {
+      if (SECTIONS[l.toLowerCase().trim()]) { flush(); curSec = l; }
+      else curNames.push(l);
+    });
+    flush();
+    html += "</div>";
+    list.innerHTML = html;
+    announce("Chamber music coaches shown.");
     syncBox();
   }
 
@@ -670,12 +710,22 @@
       syncBox();
       return;
     }
-    var sh = showHideCol(rows), shCol = sh ? sh.col : -1;
+    var sh = showHideCol(rows);
     var html = '<div class="efmfp-info">', first = true;
-    rows.forEach(function (r) {
+    rows.forEach(function (r, ri) {
       var a = clean(r[0]);
-      var rest = r.map(function (c, ci) { return (ci === 0 || ci === shCol) ? "" : clean(c); }).filter(Boolean);
-      if (!a && !rest.length) return;                              // blank (or the Show/Hide value) row
+      if (a.toLowerCase() === "instrument") return;                // the location-table column header row
+      // Faculty see all rows incl. the Personnel column + coordinators. We only
+      // suppress marker cells: "Faculty Only" / "Show/Hide" text, and the Show/Hide
+      // value directly below its header (which can share a column with Personnel).
+      var rest = r.map(function (c, ci) {
+        var v = clean(c);
+        if (ci === 0) return "";
+        if (v.toLowerCase() === "faculty only" || v.toLowerCase() === "show/hide") return "";
+        if (sh && ci === sh.col && (ri === sh.row || ri === sh.row + 1)) return "";
+        return v;
+      }).filter(Boolean);
+      if (!a && !rest.length) return;                              // blank / marker-only row
       if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
       if (rest.length) {                                           // label + value -> key/value row
         html += '<div class="efmfp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
@@ -892,6 +942,7 @@
     if (controls) controls.hidden = !showControls;
 
     if (k === "dining") renderDining();
+    else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "map") renderMap();
