@@ -96,6 +96,18 @@
 #efm-programs .efmpr-item__cta{ flex:0 0 auto; font-family:var(--efmpr-name-font); font-size:13px; color:var(--efmpr-ink); border:1.5px solid var(--efmpr-ink); border-radius:999px; padding:7px 16px; white-space:nowrap; transition:background .15s ease, color .15s ease; }
 #efm-programs .efmpr-item:hover .efmpr-item__cta{ background:var(--efmpr-ink); color:#fff; }
 
+/* ---- Add to Calendar ---- */
+#efm-programs .efmpr-cal{ margin-top:14px; }
+#efm-programs .efmpr-cal__btn{ display:inline-flex; align-items:center; gap:7px; appearance:none; -webkit-appearance:none; cursor:pointer; background:#fff; border:1.5px solid var(--efmpr-rule); color:var(--efmpr-ink); font-family:var(--efmpr-name-font); font-size:13.5px; padding:8px 14px; border-radius:999px; transition:border-color .15s ease, background .15s ease; }
+#efm-programs .efmpr-cal__btn:hover{ border-color:var(--efmpr-ink); background:var(--efmpr-soft); }
+#efm-programs .efmpr-cal__btn:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:3px; }
+#efm-programs .efmpr-cal__btn svg{ flex:0 0 auto; }
+#efm-programs .efmpr-cal__menu{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+#efm-programs .efmpr-cal__menu[hidden]{ display:none; }
+#efm-programs .efmpr-cal__opt{ appearance:none; -webkit-appearance:none; cursor:pointer; background:var(--efmpr-soft); border:1px solid var(--efmpr-rule); color:var(--efmpr-ink)!important; text-decoration:none!important; font-family:var(--efmpr-body-font); font-size:13.5px; padding:8px 14px; border-radius:8px; transition:background .15s ease, border-color .15s ease; }
+#efm-programs .efmpr-cal__opt:hover{ background:#fff; border-color:var(--efmpr-ink); }
+#efm-programs .efmpr-cal__opt:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:2px; }
+
 /* ---- Program Book viewer ---- */
 #efm-programs .efmpr-book{ border:1px solid var(--efmpr-rule); border-radius:14px; background:#fff; overflow:hidden; }
 #efm-programs .efmpr-book__head{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 22px; border-bottom:1px solid var(--efmpr-rule); }
