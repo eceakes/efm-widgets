@@ -27,10 +27,13 @@
   var TABS = [{key:"concerts",label:"Concert Programs"},{key:"masterclasses",label:"Masterclasses"},{key:"programbook",label:"Program Book"}];
   var DEFAULT_TAB = "concerts";
 
-  /* Program Book tab — one season-wide PDF, shown inline + downloadable. "" hides the tab. */
-  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17+%282%29.pdf";
+  /* Program Book tab — an interactive flipbook embed with a downloadable PDF
+     (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
+     (blank both to hide the tab). */
+  var PROGRAM_BOOK_EMBED_URL = "https://online.flippingbook.com/view/416920229/";   /* flipbook viewer ("" -> show the PDF inline instead) */
+  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17+%282%29.pdf";   /* PDF: download + accessible fallback */
   var PROGRAM_BOOK_TITLE = "2026 Program Book";
-  var PROGRAM_BOOK_BLURB = "Browse or download the complete season program book.";
+  var PROGRAM_BOOK_BLURB = "Flip through the season program book below, or download the PDF.";
 
   /* Conversion CTA (any blank URL hides that button). */
   var TICKETS_URL   = "https://www.tangercenter.com/events/eastern-festival-of-music/";
@@ -252,21 +255,26 @@
   /* ---- Program Book panel: inline PDF viewer + download (lazy-loaded on tab activate) ---- */
   var bookFrame=null;
   function renderProgramBook(panelEl, book){
-    var url=httpUrl(book.url); panelEl.innerHTML="";
+    var pdf=httpUrl(book.pdf), embed=httpUrl(book.embed);
+    var viewer=embed||(pdf?pdf+"#view=FitH":""), dl=pdf||embed, isFlip=!!embed;
+    var frameTitle=escapeHtml(PROGRAM_BOOK_TITLE+(isFlip?" (interactive flipbook)":" (PDF document viewer)"));
+    var btnLabel=pdf?"View / Download (PDF)":"Open the program book";
+    var btnAria=escapeHtml(pdf?("View or download "+PROGRAM_BOOK_TITLE+" (PDF, opens in a new tab)"):("Open "+PROGRAM_BOOK_TITLE+" (opens in a new tab)"));
+    panelEl.innerHTML="";
     var card=document.createElement("div"); card.className="efmpr-book";
     card.innerHTML='<div class="efmpr-book__head">'+
         '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(PROGRAM_BOOK_TITLE)+'</div>'+
           (PROGRAM_BOOK_BLURB?'<div class="efmpr-book__blurb">'+escapeHtml(PROGRAM_BOOK_BLURB)+'</div>':'')+'</div>'+
-        '<a class="efmpr-book__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" download data-book-dl aria-label="View or download '+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF, opens in a new tab)">'+downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
+        '<a class="efmpr-book__btn" href="'+escapeHtml(dl)+'" target="_blank" rel="noopener noreferrer"'+(pdf?' download':'')+' data-book-dl aria-label="'+btnAria+'">'+downloadIconSvg()+'<span>'+escapeHtml(btnLabel)+'</span></a>'+
       '</div>'+
-      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+escapeHtml(PROGRAM_BOOK_TITLE)+' (PDF document viewer)" loading="lazy" referrerpolicy="no-referrer" data-src="'+escapeHtml(url)+'#view=FitH"></iframe>'+
-        '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a></p></div>';
+      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+frameTitle+'" loading="lazy" allowfullscreen scrolling="no" data-src="'+escapeHtml(viewer)+'"></iframe>'+
+        '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(embed||dl)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a>'+(pdf&&isFlip?' Or <a href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download>download the PDF</a>.':'')+'</p></div>';
     panelEl.appendChild(card);
     bookFrame=card.querySelector(".efmpr-book__frame");
-    var viewer=card.querySelector(".efmpr-book__viewer");
-    if(bookFrame&&viewer) bookFrame.addEventListener("load",function(){ viewer.setAttribute("aria-busy","false"); });
-    var dl=card.querySelector("[data-book-dl]");
-    if(dl) dl.addEventListener("click",function(){ track(EV_DOWNLOAD,{ concert:"Program Book", item_type:"Program Book", item_title:PROGRAM_BOOK_TITLE, file_name:fileNameOf(url), link_url:url }); });
+    var viewerEl=card.querySelector(".efmpr-book__viewer");
+    if(bookFrame&&viewerEl) bookFrame.addEventListener("load",function(){ viewerEl.setAttribute("aria-busy","false"); });
+    var dlbtn=card.querySelector("[data-book-dl]");
+    if(dlbtn) dlbtn.addEventListener("click",function(){ track(EV_DOWNLOAD,{ concert:"Program Book", item_type:"Program Book", item_title:PROGRAM_BOOK_TITLE, file_name:fileNameOf(dl), link_url:dl }); });
   }
   function loadBookFrame(){ if(bookFrame && !bookFrame.getAttribute("src")){ var s=bookFrame.getAttribute("data-src"); if(s){ var v=bookFrame.parentNode; if(v&&v.setAttribute) v.setAttribute("aria-busy","true"); bookFrame.setAttribute("src",s); } } }
 
@@ -315,8 +323,9 @@
     try{ el.scrollIntoView({behavior:(window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches)?"auto":"smooth", block:"start"}); }catch(e){ el.scrollIntoView(); } }
 
   function render(data){
+    var bpdf=httpUrl(PROGRAM_BOOK_URL), bembed=httpUrl(PROGRAM_BOOK_EMBED_URL);
     var content={ concerts:buildGroups(data.events), masterclasses:buildGroups(data.masterclasses),
-                  programbook: httpUrl(PROGRAM_BOOK_URL)? [{ url:httpUrl(PROGRAM_BOOK_URL) }] : [] };
+                  programbook: (bpdf||bembed)? [{ pdf:bpdf, embed:bembed }] : [] };
     var keys=TABS.map(function(t){return t.key;}).filter(function(k){ return content[k] && content[k].length; });
     if(!keys.length){ setStatus("Programs will be posted here soon — check back closer to each concert."); return; }
     setStatus("");
