@@ -31,9 +31,9 @@
      (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
      (blank both to hide the tab). */
   var PROGRAM_BOOK_EMBED_URL = "https://online.flippingbook.com/view/416920229/";   /* flipbook viewer ("" -> show the PDF inline instead) */
-  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17+%282%29.pdf";   /* PDF: download + accessible fallback */
+  var PROGRAM_BOOK_URL   = "";   /* optional PDF — set a URL to add a Download-PDF button + screen-reader fallback (blank = flipbook only) */
   var PROGRAM_BOOK_TITLE = "2026 Program Book";
-  var PROGRAM_BOOK_BLURB = "Flip through the season program book below, or download the PDF.";
+  var PROGRAM_BOOK_BLURB = "Flip through the complete season program book below.";
 
   /* Conversion CTA (any blank URL hides that button). */
   var TICKETS_URL   = "https://www.tangercenter.com/events/eastern-festival-of-music/";
