@@ -18,6 +18,7 @@
   -webkit-font-smoothing:antialiased;
 }
 #efm-programs.efmpr *{ box-sizing:border-box; }
+#efm-programs .efmpr-sr-only{ position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 #efm-programs .efmpr-title{
   font-family:var(--efmpr-title-font); color:var(--efmpr-ink); text-align:center;

@@ -31,9 +31,9 @@
      (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
      (blank both to hide the tab). */
   var PROGRAM_BOOK_EMBED_URL = "https://online.flippingbook.com/view/416920229/";   /* flipbook viewer ("" -> show the PDF inline instead) */
-  var PROGRAM_BOOK_URL   = "";   /* optional PDF — set a URL to add a Download-PDF button + screen-reader fallback (blank = flipbook only) */
+  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17+%282%29.pdf";   /* PDF: download + screen-reader-accessible alternative to the flipbook */
   var PROGRAM_BOOK_TITLE = "2026 Program Book";
-  var PROGRAM_BOOK_BLURB = "Flip through the complete season program book below.";
+  var PROGRAM_BOOK_BLURB = "Flip through the season program book below, or download the PDF.";
 
   /* Conversion CTA (any blank URL hides that button). */
   var TICKETS_URL   = "https://www.tangercenter.com/events/eastern-festival-of-music/";
@@ -260,6 +260,7 @@
     var frameTitle=escapeHtml(PROGRAM_BOOK_TITLE+(isFlip?" (interactive flipbook)":" (PDF document viewer)"));
     var btnLabel=pdf?"View / Download (PDF)":"Open the program book";
     var btnAria=escapeHtml(pdf?("View or download "+PROGRAM_BOOK_TITLE+" (PDF, opens in a new tab)"):("Open "+PROGRAM_BOOK_TITLE+" (opens in a new tab)"));
+    var srNote=(isFlip&&pdf)?'<p class="efmpr-sr-only">The program book below is shown as an interactive flipbook. For a screen-reader-accessible version, use the "View / Download (PDF)" button above.</p>':'';
     panelEl.innerHTML="";
     var card=document.createElement("div"); card.className="efmpr-book";
     card.innerHTML='<div class="efmpr-book__head">'+
@@ -267,7 +268,7 @@
           (PROGRAM_BOOK_BLURB?'<div class="efmpr-book__blurb">'+escapeHtml(PROGRAM_BOOK_BLURB)+'</div>':'')+'</div>'+
         '<a class="efmpr-book__btn" href="'+escapeHtml(dl)+'" target="_blank" rel="noopener noreferrer"'+(pdf?' download':'')+' data-book-dl aria-label="'+btnAria+'">'+downloadIconSvg()+'<span>'+escapeHtml(btnLabel)+'</span></a>'+
       '</div>'+
-      '<div class="efmpr-book__viewer" aria-busy="false"><iframe class="efmpr-book__frame" title="'+frameTitle+'" loading="lazy" allowfullscreen scrolling="no" data-src="'+escapeHtml(viewer)+'"></iframe>'+
+      '<div class="efmpr-book__viewer" aria-busy="false">'+srNote+'<iframe class="efmpr-book__frame" title="'+frameTitle+'" loading="lazy" allowfullscreen scrolling="no" data-src="'+escapeHtml(viewer)+'"></iframe>'+
         '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(embed||dl)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a>'+(pdf&&isFlip?' Or <a href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download>download the PDF</a>.':'')+'</p></div>';
     panelEl.appendChild(card);
     bookFrame=card.querySelector(".efmpr-book__frame");
