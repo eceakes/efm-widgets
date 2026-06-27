@@ -117,11 +117,12 @@
   // portal (General Information | Calendar | Auditions & Classes | … | Campus Map
   // | Room Schedule) with the faculty-only Contact tabs kept together.
   var NAV = [
-    // General Information is now pill-split (like the 2026 portal). "Dining Hours"
-    // is the Master Calendar dining block; the rest are major sections pulled from
-    // the Faculty-Portal "General-Information" tab, matched by heading text.
+    // General Information is now pill-split (like the 2026 portal). "Dining" is the
+    // Master Calendar dining block (on-campus hours + off-campus options); the rest
+    // are major sections pulled from the Faculty-Portal "General-Information" tab,
+    // matched by heading text.
     { id: "info", label: "General Information", subs: [
-      { label: "Dining Hours", kind: "dining" },
+      { label: "Dining", kind: "dining" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
@@ -629,18 +630,24 @@
     return html;
   }
 
-  // General Information -> "Dining Hours" pill (from the Master Calendar "General
-  // Information" tab). The tab's own title becomes the section head; day ranges
-  // are sub-heads; Breakfast/Lunch/Dinner/Brunch lines are meal rows; other lines
-  // are paragraphs.
+  // General Information -> "Dining" pill (from the Master Calendar "General
+  // Information" tab). Shows the on-campus dining hall hours and the "Off Campus
+  // Dining" block. The tab's own title becomes the section head; day ranges are
+  // sub-heads; Breakfast/Lunch/Dinner/Brunch lines are meal rows; other lines are
+  // paragraphs.
   function renderDining() {
     banner.hidden = true; status.hidden = true;
     var html = '<div class="efmfp-info efmfp-info--center">';
-    var dl = diningLines.filter(function (l) { return l !== ""; })
+    var all = diningLines.filter(function (l) { return l !== ""; })
       .filter(function (l) { return !/^general information$/i.test(l); });
-    // The General Information tab also holds a "Chamber Music Coaches" roster (its
-    // own pill); render only the dining block here.
-    for (var ci = 0; ci < dl.length; ci++) { if (/^chamber music coaches/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
+    // The General Information tab stacks the dining hall hours, a "Chamber Music
+    // Coaches" roster (its own pill), then "Off Campus Dining". This pill shows the
+    // dining hall hours followed by the off-campus block, skipping the roster.
+    var dl = all.slice();
+    for (var ci = 0; ci < dl.length; ci++) { if (/^chamber music coaches/i.test(dl[ci]) || /^off[\s-]*campus dining/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
+    // Off-campus dining block: from its heading to the end of the tab.
+    var off = [];
+    for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
     var diningHead = "Dining";
     for (var di = 0; di < dl.length; di++) { if (/^dining\b/i.test(dl[di])) { diningHead = dl[di]; dl.splice(di, 1); break; } }
     html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(diningHead) + "</div>";
@@ -655,12 +662,24 @@
         else html += "<p>" + esc(l) + "</p>";
       });
       html += "</div>";
-    } else {
+    } else if (!off.length) {
       html += "<p>Dining information will appear here once posted in the master calendar.</p>";
+    }
+    // Off-campus dining: a second section head + card under the same pill. The first
+    // line is the section head; a short, punctuation-free line ("EFM dining
+    // discounts") is a sub-head; everything else is a paragraph.
+    if (off.length) {
+      html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(off[0]) + "</div>";
+      html += '<div class="efmfp-info__card">';
+      off.slice(1).forEach(function (l) {
+        if (isHeadingLine(l)) html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(l) + "</div>";
+        else html += "<p>" + esc(l) + "</p>";
+      });
+      html += "</div>";
     }
     html += "</div>";
     list.innerHTML = html;
-    announce("Dining hours shown.");
+    announce("Dining information shown.");
     syncBox();
   }
 
@@ -679,6 +698,10 @@
       syncBox();
       return;
     }
+    // The "Off Campus Dining" section follows the roster on the same tab (it lives
+    // under the Dining pill); stop before it so its text isn't read as coach names.
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (/^off[\s-]*campus dining/i.test(lines[e])) { end = e; break; } }
     var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
     var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
     var curNames = [], curSec = null;
@@ -689,7 +712,7 @@
       }
       curNames = [];
     }
-    lines.slice(start + 1).forEach(function (l) {
+    lines.slice(start + 1, end).forEach(function (l) {
       if (SECTIONS[l.toLowerCase().trim()]) { flush(); curSec = l; }
       else curNames.push(l);
     });

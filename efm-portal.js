@@ -76,7 +76,7 @@
   // Tab order (left -> right). NAV[0] is also the default tab shown on load.
   var NAV = [
     { id: "info", label: "General Information", subs: [
-      { label: "Dining Hall", kind: "dining" },
+      { label: "Dining", kind: "dining" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Staff Contacts", kind: "staffList" },
       { label: "Student Handbook", kind: "handbook" } ] },
@@ -511,19 +511,26 @@
     finishList(html, shown, res.banner);
   }
 
-  // General Information -> "Dining Hall" pill: the dining content from the Master
-  // Calendar "General Information" tab.
+  // General Information -> "Dining" pill: both the on-campus dining hall hours and
+  // the "Off Campus Dining" block from the Master Calendar "General Information"
+  // tab. The tab stacks three sections (dining hall hours, a "Chamber Music
+  // Coaches" roster, then "Off Campus Dining"); this pill shows the first and last,
+  // skipping the coaches roster (its own pill) in between.
   function renderDining() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     var html = '<div class="efmp-info">';
-    var lines = generalInfo.filter(function (l) { return l !== ""; });
-    if (lines.length && /^general information$/i.test(lines[0])) lines = lines.slice(1);
-    // The General Information tab also holds a "Chamber Music Coaches" roster below
-    // the dining hours (its own pill); render only the dining block here.
-    for (var di = 0; di < lines.length; di++) { if (/^chamber music coaches/i.test(lines[di])) { lines = lines.slice(0, di); break; } }
-    if (!lines.length) html += "<p>Dining hall hours will appear here once posted.</p>";
-    lines.forEach(function (l) {
+    var all = generalInfo.filter(function (l) { return l !== ""; });
+    // Dining hall block: from after the tab title down to the next section heading
+    // (the coaches roster, or off-campus dining if the roster is absent).
+    var hall = all.slice();
+    if (hall.length && /^general information$/i.test(hall[0])) hall = hall.slice(1);
+    for (var di = 0; di < hall.length; di++) { if (/^chamber music coaches/i.test(hall[di]) || /^off[\s-]*campus dining/i.test(hall[di])) { hall = hall.slice(0, di); break; } }
+    // Off-campus dining block: from its heading to the end of the tab.
+    var off = [];
+    for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
+    if (!hall.length && !off.length) html += "<p>Dining hours will appear here once posted.</p>";
+    function renderLine(l) {
       // A line is a heading if it's ALL CAPS, a short label, or the dining title
       // (e.g. "Dining Hall Hours (Located in Founders Hall)") which is too long for
       // the short-label rule but should still read as a heading.
@@ -532,10 +539,12 @@
       html += heading
         ? '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(l) + "</div>"
         : "<p>" + esc(l) + "</p>";
-    });
+    }
+    hall.forEach(renderLine);
+    off.forEach(renderLine);
     html += "</div>";
     list.innerHTML = html;
-    announce("Dining hall hours shown.");
+    announce("Dining information shown.");
   }
 
   // General Information -> "Staff Contacts" pill: the staff directory cards,
@@ -584,6 +593,10 @@
     var start = -1;
     for (var i = 0; i < lines.length; i++) { if (/^chamber music coaches/i.test(lines[i])) { start = i; break; } }
     if (start < 0) { finishList("", 0, "", "Chamber music coaches will appear here once posted."); return; }
+    // The "Off Campus Dining" section follows the roster on the same tab (its own
+    // pill); stop the roster before it so its text doesn't bleed in as coach names.
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (/^off[\s-]*campus dining/i.test(lines[e])) { end = e; break; } }
     var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
     var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
     var curNames = [], curSec = null;
@@ -594,7 +607,7 @@
       }
       curNames = [];
     }
-    lines.slice(start + 1).forEach(function (l) {
+    lines.slice(start + 1, end).forEach(function (l) {
       if (SECTIONS[l.toLowerCase().trim()]) { flush(); curSec = l; }
       else curNames.push(l);
     });
