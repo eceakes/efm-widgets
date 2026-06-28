@@ -39,7 +39,6 @@
   var FP_TABS = {
     faculty: { name: "FacultyContact", gid: "0" },
     info:    { name: "General-Information", gid: "1025224143" },
-    subs:    { name: "Weekly-EFO-Subs", gid: "1288329624" },
     rosters: { name: "Rosters", gid: "1681602909" },
     staff:   { name: "Staff", gid: "1949353186" },
     fellows: { name: "Orchestral-Fellows", gid: "752003554" },
@@ -149,7 +148,6 @@
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "contacts", label: "Contacts", subs: [
       { label: "Faculty", kind: "facultyCards" },
-      { label: "Subs", kind: "subCards" },
       { label: "Orchestral Fellows", kind: "fellowCards" },
       { label: "Staff", kind: "staffCards" } ] },
     { id: "map", label: "Campus Map", subs: [
@@ -371,7 +369,6 @@
   var sectionalEns = "ESO"; // selected sectionals ensemble (3rd-level under the Sectionals pill)
   var ticketData = null;    // parsed Friends-Family-Discounts: { head, blurb, codes:[{code,url,key,concert,day}], byKey }
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
-  var subPeople = [];
   var fellowPeople = [];
   var staffPeople = [];
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
@@ -1224,7 +1221,6 @@
         { noun: "event", emptyMsg: "No events scheduled in this room." });
     }
     else if (k === "facultyCards") renderCards(facultyPeople, { grouped: true, avatar: true, empty: "Faculty contacts will appear here once posted." });
-    else if (k === "subCards") renderCards(subPeople, { grouped: false, avatar: false, empty: "Substitute contacts will appear here once posted." });
     else if (k === "fellowCards") renderCards(fellowPeople, { grouped: false, avatar: true, empty: "Orchestral Fellow contacts will appear here once posted." });
     else if (k === "staffCards") renderStaffCards();
     updateICSButton();
@@ -1655,7 +1651,6 @@
   function build(data) {
     // contacts
     facultyPeople = data.faculty ? parseContacts(data.faculty, "faculty") : [];
-    subPeople = data.subs ? parseContacts(data.subs, "subs") : [];
     fellowPeople = data.fellows ? parseContacts(data.fellows, "fellows") : [];
     staffPeople = data.staff ? parseContacts(data.staff, "staff") : [];
     // photos (best-effort)
@@ -1716,7 +1711,6 @@
       var fpDir = dirs[0], mcDir = dirs[1];
       var jobs = {
         faculty: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.faculty)]),
-        subs: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.subs)]),
         fellows: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.fellows)]),
         staff: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.staff)]),
         rosters: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.rosters)]),
