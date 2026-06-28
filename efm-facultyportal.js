@@ -1197,7 +1197,13 @@
     }
     else if (k === "allEvents") {
       viewLabel = "EFM Full Schedule";
-      renderAgenda(allRows, { feedKey: "all", noun: "event", emptyMsg: "No events scheduled." });
+      // Upcoming only: keep events dated today or later. key is an MMDD integer and
+      // allRows is already sorted chronologically (date, then start time) in
+      // parseCalendar. todayKey() is null outside the festival year, in which case
+      // show the full ordered list rather than blank the tab.
+      var tk = todayKey();
+      var upcoming = (tk === null) ? allRows : allRows.filter(function (r) { return r.key !== null && r.key >= tk; });
+      renderAgenda(upcoming, { feedKey: "all", noun: "event", emptyMsg: "No upcoming events scheduled." });
     }
     else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.roster); }
     else if (k === "roomsToday") {
