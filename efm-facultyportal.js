@@ -9,7 +9,7 @@
    Tabs:
      General Information  — Dining (from the Master Calendar "General
                             Information" tab) + Dress Code (Faculty-Portal sheet)
-     Calendar             — EFO / ECP (Master Calendar ensemble tabs, live;
+     Calendar             — EFO / ECP / REP (Master Calendar ensemble tabs, live;
                             search + one-click Add to Calendar, like 2026-portal)
      Rosters              — one sub-tab per Rosters-sheet week marked Release=Yes;
                             each shows the roster PDF + that week's EFO services,
@@ -45,7 +45,7 @@
     tickets: { name: "Friends-Family-Discounts", gid: "1079241752" }
   };
 
-  // The Master Calendar (same document that feeds the 2026 portal). EFO/ECP are
+  // The Master Calendar (same document that feeds the 2026 portal). EFO/ECP/REP are
   // dedicated, pre-filtered ensemble tabs; "General Information" holds dining.
   // Resolved by NAME (gids change when the calendar is rebuilt); gids are fallback.
   var MC_PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQg7mhQsWCaOdsg1k_z-TkSHRqNDTuAQE7NEXr6xzCBR-psxMoQGExmVlINpF-xu_3FIgbE4qSK1aAJ";
@@ -54,6 +54,7 @@
   var MC_TABS = {
     EFO:         { name: "EFO", gid: "1438770792" },
     ECP:         { name: "ECP", gid: "518713173" },
+    REP:         { name: "REP", gid: "112601993" },
     OUT:         { name: "Outreach Concerts", gid: "1962241618" },
     generalInfo: { name: "General Information", gid: "1031874194" },
     // Full master calendar + Legend -> the Room Schedule tab (today + per-room).
@@ -135,6 +136,7 @@
     { id: "calendar", label: "Calendar", subs: [
       { label: "Eastern Festival Orchestra", kind: "ensemble", code: "EFO", weeks: true },
       { label: "Eastern Chamber Players", kind: "ensemble", code: "ECP" },
+      { label: "Repertory Orchestra", kind: "ensemble", code: "REP" },
       { label: "Outreach", kind: "ensemble", code: "OUT" },
       { label: "All Events", kind: "allEvents" } ] },
     // One grouped tab; the class + assignment pages are sub-tab pills. A pill
@@ -1659,9 +1661,10 @@
     if (data.fellowPhotos) attachPhotos(fellowPeople, photoMap(data.fellowPhotos));
     // legend (room-code names) before parsing the full master calendar
     if (data.legend) applyLegend(data.legend);
-    // calendar ensembles (EFO/ECP standard layout, Outreach Concerts alternate)
+    // calendar ensembles (EFO/ECP/REP standard layout, Outreach Concerts alternate)
     ensembles.EFO = parseEnsemble(data.EFO);
     ensembles.ECP = parseEnsemble(data.ECP);
+    ensembles.REP = parseEnsemble(data.REP);
     ensembles.OUT = parseEnsemble(data.OUT);
     buildAnchors();
 
@@ -1719,6 +1722,7 @@
         tickets: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.tickets)]),
         EFO: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.EFO)]),
         ECP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.ECP)]),
+        REP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.REP)]),
         OUT: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.OUT)]),
         generalInfo: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.generalInfo)]),
         master: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.master)]),
