@@ -114,7 +114,7 @@
 
   /* ---- navigation model ------------------------------------------------ */
   // NAV[0] is the default tab on load. Tab order left -> right; mirrors the 2026
-  // portal (General Information | Calendar | Auditions & Classes | … | Campus Map
+  // portal (General Information | Calendar | Classes & Assignments | … | Campus Map
   // | Room Schedule) with the faculty-only Contact tabs kept together.
   var NAV = [
     // General Information is now pill-split (like the 2026 portal). "Dining" is the
@@ -123,8 +123,6 @@
     // matched by heading text.
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
-      { label: "Chamber Coaches", kind: "chamberCoaches" },
-      { label: "Lessons", kind: "lessons" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
@@ -139,12 +137,15 @@
       { label: "Eastern Chamber Players", kind: "ensemble", code: "ECP" },
       { label: "Outreach", kind: "ensemble", code: "OUT" },
       { label: "All Events", kind: "allEvents" } ] },
-    // One grouped tab; the four info pages are sub-tab pills. A pill carrying
-    // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
-    { id: "programs", label: "Auditions & Classes", subs: [
+    // One grouped tab; the class + assignment pages are sub-tab pills. A pill
+    // carrying showWhen appears only if that tab's Show/Hide cell reads "Yes"
+    // (build()) — e.g. Placement Auditions hides when its sheet cell reads "No".
+    { id: "programs", label: "Classes & Assignments", subs: [
       { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
       { label: "Sectionals", kind: "sectional", sectionals: true },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
+      { label: "Chamber Coaches", kind: "chamberCoaches" },
+      { label: "Lessons", kind: "lessons" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "contacts", label: "Contacts", subs: [
       { label: "Faculty", kind: "facultyCards" },
