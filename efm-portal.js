@@ -55,6 +55,7 @@
     { key: "legend", tab: TAB_LEGEND },
     { key: "announcements", tab: "Announcements" },
     { key: "generalInfo", tab: "General Information" },
+    { key: "lessons", tab: "Faculty Lesson Locations" },
     { key: "staff", tab: "Staff List" },
     { key: "placement", tab: "Placement Auditions" },
     { key: "sectionals", tab: "Sectional Rehearsals" },
@@ -78,6 +79,7 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
+      { label: "Lessons", kind: "lessons" },
       { label: "Staff Contacts", kind: "staffList" },
       { label: "Student Handbook", kind: "handbook" } ] },
     { id: "calendar", label: "Calendar", subs: [
@@ -323,6 +325,7 @@
   var seenRooms = {};
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
+  var lessons = [];        // [{ instrument, people:[{name, room}] }] from the "Faculty Lesson Locations" tab
   var staff = [];          // [{ dept, people:[{name,title,contact,office}] }] from the "Staff List" tab
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
   var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
@@ -617,6 +620,53 @@
     announce("Chamber music coaches shown.");
   }
 
+  // Parse the Master Calendar "Faculty Lesson Locations" tab (Name / Room /
+  // Instrument) into instrument groups in first-seen order. Columns are matched
+  // by header name so they can be reordered or renamed in the sheet.
+  function parseLessons(rows) {
+    if (!rows || !rows.length) return [];
+    var ni = 0, ri = 1, ii = 2, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = rows[h].map(function (c) { return (c || "").trim().toLowerCase(); });
+      if (lc.indexOf("name") !== -1 && lc.indexOf("instrument") !== -1) {
+        ni = lc.indexOf("name"); ii = lc.indexOf("instrument");
+        ri = lc.indexOf("room"); if (ri === -1) ri = lc.indexOf("location"); if (ri === -1) ri = lc.indexOf("studio");
+        start = h + 1; break;
+      }
+    }
+    var order = [], byInst = {};
+    rows.slice(start).forEach(function (r) {
+      var name = (r[ni] || "").trim();
+      var inst = (r[ii] || "").trim();
+      var room = (ri >= 0 ? (r[ri] || "") : "").trim();
+      if (!name) return;
+      var key = inst || "Other";
+      if (!byInst[key]) { byInst[key] = []; order.push(key); }
+      byInst[key].push({ name: name, room: room });
+    });
+    return order.map(function (k) { return { instrument: k, people: byInst[k] }; });
+  }
+
+  // General Information -> "Lessons" pill: faculty private-lesson locations from
+  // the Master Calendar "Faculty Lesson Locations" tab, grouped by instrument.
+  function renderLessons() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    if (!lessons.length) { finishList("", 0, "", "Faculty lesson locations will appear here once posted."); return; }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Faculty Lesson Locations</div>';
+    var people = 0;
+    lessons.forEach(function (g) {
+      html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.instrument) + "</div>";
+      g.people.forEach(function (p) {
+        html += '<div class="efmp-kv"><b>' + esc(p.name) + "</b><span>" + esc(p.room || "Location to be announced") + "</span></div>";
+        people++;
+      });
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce(people + " faculty lesson locations shown.");
+  }
+
   function renderMap() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -789,12 +839,13 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "lessons");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "chamberCoaches") renderChamberCoaches();
+    else if (sub.kind === "lessons") renderLessons();
     else if (sub.kind === "staffList") renderStaffList();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else renderAgenda(rowsForSub(sub));
@@ -1104,6 +1155,7 @@
     if (data.legend) applyLegend(data.legend);
     if (data.staff) staff = parseStaff(data.staff);
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
+    if (data.lessons) lessons = parseLessons(data.lessons);
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
 
     // Info tabs (raw rows) + the section -> room table used for sectional modals.

@@ -64,7 +64,8 @@
     placement:   { name: "Placement Auditions", gid: "1024060038" },
     sectionals:  { name: "Sectional Rehearsals", gid: "436439129" },
     studio:      { name: "Faculty Studio Classes", gid: "166720750" },
-    concerto:    { name: "Concerto Competition", gid: "1210854934" }
+    concerto:    { name: "Concerto Competition", gid: "1210854934" },
+    lessons:     { name: "Faculty Lesson Locations", gid: "1473494961" }
   };
 
   // Headshots. Faculty photos come from the same roster sheet the public Faculty
@@ -124,6 +125,7 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
+      { label: "Lessons", kind: "lessons" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
@@ -374,6 +376,7 @@
   var staffPeople = [];
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
+  var lessons = [];        // [{ instrument, people:[{name, room}] }] from the Master Calendar "Faculty Lesson Locations" tab
   var allRows = [];        // every Master Calendar row (Room Schedule tab)
   var seenRooms = {};      // room codes actually used (-> which per-room pills to build)
   var infoTabs = {};       // source key -> raw rows for Auditions & Classes (placement/sectionals/studio/concerto)
@@ -720,6 +723,60 @@
     html += "</div>";
     list.innerHTML = html;
     announce("Chamber music coaches shown.");
+    syncBox();
+  }
+
+  // Parse the Master Calendar "Faculty Lesson Locations" tab (Name / Room /
+  // Instrument) into instrument groups in first-seen order. Columns are matched
+  // by header name so they can be reordered or renamed in the sheet.
+  function parseLessons(rows) {
+    if (!rows || !rows.length) return [];
+    var ni = 0, ri = 1, ii = 2, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = rows[h].map(function (c) { return clean(c).toLowerCase(); });
+      if (lc.indexOf("name") !== -1 && lc.indexOf("instrument") !== -1) {
+        ni = lc.indexOf("name"); ii = lc.indexOf("instrument");
+        ri = lc.indexOf("room"); if (ri === -1) ri = lc.indexOf("location"); if (ri === -1) ri = lc.indexOf("studio");
+        start = h + 1; break;
+      }
+    }
+    var order = [], byInst = {};
+    rows.slice(start).forEach(function (r) {
+      var name = clean(r[ni]), inst = clean(r[ii]), room = ri >= 0 ? clean(r[ri]) : "";
+      if (!name) return;
+      var key = inst || "Other";
+      if (!byInst[key]) { byInst[key] = []; order.push(key); }
+      byInst[key].push({ name: name, room: room });
+    });
+    return order.map(function (k) { return { instrument: k, people: byInst[k] }; });
+  }
+
+  // General Information -> "Lessons" pill: faculty private-lesson locations from
+  // the Master Calendar "Faculty Lesson Locations" tab, grouped by instrument.
+  function renderLessons() {
+    banner.hidden = true; status.hidden = true;
+    if (!lessons.length) {
+      list.innerHTML = "";
+      status.textContent = "Faculty lesson locations will appear here once posted.";
+      status.hidden = false;
+      announce("Faculty lesson locations will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">Faculty Lesson Locations</div>';
+    var people = 0;
+    lessons.forEach(function (g) {
+      html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(g.instrument) + "</div>";
+      html += '<div class="efmfp-info__card">';
+      g.people.forEach(function (p) {
+        html += '<div class="efmfp-info__meal"><b>' + esc(p.name) + "</b><span>" + esc(p.room || "Location to be announced") + "</span></div>";
+        people++;
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce(people + " faculty lesson locations shown.");
     syncBox();
   }
 
@@ -1117,6 +1174,7 @@
 
     if (k === "dining") renderDining();
     else if (k === "chamberCoaches") renderChamberCoaches();
+    else if (k === "lessons") renderLessons();
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "tickets") renderTickets();
     else if (k === "infoTab") renderInfoTab(sub);
@@ -1635,6 +1693,7 @@
     // info text: dining (master calendar) + the Faculty-Portal General-Information tab (full rows)
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
     infoRows = data.info || [];
+    lessons = parseLessons(data.lessons);
 
     searchBox.addEventListener("input", renderList);
     renderNav();
@@ -1667,6 +1726,7 @@
         sectionals: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.sectionals)]),
         studio: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.studio)]),
         concerto: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.concerto)]),
+        lessons: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.lessons)]),
         facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
         fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
       };
