@@ -99,6 +99,7 @@
   var DOWFULL=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
   var host, titleEl, tabsBar, statusEl, panels;
+  var _eventsPromise=null, _cacheStr=null, _hashWired=false;   /* (#2) in-flight fetch, (#4) last-painted signature, render-once guard */
 
   function setStatus(m){ if(!statusEl) return; if(m){ statusEl.textContent=m; statusEl.hidden=false; } else statusEl.hidden=true; }
   function escapeHtml(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
@@ -509,7 +510,7 @@
     var n=0,iv=setInterval(function(){ sync(); if(++n>=16) clearInterval(iv); },250); }
 
   /* ---- boot ---- */
-  function render(rawEvents){
+  function render(rawEvents, preserve){
     var events=rawEvents.map(coerce).filter(function(e){ return e.start && e.title; }).filter(visible);
     if(!events.length){ setStatus("No events to display yet."); return; }
     setStatus("");
@@ -518,12 +519,15 @@
     if(!ticketsHref){ for(var i=0;i<events.length;i++){ var tu=ticketUrl(events[i].link); if(tu){ ticketsHref=tu; break; } } }
     subscribeHref = ticketUrl(SUBSCRIBE_URL);
     buildTabs();
+    /* (#4) on a background-refresh re-render, keep the month the visitor is viewing */
+    var prevMK=(preserve && calState.events.length)?monthKey(calState.y,calState.mo):null;
     buildCalIndex(events);
+    if(prevMK!=null && prevMK>=calState.minMK && prevMK<=calState.maxMK){ calState.y=Math.floor(prevMK/12); calState.mo=((prevMK%12)+12)%12; }
     renderMonth();
     renderList(events);
     var fromHash=(location.hash||"").replace("#","").toLowerCase();
     activate(buttons[fromHash]?fromHash:(DEFAULT_TAB in buttons?DEFAULT_TAB:"calendar"), false);
-    window.addEventListener("hashchange",function(){ var k=(location.hash||"").replace("#","").toLowerCase(); if(buttons[k]) activate(k,false); });
+    if(!_hashWired){ _hashWired=true; window.addEventListener("hashchange",function(){ var k=(location.hash||"").replace("#","").toLowerCase(); if(buttons[k]) activate(k,false); }); }
     wire();
   }
   function urlOk(u){ return u && !/PASTE|YOUR_|^\s*$/.test(u); }
@@ -537,22 +541,52 @@
     });
   }
   function evKey(e){ var d=parseDate(e.start)||parseDate(e.date); return String(e.title==null?"":e.title).trim().toLowerCase()+"|"+(d?dayKey(d):""); }
-  function start(){
+  /* merge the schedule tab(s) onto the main sheet, dropping dupes (incl. a
+     not-yet-created tab that gviz answers with the main sheet's own contents). */
+  function mergeEvents(main, lists){
+    if(!main || !main.length) main=FALLBACK_DATA;          // safety net so the page is never blank
+    var all=main.slice(), seen={};
+    main.forEach(function(e){ seen[evKey(e)]=1; });
+    (lists||[]).forEach(function(l){ (l||[]).forEach(function(e){ var k=evKey(e);
+      if(seen[k]) return;
+      seen[k]=1; e.scheduleOnly=true; all.push(e); }); });
+    return all;
+  }
+  /* (#1) fetch the main sheet AND the schedule tab(s) CONCURRENTLY — they are
+     independent tabs in one workbook — instead of waiting for the main sheet to
+     resolve before the schedule request can even start, then merge. */
+  function fetchAllEvents(){
     var mainUrls=[SHEET_CSV_URL].concat(SHEET_CSV_FALLBACKS||[]).filter(urlOk);
-    if(!mainUrls.length){ render(FALLBACK_DATA); return; }
-    setStatus("Loading events…");
-    fetchEvents(mainUrls).then(function(main){
-      if(!main.length) main=FALLBACK_DATA;                 // safety net so the page is never blank
-      var schedUrls=(SCHEDULE_CSV_URLS||[]).filter(urlOk);
-      if(!schedUrls.length){ render(main); return; }
-      Promise.all(schedUrls.map(function(u){ return fetchEvents([u]); })).then(function(lists){
-        var all=main.slice(), seen={};
-        main.forEach(function(e){ seen[evKey(e)]=1; });
-        lists.forEach(function(l){ l.forEach(function(e){ var k=evKey(e);
-          if(seen[k]) return;                 // skip dupes (incl. a not-yet-created tab that gviz answers with the main sheet)
-          seen[k]=1; e.scheduleOnly=true; all.push(e); }); });
-        render(all);
-      }, function(){ render(main); });
+    var schedUrls=(SCHEDULE_CSV_URLS||[]).filter(urlOk);
+    if(!mainUrls.length) return Promise.resolve(FALLBACK_DATA.slice());
+    return Promise.all([ fetchEvents(mainUrls), Promise.all(schedUrls.map(function(u){ return fetchEvents([u]); })) ])
+      .then(function(r){ return mergeEvents(r[0], r[1]); }, function(){ return FALLBACK_DATA.slice(); });
+  }
+
+  /* (#4) stale-while-revalidate: paint the last snapshot instantly, then always
+     fetch fresh in the background and re-render ONLY if the data actually
+     changed. Preserves "edit the sheet, it's live" while killing the cold wait. */
+  var CACHE_KEY="efme-events-cache-v1", CACHE_MAX_AGE_MS=7*24*60*60*1000;
+  function cacheStore(){ try{ return window.localStorage; }catch(e){ return null; } }
+  function readCache(){ var ls=cacheStore(); if(!ls) return null;
+    try{ var o=JSON.parse(ls.getItem(CACHE_KEY)||"null");
+      if(!o || o.u!==SHEET_CSV_URL || !o.d || !o.d.length) return null;          // different sheet -> ignore
+      if(typeof o.t==="number" && (Date.now()-o.t)>CACHE_MAX_AGE_MS) return null; // too old to paint
+      _cacheStr=JSON.stringify(o.d); return o.d;
+    }catch(e){ return null; } }
+  function writeCache(data){ var ls=cacheStore(); if(!ls) return;
+    try{ ls.setItem(CACHE_KEY, JSON.stringify({ u:SHEET_CSV_URL, t:Date.now(), d:data })); }catch(e){} }
+
+  function start(){
+    if(!_eventsPromise) _eventsPromise=fetchAllEvents();    // (#2) host appeared after the script ran
+    var cached=readCache();
+    if(cached && cached.length){ render(cached); }          // (#4) instant paint from last snapshot
+    else setStatus("Loading events…");
+    _eventsPromise.then(function(all){
+      writeCache(all);                                      // refresh snapshot for next visit
+      var freshStr; try{ freshStr=JSON.stringify(all); }catch(e){ freshStr=null; }
+      if(freshStr===null || freshStr!==_cacheStr){ render(all, true); }   // re-render only on a real change
+      _cacheStr=freshStr;
     });
   }
   function boot(){
@@ -568,6 +602,10 @@
     Object.keys(panels).forEach(function(k){ if(panels[k]) panels[k].id="efme-panel-"+k; });
     start();
   }
+  /* (#2) Kick the data fetch off the moment this script runs — the host div is
+     parsed just above this <script>, so it's already in the DOM — rather than
+     waiting for the whole Duda page's DOMContentLoaded. No-ops if not present. */
+  _eventsPromise = document.getElementById("efm-events") ? fetchAllEvents() : null;
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot);
   else boot();
 })();
