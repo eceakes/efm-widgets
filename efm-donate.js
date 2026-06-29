@@ -2,7 +2,7 @@
   "use strict";
 
   /* ============================================================
-     EFM Donate — a single-page giving module for /donate.
+     EFM Donate: a single-page giving module for /donate.
      Host id #efm-donate, class prefix efmd. Config-driven (no sheet):
      every label, amount, fund and URL is a var below, so editing the
      copy is a code change (push + bump the @sha, like the other widgets).
@@ -20,14 +20,14 @@
      opens the form with the amount pre-filled and frequency pre-selected
      (one residual "Donate" tap on the form is expected; the prefill carries
      through). Cents are rejected; use whole dollars. To target a specific
-     fund, append &designationId=<ID from the Fundraise Up dashboard> — the
+     fund, append &designationId=<ID from the Fundraise Up dashboard>; the
      value is an internal id (e.g. EHHJ9R36), NOT the display label. Those
      ids are blank below until Eric pulls them from the dashboard; with a
      blank id the button still works, it just lands on the default fund.
      ============================================================ */
 
   /* ---------- HERO + framing ---------- */
-  var EYEBROW   = "Inaugural Season · Summer 2026 · Guilford College, Greensboro";
+  var EYEBROW   = "Inaugural Season 2026 | Guilford College, Greensboro";
   var HERO_TITLE = "Help bring the music home.";
   var HERO_COPY  =
     "For more than sixty years, summer in Greensboro has meant young musicians from around the world gathering at Guilford College to study, to perform, and to grow. This summer the Eastern Festival of Music opens its inaugural season, continuing a legacy of great music-making founded here in 1961, with Gerard Schwarz returning to the podium as music director. Your gift is what makes the first notes of this new chapter possible.";
@@ -37,7 +37,7 @@
 
   /* ---------- the giving platform ---------- */
   var DONATE_BASE = "https://ahrpferd.donorsupport.co/page/EFMDonations";
-  var DEFAULT_FREQ = "monthly";   /* "monthly" or "once" — which ladder is shown first (Fundraise Up's own default is monthly) */
+  var DEFAULT_FREQ = "monthly";   /* "monthly" or "once": which ladder is shown first (Fundraise Up's own default is monthly) */
 
   /* Suggested amounts. amount = WHOLE DOLLARS (no $ or commas). label = a short
      recognition caption ("" hides it). popular:true puts the "Most popular" ribbon
@@ -98,7 +98,7 @@
     { big:"60+",     small:"years of summer music-making" },
     { big:"10,000+", small:"musicians from 40 countries" },
     { big:"4,500+",  small:"alumni, including Wynton Marsalis" },
-    { big:"14–24", small:"the ages we train, from around the world" },
+    { big:"14-24", small:"the ages we train, from around the world" },
     { big:"5 weeks", small:"each summer at Guilford College" }
   ];
 
@@ -115,8 +115,8 @@
   ];
 
   /* ---------- trust + contact footer ---------- */
-  var CONTACT_EMAIL = "";   /* e.g. "give@easternfestivalofmusic.org" — "" hides the contact buttons/line */
-  var CONTACT_PHONE = "";   /* e.g. "(336) 555-0100" — "" hides */
+  var CONTACT_EMAIL = "";   /* e.g. "give@easternfestivalofmusic.org"; "" hides the contact buttons/line */
+  var CONTACT_PHONE = "";   /* e.g. "(336) 555-0100"; "" hides */
   var TRUST_ALWAYS =
     "The Eastern Festival of Music continues a legacy of music-making founded in Greensboro in 1961. Your gift is processed securely; we never see or store your card number.";
   /* Tax line stays HIDDEN until Eric confirms the 501(c)(3) determination. Fill BOTH to show it. */
