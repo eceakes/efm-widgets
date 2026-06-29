@@ -12,7 +12,7 @@
   var SCHEDULE_CSV_URLS = ["https://docs.google.com/spreadsheets/d/1zjhmDd9mhYNryry7oEd6yht0rar-QMS54yv6I_V8n-s/gviz/tq?tqx=out:csv&sheet=Masterclasses"];
 
   var MODULE_TITLE = "Events at Eastern Festival of Music";   /* big heading above the tabs; "" hides it */
-  var DEFAULT_TAB  = "calendar";    /* "calendar" or "upcoming" (URL #hash overrides) */
+  var DEFAULT_TAB  = "upcoming";    /* "calendar" or "upcoming" (URL #hash overrides) */
   var TICKETS_URL   = "https://www.ticketmaster.com/eastern-festival-of-music-tickets/artist/4397109";   /* "Purchase Tickets" tab link */
   var TICKETS_LABEL = "Purchase Tickets";    /* text shown on that tab */
   var SUBSCRIBE_URL   = "https://am.ticketmaster.com/tangercenter/buy?id=MjAz";   /* "Become a Subscriber" tab link */
@@ -321,11 +321,20 @@
   }
   function closeModal(){ if(!modal) return; modal.hidden=true; bgInert(false); if(lastFocus&&document.contains(lastFocus)&&lastFocus.focus) lastFocus.focus(); }
 
-  /* ---- UPCOMING LIST ---- */
-  function renderList(events){
-    var list=events.filter(function(e){ return !e.scheduleOnly; });   // master classes etc. stay Calendar/List-only
-    if(HIDE_PAST){ var t=today(); var up=list.filter(function(e){ return e.end>=t; }); if(up.length) list=up; }
-    list.sort(function(a,b){ return a.start-b.start; });
+  /* ---- UPCOMING EVENTS (photo cards, split into Concerts / Masterclasses sub-tabs) ---- */
+  var UP_SUBS=[
+    { key:"concerts",      label:"Concerts",      sched:false, empty:"No upcoming concerts right now, check back soon." },
+    { key:"masterclasses", label:"Masterclasses", sched:true,  empty:"No upcoming masterclasses right now, check back soon." }
+  ];
+  var upActive="concerts", upButtons={};   // default sub-tab; upActive persists across a background refresh
+
+  /* upcoming-only (a sub-tab named under "Upcoming Events" should never show past items) */
+  function upcomingFor(events, sched){
+    var list=events.filter(function(e){ return !!e.scheduleOnly===sched; });
+    if(HIDE_PAST){ var t=today(); list=list.filter(function(e){ return e.end>=t; }); }
+    return list.sort(function(a,b){ return a.start-b.start; });
+  }
+  function buildUpcomingCards(list, emptyMsg){
     var wrap=document.createElement("div"); wrap.className="efme-list";
     list.forEach(function(e){
       var card=document.createElement("article"); card.className="efme-card";
@@ -349,8 +358,38 @@
         '</div>';
       wrap.appendChild(card);
     });
-    if(!list.length){ wrap.innerHTML='<p style="color:var(--efme-role)">No upcoming events right now — check back soon.</p>'; }
-    panels.upcoming.innerHTML=""; panels.upcoming.appendChild(wrap);
+    if(!list.length){ wrap.innerHTML='<p style="color:var(--efme-role)">'+escapeHtml(emptyMsg)+'</p>'; }
+    return wrap;
+  }
+  function activateUpSub(key){
+    upActive=key;
+    UP_SUBS.forEach(function(s){ var on=s.key===key; var b=upButtons[s.key];
+      if(b){ b.setAttribute("aria-selected",on?"true":"false"); b.tabIndex=on?0:-1; }
+      var p=document.getElementById("efme-subpanel-"+s.key); if(p) p.hidden=!on; });
+    sync();   // the visible card grid changed height -> refit the Duda iframe
+  }
+  function onUpSubKey(e){ var keys=UP_SUBS.map(function(s){return s.key;}); var i=keys.indexOf(upActive);
+    if(e.key==="ArrowRight"||e.key==="ArrowDown"){ e.preventDefault(); var n=keys[(i+1)%keys.length]; activateUpSub(n); upButtons[n].focus(); }
+    else if(e.key==="ArrowLeft"||e.key==="ArrowUp"){ e.preventDefault(); var pk=keys[(i-1+keys.length)%keys.length]; activateUpSub(pk); upButtons[pk].focus(); } }
+  function renderList(events){
+    var p=panels.upcoming; p.innerHTML=""; upButtons={};
+    var bar=document.createElement("div"); bar.className="efme-subtabs"; bar.setAttribute("role","tablist"); bar.setAttribute("aria-label","Upcoming events by type");
+    UP_SUBS.forEach(function(s){
+      var b=document.createElement("button"); b.type="button"; b.className="efme-subtab"; b.id="efme-subtab-"+s.key;
+      b.textContent=s.label; b.setAttribute("role","tab"); b.setAttribute("aria-controls","efme-subpanel-"+s.key);
+      b.setAttribute("aria-selected", s.key===upActive?"true":"false"); b.tabIndex=(s.key===upActive?0:-1);
+      b.addEventListener("click",function(){ activateUpSub(s.key); });
+      b.addEventListener("keydown",onUpSubKey);
+      bar.appendChild(b); upButtons[s.key]=b;
+    });
+    p.appendChild(bar);
+    UP_SUBS.forEach(function(s){
+      var panel=document.createElement("div"); panel.className="efme-subpanel"; panel.id="efme-subpanel-"+s.key;
+      panel.setAttribute("role","tabpanel"); panel.setAttribute("aria-labelledby","efme-subtab-"+s.key);
+      panel.hidden=(s.key!==upActive);
+      panel.appendChild(buildUpcomingCards(upcomingFor(events,s.sched), s.empty));
+      p.appendChild(panel);
+    });
   }
 
   /* ---- CALENDAR ---- */

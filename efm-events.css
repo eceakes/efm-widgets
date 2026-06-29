@@ -47,6 +47,20 @@
 #efm-events .efme-tab:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; border-radius:3px; }
 #efm-events a.efme-tab{ text-decoration:none!important; display:inline-block; }   /* the link-tabs ("Purchase Tickets" / "Become a Subscriber") */
 
+/* ====================== UPCOMING EVENTS sub-tabs (Concerts / Masterclasses) ====================== */
+#efm-events .efme-subtabs{ display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin:0 0 24px; }
+#efm-events .efme-subtab{
+  appearance:none; -webkit-appearance:none; cursor:pointer;
+  font-family:var(--efme-name-font)!important; color:var(--efme-ink)!important;
+  background:#fff; border:1.5px solid var(--efme-rule); border-radius:999px;
+  font-size:14px; font-size:clamp(13px,.6vw + 12px,15px); letter-spacing:.01em; padding:8px 20px; line-height:1.2;
+  transition:background .18s ease, border-color .18s ease, color .18s ease;
+}
+#efm-events .efme-subtab:hover{ border-color:var(--efme-ink); }
+#efm-events .efme-subtab[aria-selected="true"]{ background:var(--efme-ink)!important; border-color:var(--efme-ink); color:#fff!important; }
+#efm-events .efme-subtab:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:3px; }
+#efm-events .efme-subpanel[hidden]{ display:none; }
+
 /* ====================== UPCOMING LIST ====================== */
 #efm-events .efme-list{
   display:grid; gap:clamp(20px,3cqi,30px);
