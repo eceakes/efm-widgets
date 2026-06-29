@@ -143,12 +143,12 @@
     // the Master Calendar Student-Rosters tab). With no week chosen the pill shows
     // the full ensemble schedule; a week shows that week's roster + services.
     { id: "calendar", label: "Calendar", subs: [
-      { label: "Eastern Festival Orchestra", kind: "ensemble", code: "EFO", weeks: true },
-      { label: "Eastern Chamber Players", kind: "ensemble", code: "ECP" },
-      { label: "Repertory Orchestra", kind: "ensemble", code: "REP" },
-      { label: "Outreach", kind: "ensemble", code: "OUT" },
+      { label: "EFO", kind: "ensemble", code: "EFO", weeks: true },
+      { label: "ECP", kind: "ensemble", code: "ECP" },
+      { label: "REP", kind: "ensemble", code: "REP" },
       { label: "ESO", kind: "ensemble", code: "ESO", weeks: true },
       { label: "GSO", kind: "ensemble", code: "GSO", weeks: true },
+      { label: "Outreach", kind: "ensemble", code: "OUT" },
       { label: "All Events", kind: "allEvents" } ] },
     // One grouped tab; the class + assignment pages are sub-tab pills. A pill
     // carrying showWhen appears only if that tab's Show/Hide cell reads "Yes"
