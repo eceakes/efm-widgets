@@ -108,6 +108,7 @@
 }
 #efm-donate .efmd-fund:hover{ box-shadow:0 14px 32px rgba(9,12,38,.10); border-color:#cdd3ea; transform:translateY(-2px); }
 #efm-donate .efmd-fund__chip{
+  order:-1;   /* name is first in the DOM for screen readers; chip floats visually above it */
   align-self:flex-start; font-family:var(--efmd-name-font); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
   color:#7a5b12; background:rgba(201,162,63,.16); border:1px solid rgba(201,162,63,.4); border-radius:999px; padding:4px 11px; margin:0 0 12px;
 }

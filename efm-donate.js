@@ -171,11 +171,16 @@
   function fmtMoney(n){ n=Math.round(+n||0); return "$"+String(n).replace(/\B(?=(\d{3})+(?!\d))/g,","); }
   function heading(level, cls, text){ return '<div class="'+cls+'" role="heading" aria-level="'+level+'">'+escapeHtml(text)+'</div>'; }
 
-  /* ---- in-widget smooth scroll for the hero CTAs ---- */
+  /* ---- in-widget smooth scroll for the hero CTAs: move focus to the
+         destination heading so keyboard + screen-reader users land there ---- */
   function scrollToId(id){ var el=host.querySelector("#"+id); if(!el) return;
     var smooth=!(window.matchMedia && window.matchMedia("(prefers-reduced-motion:reduce)").matches);
     try{ el.scrollIntoView({behavior:smooth?"smooth":"auto", block:"start"}); }catch(e){ el.scrollIntoView(); }
-    var f=el.querySelector("[data-efmd-focus]"); if(f){ try{ f.focus({preventScroll:true}); }catch(e2){} } }
+    var f=el.querySelector('[role="heading"]'); if(f){ f.setAttribute("tabindex","-1"); try{ f.focus({preventScroll:true}); }catch(e2){} } }
+
+  /* ---- polite screen-reader announcer (for dynamic updates like the freq toggle) ---- */
+  function announce(msg){ var l=rootEl && rootEl.querySelector("[data-efmd-live]"); if(!l) return;
+    l.textContent=""; try{ window.requestAnimationFrame(function(){ l.textContent=msg; }); }catch(e){ l.textContent=msg; } }
 
   /* ====================== SECTIONS ====================== */
   function secEyebrow(){ if(!EYEBROW) return "";
@@ -203,9 +208,11 @@
   function secFunds(){ if(!FUNDS.length) return "";
     var cards=FUNDS.map(function(f){ if(!f || !f.name) return "";
       var url=donateUrl("", "", f.designationId);
+      /* name first in the DOM (screen-reader reading order); the "share" chip
+         is floated visually above it via CSS order, so sighted order is unchanged */
       return '<div class="efmd-fund">'+
-        (f.share?'<span class="efmd-fund__chip">'+escapeHtml(f.share)+'</span>':"")+
         heading(3,"efmd-fund__name", f.name)+
+        (f.share?'<span class="efmd-fund__chip">'+escapeHtml(f.share)+'</span>':"")+
         (f.blurb?'<p class="efmd-fund__blurb">'+escapeHtml(f.blurb)+'</p>':"")+
         '<a class="efmd-btn efmd-btn--ink efmd-fund__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" '+
           'data-give="fund" data-fund="'+escapeHtml(f.name)+'" aria-label="'+escapeHtml(FUND_BTN_LABEL+": "+f.name)+' (opens in a new tab)">'+escapeHtml(FUND_BTN_LABEL)+'</a>'+
@@ -218,7 +225,7 @@
     var url=donateUrl(t.amount, freq, t.designationId);
     return '<a class="efmd-tier'+(t.popular?' efmd-tier--pop':'')+'" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" '+
         'data-give="tier" data-amount="'+escapeHtml(t.amount)+'" '+
-        'aria-label="Give '+escapeHtml(fmtMoney(t.amount))+(freq==="monthly"?" per month":"")+(t.label?", "+escapeHtml(t.label):"")+' (opens in a new tab)">'+
+        'aria-label="Give '+escapeHtml(fmtMoney(t.amount))+(freq==="monthly"?" per month":"")+(t.label?", "+escapeHtml(t.label):"")+(t.popular?", most popular":"")+' (opens in a new tab)">'+
         (t.popular?'<span class="efmd-tier__pop">Most popular</span>':'')+
         '<span class="efmd-tier__amt">'+escapeHtml(fmtMoney(t.amount))+(freq==="monthly"?'<span class="efmd-tier__per">/mo</span>':'')+'</span>'+
         (t.label?'<span class="efmd-tier__label">'+escapeHtml(t.label)+'</span>':'')+
@@ -241,9 +248,8 @@
       '</div>' : "";
     return '<section class="efmd-ladder" id="efmd-give">'+
       heading(2,"efmd-ladder__title", LADDER_TITLE)+
-      '<span data-efmd-focus tabindex="-1" class="efmd-sr-only">Choose a gift amount</span>'+
       toggle+
-      '<div class="efmd-ladder__grid" data-efmd-grid>'+ladderGridHtml()+'</div>'+
+      '<div class="efmd-ladder__grid" data-efmd-grid role="group" aria-label="Suggested gift amounts">'+ladderGridHtml()+'</div>'+
       (LADDER_NOTE?'<p class="efmd-ladder__note">'+escapeHtml(LADDER_NOTE)+'</p>':"")+
     '</section>'; }
 
@@ -298,7 +304,7 @@
   /* ====================== RENDER ====================== */
   function render(){
     var html=secEyebrow()+secHero()+secThesis()+secFunds()+secLadder()+secFounders()+secLegacy()+secWays()+secTrust();
-    rootEl.innerHTML=html;
+    rootEl.innerHTML='<div class="efmd-sr-only" data-efmd-live aria-live="polite" aria-atomic="true"></div>'+html;
     if(statusEl) statusEl.hidden=true;
     wireInteractions();
     sync();
@@ -307,6 +313,7 @@
   function setFreq(freq){ freq=(freq==="once")?"once":"monthly"; if(freq===activeFreq) return; activeFreq=freq;
     var grid=rootEl.querySelector("[data-efmd-grid]"); if(grid) grid.innerHTML=ladderGridHtml();
     Array.prototype.forEach.call(rootEl.querySelectorAll(".efmd-freq__btn"),function(b){ b.setAttribute("aria-pressed", String(b.getAttribute("data-freq")===activeFreq)); });
+    announce(activeFreq==="monthly"?"Showing monthly gift amounts.":"Showing one-time gift amounts.");
     bindGiveTracking(); sync(); }
 
   function bindGiveTracking(){
