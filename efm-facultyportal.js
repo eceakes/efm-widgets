@@ -56,11 +56,16 @@
     ECP:         { name: "ECP", gid: "518713173" },
     REP:         { name: "REP", gid: "112601993" },
     OUT:         { name: "Outreach Concerts", gid: "1962241618" },
+    // Student-orchestra tabs: not shown as their own pills, but their Details +
+    // program PDF are grafted onto the ESO/GSO rows in All Events / Room Schedule
+    // (the big Master Calendar tab leaves those columns blank). See build().
+    ESO:         { name: "ESO", gid: "1603346554" },
+    GSO:         { name: "GSO", gid: "727646847" },
     generalInfo: { name: "General Information", gid: "1031874194" },
     // Full master calendar + Legend -> the Room Schedule tab (today + per-room).
     master:      { name: "Master Calendar", gid: "310873840" },
     legend:      { name: "Legend", gid: "578774100" },
-    // Auditions & Classes info tabs (same source the 2026 portal uses).
+    // Classes & Assignments info tabs (same source the 2026 portal uses).
     placement:   { name: "Placement Auditions", gid: "1024060038" },
     sectionals:  { name: "Sectional Rehearsals", gid: "436439129" },
     studio:      { name: "Faculty Studio Classes", gid: "166720750" },
@@ -273,6 +278,18 @@
   function monthAbbr(key) { return key !== null ? MONTH_NAMES[Math.floor(key / 100) - 1].slice(0, 3) : ""; }
   function tokens(s) { return clean(s).split("/").map(function (t) { return t.trim(); }).filter(Boolean); }
   function roomLabel(code) { return ROOM_NAMES[code] || code; }
+  // First H:MM clock token, meridiem-agnostic: joins the lean ESO/GSO tabs (times
+  // read "2:00 – 5:00") onto Master Calendar rows ("2:00 PM - 5:00 PM").
+  function clockKey(t) { var m = String(t == null ? "" : t).match(/(\d{1,2})(?::(\d{2}))?/); return m ? (m[1] + ":" + (m[2] || "00")) : ""; }
+  // Label for an event's attached PDF: concerts get a program, rehearsals get a
+  // rehearsal order. Keys off the Master Calendar Type ("Concert / Performance"
+  // vs "Rehearsal"), falling back to event text and then a generic label.
+  function pdfLabel(r) {
+    var hay = ((r.type || "") + " " + (r.event || "")).toLowerCase();
+    if (/concert|perform|recital/.test(hay)) return "View Program";
+    if (/rehearsal|sectional/.test(hay)) return "View Rehearsal Order";
+    return "View PDF";
+  }
   function todayKey() { var now = new Date(); if (now.getFullYear() !== YEAR) return null; return (now.getMonth() + 1) * 100 + now.getDate(); }
 
   function startMinutes(time) {
@@ -378,10 +395,12 @@
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the Master Calendar "Faculty Lesson Locations" tab
   var allRows = [];        // every Master Calendar row (Room Schedule tab)
+  var ensDetail = {};      // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var seenRooms = {};      // room codes actually used (-> which per-room pills to build)
-  var infoTabs = {};       // source key -> raw rows for Auditions & Classes (placement/sectionals/studio/concerto)
+  var infoTabs = {};       // source key -> raw rows for Classes & Assignments (placement/sectionals/studio/concerto)
 
   var modalData = [], viewEvents = [], viewLabel = "", viewFeedKey = "";
+  var built = false;        // true once the full build() has run (gates the early first-paint)
   var topSel = NAV[0].id, subSel = {};
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
@@ -541,7 +560,7 @@
       var ev = {
         title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
         description: [r.ensemble && ("Ensemble: " + r.ensemble), r.conductor && ("Conductor / Soloist: " + r.conductor),
-          r.type && ("Type: " + r.type), r.details].filter(Boolean).join("\n")
+          r.type && ("Type: " + r.type), r.details, r.pdf && ("PDF: " + r.pdf)].filter(Boolean).join("\n")
       };
       viewEvents.push(ev);
       html += agendaRowHTML({
@@ -552,7 +571,7 @@
           title: r.event || "Event",
           fields: [["Date", (r.day ? r.day + ", " : "") + r.date], ["Time", r.time], ["Location", r.loc],
             ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
-          ticket: r.ticket, details: r.details, ics: ev
+          ticket: r.ticket, details: r.details, pdf: r.pdf, pdfLabel: pdfLabel(r), ics: ev
         }
       });
       shown++;
@@ -853,7 +872,7 @@
     syncBox();
   }
 
-  /* ---- Auditions & Classes info tabs (from the 2026 portal) ------------- */
+  /* ---- Classes & Assignments info tabs (from the 2026 portal) ------------- */
   // Find the "Show/Hide" cell, and read the value directly below it. A pill with
   // showWhen appears only when its tab's Show/Hide value reads "Yes" (build()).
   function showHideCol(rows) {
@@ -916,7 +935,7 @@
     syncBox();
   }
 
-  /* ---- Sectionals (Auditions & Classes -> Sectionals -> ESO / GSO) ----- */
+  /* ---- Sectionals (Classes & Assignments -> Sectionals -> ESO / GSO) ----- */
   // Parse the Sectional Rehearsals tab into { eso, gso, perc, locations,
   // esoCoaches, gsoCoaches }. ESO/GSO/Percussion schedule lines live under
   // "Week One Sectionals:" / "All other weeks:"; the shared location table under
@@ -1252,6 +1271,8 @@
           '<a class="efmfp-roster__btn efmfp-modal__ticket-btn" href="' + esc(d.ticket.url) + '" target="_blank" rel="noopener noreferrer">Reserve tickets</a></div>';
       }
       if (d.details) html += '<div class="efmfp-modal__details">' + esc(d.details) + "</div>";
+      var pu = d.pdf ? safeUrl(d.pdf) : "";
+      if (pu) html += '<div style="margin-top:12px;"><a class="efmfp-roster__btn" href="' + esc(pu) + '" target="_blank" rel="noopener noreferrer">' + esc(d.pdfLabel || "View PDF") + "</a></div>";
       if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
       content.innerHTML = html;
       if (d.ics) {
@@ -1333,7 +1354,8 @@
     function col() { for (var a = 0; a < arguments.length; a++) { var idx = hdr.indexOf(arguments[a]); if (idx !== -1) return idx; } return -1; }
     var iDate = col("date"), iDay = col("day"), iTime = col("time"), iRoom = col("room"),
         iRoomName = col("room name", "location", "room/location"), iCond = col("conductor / soloist", "conductor/soloist", "conductor", "soloist"),
-        iEvent = col("event", "title", "concert title", "concert"), iDetails = col("details", "notes");
+        iEvent = col("event", "title", "concert title", "concert"), iDetails = col("details", "notes"),
+        iPdf = col("pdf link", "pdf", "pdf url", "program pdf", "program url");
     var out = [], lastDate = "", lastDay = "", seq = 0;
     for (var j = headerIdx + 1; j < rows.length; j++) {
       var c = rows[j]; if (!c.join("").trim()) continue;
@@ -1347,7 +1369,7 @@
         seq: seq++, date: date, day: day, key: key, time: clean(iTime !== -1 ? c[iTime] : ""),
         startMin: startMinutes(clean(iTime !== -1 ? c[iTime] : "")), loc: loc,
         conductor: clean(iCond !== -1 ? c[iCond] : ""), event: clean(iEvent !== -1 ? c[iEvent] : ""),
-        details: clean(iDetails !== -1 ? c[iDetails] : "")
+        details: clean(iDetails !== -1 ? c[iDetails] : ""), pdf: iPdf !== -1 ? safeUrl(c[iPdf]) : ""
       };
       if (!entry.event && !entry.time) continue;   // skip stray blank rows
       entry.haystack = [entry.date, entry.day, entry.time, entry.loc, entry.conductor, entry.event, entry.details].join(" ").toLowerCase();
@@ -1391,12 +1413,21 @@
       var roomFull = roomTokens.map(roomLabel).join(" / ");
       var loc = (location && location !== roomRaw) ? (roomFull ? roomFull + " - " + location : location) : roomFull;
       var key = dateKey(date);
+      var ensVal = clean(c[5]), ensToks = tokens(ensVal);
+      // The Master Calendar tab leaves Details + PDF blank for ESO/GSO rows;
+      // graft them in from the dedicated ESO/GSO tabs (date+ensemble+clock join).
+      var det = clean(c[9]), pdf = "";
+      var ek = ensToks.indexOf("ESO") !== -1 ? "ESO" : (ensToks.indexOf("GSO") !== -1 ? "GSO" : "");
+      if (ek) {
+        var hit = ensDetail[key + "|" + ek + "|" + clockKey(clean(c[2]))];
+        if (hit) { if (!det && hit.details) det = hit.details; if (hit.pdf) pdf = hit.pdf; }
+      }
       var entry = {
         seq: seq++, date: date, day: day, key: key,
         time: clean(c[2]), startMin: startMinutes(clean(c[2])), loc: loc,
         roomTokens: roomTokens,
-        ensemble: clean(c[5]), ensTokens: tokens(clean(c[5])),
-        conductor: clean(c[6]), type: clean(c[7]), event: clean(c[8]), details: clean(c[9])
+        ensemble: ensVal, ensTokens: ensToks,
+        conductor: clean(c[6]), type: clean(c[7]), event: clean(c[8]), details: det, pdf: pdf
       };
       entry.haystack = [entry.date, entry.day, entry.time, entry.loc, entry.ensemble,
         entry.conductor, entry.type, entry.event, entry.details].join(" ").toLowerCase();
@@ -1649,9 +1680,9 @@
       return map;
     }).catch(function () { return {}; });
   }
-  function tabUrl(csvBase, dir, tab) { var gid = (dir && dir[tab.name]) || tab.gid; return csvBase + gid; }
 
   function build(data) {
+    built = true;
     // contacts
     facultyPeople = data.faculty ? parseContacts(data.faculty, "faculty") : [];
     fellowPeople = data.fellows ? parseContacts(data.fellows, "fellows") : [];
@@ -1668,7 +1699,7 @@
     ensembles.OUT = parseEnsemble(data.OUT);
     buildAnchors();
 
-    // Auditions & Classes info tabs + conditional pills: a showWhen pill stays only
+    // Classes & Assignments info tabs + conditional pills: a showWhen pill stays only
     // when its tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
     ["placement", "sectionals", "studio", "concerto"].forEach(function (key) { infoTabs[key] = data[key] || null; });
     sectionalData = parseSectionals(infoTabs.sectionals);
@@ -1678,6 +1709,19 @@
     NAV = NAV.filter(function (t) { return t.subs.length; });
     NAV.forEach(function (t) { if (subSel[t.id] >= t.subs.length) subSel[t.id] = 0; });
 
+    // ESO/GSO Details + program PDFs live on their own tabs; build the join map
+    // (date+ensemble+clock -> {details, pdf}) so parseCalendar can graft them onto
+    // the otherwise-blank ESO/GSO rows in All Events / Room Schedule.
+    ensDetail = {};
+    [["ESO", data.ESO], ["GSO", data.GSO]].forEach(function (pair) {
+      parseEnsemble(pair[1]).forEach(function (r) {
+        if (!r.details && !r.pdf) return;
+        var k = r.key + "|" + pair[0] + "|" + clockKey(r.time);
+        if (!ensDetail[k]) ensDetail[k] = {};
+        if (r.details && !ensDetail[k].details) ensDetail[k].details = r.details;
+        if (r.pdf && !ensDetail[k].pdf) ensDetail[k].pdf = r.pdf;
+      });
+    });
     // full master calendar -> Room Schedule (today + per-room pills)
     parseCalendar(data.master);
     appendRoomTabs();
@@ -1711,35 +1755,57 @@
   }
 
   function run() {
-    Promise.all([resolveDir(FP_PUBHTML), resolveDir(MC_PUBHTML)]).then(function (dirs) {
-      var fpDir = dirs[0], mcDir = dirs[1];
-      var jobs = {
-        faculty: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.faculty)]),
-        fellows: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.fellows)]),
-        staff: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.staff)]),
-        rosters: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.rosters)]),
-        info: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.info)]),
-        tickets: loadFirst([tabUrl(FP_CSV, fpDir, FP_TABS.tickets)]),
-        EFO: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.EFO)]),
-        ECP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.ECP)]),
-        REP: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.REP)]),
-        OUT: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.OUT)]),
-        generalInfo: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.generalInfo)]),
-        master: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.master)]),
-        legend: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.legend)]),
-        placement: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.placement)]),
-        sectionals: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.sectionals)]),
-        studio: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.studio)]),
-        concerto: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.concerto)]),
-        lessons: loadFirst([tabUrl(MC_CSV, mcDir, MC_TABS.lessons)]),
-        facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
-        fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
-      };
-      var keys = Object.keys(jobs);
-      Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
-        var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
-        build(data);
-      }).catch(fail);
+    // Resolve the published-tab directories in parallel, but DON'T block on them.
+    // Each tab fetches by its known gid first; it only waits on the directory if
+    // that gid fetch comes back empty (the sheet was rebuilt and gids moved). This
+    // keeps the ~0.5s directory round-trip off the critical path. (#1)
+    var fpDirP = resolveDir(FP_PUBHTML), mcDirP = resolveDir(MC_PUBHTML);
+    function job(csvBase, dirP, tab) {
+      return loadFirst([csvBase + tab.gid]).then(function (rows) {
+        if (rows && rows.length) return rows;                 // known gid worked
+        return dirP.then(function (dir) {                      // gid stale -> resolved gid
+          var gid = dir && dir[tab.name];
+          return (gid && gid !== tab.gid) ? loadFirst([csvBase + gid]) : null;
+        });
+      });
+    }
+    var jobs = {
+      faculty: job(FP_CSV, fpDirP, FP_TABS.faculty),
+      fellows: job(FP_CSV, fpDirP, FP_TABS.fellows),
+      staff: job(FP_CSV, fpDirP, FP_TABS.staff),
+      rosters: job(FP_CSV, fpDirP, FP_TABS.rosters),
+      info: job(FP_CSV, fpDirP, FP_TABS.info),
+      tickets: job(FP_CSV, fpDirP, FP_TABS.tickets),
+      EFO: job(MC_CSV, mcDirP, MC_TABS.EFO),
+      ECP: job(MC_CSV, mcDirP, MC_TABS.ECP),
+      REP: job(MC_CSV, mcDirP, MC_TABS.REP),
+      OUT: job(MC_CSV, mcDirP, MC_TABS.OUT),
+      ESO: job(MC_CSV, mcDirP, MC_TABS.ESO),
+      GSO: job(MC_CSV, mcDirP, MC_TABS.GSO),
+      generalInfo: job(MC_CSV, mcDirP, MC_TABS.generalInfo),
+      master: job(MC_CSV, mcDirP, MC_TABS.master),
+      legend: job(MC_CSV, mcDirP, MC_TABS.legend),
+      placement: job(MC_CSV, mcDirP, MC_TABS.placement),
+      sectionals: job(MC_CSV, mcDirP, MC_TABS.sectionals),
+      studio: job(MC_CSV, mcDirP, MC_TABS.studio),
+      concerto: job(MC_CSV, mcDirP, MC_TABS.concerto),
+      lessons: job(MC_CSV, mcDirP, MC_TABS.lessons),
+      facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
+      fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
+    };
+    // Early first-paint: render the default General Information -> Dining view as
+    // soon as that one tab arrives, instead of waiting for all ~19 fetches. The
+    // full build() (which finalizes nav + every other tab) still runs below. (#2)
+    jobs.generalInfo.then(function (rows) {
+      if (built || !rows) return;
+      diningLines = rows.map(function (r) { return clean(r[0]); });
+      var sub = currentSub();
+      if (sub && sub.kind === "dining") renderDining();
+    });
+    var keys = Object.keys(jobs);
+    Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
+      var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
+      build(data);
     }).catch(fail);
   }
 

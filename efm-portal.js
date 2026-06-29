@@ -49,18 +49,26 @@
   // the handbook is re-posted to a new URL.
   var HANDBOOK_URL = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/2026+Student+Handbook.pdf";
 
-  // Tabs to fetch: key (used in code) -> sheet tab name. calendar is required.
+  // Tabs to fetch: key -> sheet tab name + known gid. calendar is required. gid is
+  // tried first (fast path, keeps the directory round-trip off the critical path);
+  // the name is the fallback when a sheet rebuild moves gids (resolved in run()).
   var SOURCES = [
-    { key: "calendar", tab: TAB_CALENDAR, required: true },
-    { key: "legend", tab: TAB_LEGEND },
-    { key: "announcements", tab: "Announcements" },
-    { key: "generalInfo", tab: "General Information" },
-    { key: "lessons", tab: "Faculty Lesson Locations" },
-    { key: "staff", tab: "Staff List" },
-    { key: "placement", tab: "Placement Auditions" },
-    { key: "sectionals", tab: "Sectional Rehearsals" },
-    { key: "studio", tab: "Faculty Studio Classes" },
-    { key: "concerto", tab: "Concerto Competition" }
+    { key: "calendar", tab: TAB_CALENDAR, gid: "310873840", required: true },
+    { key: "legend", tab: TAB_LEGEND, gid: "578774100" },
+    { key: "announcements", tab: "Announcements", gid: "1387308195" },
+    { key: "generalInfo", tab: "General Information", gid: "1031874194" },
+    { key: "lessons", tab: "Faculty Lesson Locations", gid: "1473494961" },
+    { key: "staff", tab: "Staff List", gid: "945898419" },
+    { key: "placement", tab: "Placement Auditions", gid: "1024060038" },
+    { key: "sectionals", tab: "Sectional Rehearsals", gid: "436439129" },
+    { key: "studio", tab: "Faculty Studio Classes", gid: "166720750" },
+    { key: "concerto", tab: "Concerto Competition", gid: "1210854934" },
+    // Dedicated ESO/GSO tabs (lean layout: Date, Day, Time, Room, Room Name,
+    // Conductor / Soloist, Event, Details, [PDF Link]). The big "Master Calendar"
+    // tab leaves Details/PDF blank for ESO/GSO rows, so we join them in by NAME
+    // off these tabs (see parseEnsembleDetails + parseCalendar).
+    { key: "esoDetails", tab: "ESO", gid: "1603346554" },
+    { key: "gsoDetails", tab: "GSO", gid: "727646847" }
   ];
 
   // Fallback room names if the Legend sheet can't be fetched/parsed.
@@ -134,6 +142,32 @@
 
   function tokens(s) {
     return s.split("/").map(function (t) { return t.trim(); }).filter(Boolean);
+  }
+
+  // First H:MM clock token, meridiem-agnostic. Joins the lean ESO/GSO tabs
+  // (times read "2:00 – 5:00") onto Master Calendar rows ("2:00 PM - 5:00 PM"):
+  // within a day+ensemble the start clock is unique, so AM/PM isn't needed.
+  function clockKey(t) { var m = String(t == null ? "" : t).match(/(\d{1,2})(?::(\d{2}))?/); return m ? (m[1] + ":" + (m[2] || "00")) : ""; }
+
+  // Scheme-safe URL gate for a sheet-supplied link (PDF program, etc.). Blocks
+  // javascript:/data:/vbscript:; allows http(s)/mailto, relative, bare domains.
+  function safeUrl(u) {
+    u = clean(u);
+    if (!u) return "";
+    if (/^(javascript|data|vbscript):/i.test(u)) return "";
+    if (/^(https?:|mailto:|\/|\.\/|\.\.\/|#)/i.test(u)) return u;
+    if (/^[a-z0-9.\-]+\.[a-z]{2,}([\/?#].*)?$/i.test(u)) return "https://" + u;
+    return "";
+  }
+
+  // Label for an event's attached PDF: concerts get a program, rehearsals get a
+  // rehearsal order. Keys off the Master Calendar Type ("Concert / Performance"
+  // vs "Rehearsal"), falling back to the event text and then a generic label.
+  function pdfLabel(r) {
+    var hay = ((r.type || "") + " " + (r.event || "")).toLowerCase();
+    if (/concert|perform|recital/.test(hay)) return "View Program";
+    if (/rehearsal|sectional/.test(hay)) return "View Rehearsal Order";
+    return "View PDF";
   }
 
   // Parse a header-row table into objects keyed by header name.
@@ -322,6 +356,7 @@
 
   // ---- state --------------------------------------------------------------
   var allRows = [];
+  var built = false;       // true once the full build() has run (gates the early first-paint)
   var seenRooms = {};
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
@@ -334,6 +369,7 @@
   var infoTabs = {};       // source key -> raw rows for the info tabs (placement/sectionals/studio/concerto)
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
+  var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
 
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
@@ -495,7 +531,7 @@
         title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
         description: [r.ensemble && ("Ensemble: " + r.ensemble),
           r.conductor && ("Conductor / Soloist: " + r.conductor),
-          r.type && ("Type: " + r.type), det].filter(Boolean).join("\n")
+          r.type && ("Type: " + r.type), det, r.pdf && ("PDF: " + r.pdf)].filter(Boolean).join("\n")
       };
       viewEvents.push(ev);
       html += agendaRowHTML({
@@ -506,7 +542,7 @@
           title: r.event || "Event",
           fields: [["Date", calDateLabel(r)], ["Time", r.time], ["Location", r.loc],
             ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
-          details: det, ics: ev
+          details: det, pdf: r.pdf, pdfLabel: pdfLabel(r), ics: ev
         }
       });
       shown++;
@@ -914,6 +950,8 @@
         if (dl) html += "<dl>" + dl + "</dl>";
       }
       if (d.details) html += '<div class="efmp-modal__details">' + esc(d.details) + "</div>";
+      var pu = d.pdf ? safeUrl(d.pdf) : "";
+      if (pu) html += '<div style="margin-top:12px;"><a class="efmp-modal__cal" href="' + esc(pu) + '" target="_blank" rel="noopener noreferrer">' + esc(d.pdfLabel || "View PDF") + "</a></div>";
       if (!html) html = '<p style="margin:0;color:#5b6473;">No additional details.</p>';
       content.innerHTML = html;
       // inline one-click "Add to calendar" for this single event
@@ -1038,6 +1076,36 @@
   }
 
   // ---- parsing ------------------------------------------------------------
+  // Dedicated ESO/GSO tab -> details/PDF join map. These lean tabs (Date, Day,
+  // Time, Room, Room Name, Conductor / Soloist, Event, Details, [PDF Link]) hold
+  // the per-rehearsal Details + program PDF that the big Master Calendar tab
+  // leaves blank. Header-keyed (column order/naming-robust); keyed by
+  // dateKey|ENS|clock so parseCalendar can graft them onto matching rows.
+  function parseEnsembleDetails(rows, code, map) {
+    rows = rows || [];
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      var lc = rows[i].map(function (x) { return clean(x).toLowerCase(); });
+      if (clean(rows[i][0]) === "Date" || (lc.indexOf("date") !== -1 && lc.indexOf("time") !== -1)) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) return;
+    var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var idx = hdr.indexOf(arguments[a]); if (idx !== -1) return idx; } return -1; }
+    var iDate = col("date"), iTime = col("time"), iDet = col("details", "notes"),
+        iPdf = col("pdf link", "pdf", "pdf url", "program pdf", "program url");
+    var lastDate = "";
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j]; if (!c.join("").trim()) continue;
+      var date = clean(c[iDate]) || lastDate; lastDate = date;
+      var det = iDet !== -1 ? clean(c[iDet]) : "", pdf = iPdf !== -1 ? safeUrl(c[iPdf]) : "";
+      if (!det && !pdf) continue;
+      var k = dateKey(date) + "|" + code + "|" + clockKey(iTime !== -1 ? c[iTime] : "");
+      if (!map[k]) map[k] = {};
+      if (det && !map[k].details) map[k].details = det;
+      if (pdf && !map[k].pdf) map[k].pdf = pdf;
+    }
+  }
+
   function parseCalendar(rows) {
     rows = rows || [];
     var headerIdx = -1;
@@ -1058,15 +1126,24 @@
       var roomFull = roomTokens.map(roomLabel).join(" / ");
       var loc = (location && location !== roomRaw) ? (roomFull ? roomFull + " - " + location : location) : roomFull;
       var key = dateKey(date);
+      var ensVal = (c[5] || "").trim(), ensToks = tokens(ensVal);
+      // The big Master Calendar tab leaves Details + PDF blank for ESO/GSO rows;
+      // graft them in from the dedicated ESO/GSO tabs (joined by date+ensemble+clock).
+      var det = (c[9] || "").trim(), pdf = "";
+      var ek = ensToks.indexOf("ESO") !== -1 ? "ESO" : (ensToks.indexOf("GSO") !== -1 ? "GSO" : "");
+      if (ek) {
+        var hit = ensDetail[key + "|" + ek + "|" + clockKey((c[2] || "").trim())];
+        if (hit) { if (!det && hit.details) det = hit.details; if (hit.pdf) pdf = hit.pdf; }
+      }
       var entry = {
         seq: seq++, date: date, day: day, key: key,
         dayNum: key !== null ? String(key % 100) : "",
         time: (c[2] || "").trim(), startMin: startMinutes((c[2] || "").trim()), loc: loc,
         roomTokens: roomTokens,
-        ensemble: (c[5] || "").trim(), ensTokens: tokens((c[5] || "").trim()),
+        ensemble: ensVal, ensTokens: ensToks,
         conductor: (c[6] || "").trim(),
         type: (c[7] || "").trim(), event: (c[8] || "").trim(),
-        details: (c[9] || "").trim()
+        details: det, pdf: pdf
       };
       entry.haystack = [entry.date, entry.day, entry.time, entry.loc, entry.ensemble,
         entry.conductor, entry.type, entry.event, entry.details].join(" ").toLowerCase();
@@ -1152,6 +1229,7 @@
   }
 
   function build(data) {
+    built = true;
     if (data.legend) applyLegend(data.legend);
     if (data.staff) staff = parseStaff(data.staff);
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
@@ -1170,6 +1248,11 @@
     NAV = NAV.filter(function (t) { return t.subs.length; });
     NAV.forEach(function (t) { if (subSel[t.id] >= t.subs.length) subSel[t.id] = 0; });
 
+    // ESO/GSO Details + program PDFs come from their dedicated tabs; build the
+    // join map before parseCalendar so it can graft them onto matching rows.
+    ensDetail = {};
+    parseEnsembleDetails(data.esoDetails, "ESO", ensDetail);
+    parseEnsembleDetails(data.gsoDetails, "GSO", ensDetail);
     parseCalendar(data.calendar);
     appendRoomTabs();
     renderTicker();
@@ -1188,27 +1271,45 @@
     console.error("EFM schedule load failed:", err);
   }
 
-  // Resolve gids, then load every source tab in parallel (all optional except
-  // the calendar). If the directory can't be read, fall back to the bare CSV
-  // (first tab = Master Calendar) so the schedule still renders.
+  // Load every source tab in parallel. Each tab fetches by its known gid FIRST
+  // (fast path), so the ~0.5s directory round-trip stays off the critical path;
+  // the directory is resolved in parallel and only consulted when a gid fetch
+  // comes back empty (sheet rebuilt -> gids moved). calendar also falls back to
+  // the bare CSV (first tab = Master Calendar) so the schedule still renders. (#1)
   function run() {
-    resolveTabGids().then(function (map) { return map; }, function () { return {}; })
-      .then(function (map) {
-        return Promise.all(SOURCES.map(function (s) {
+    var dirP = resolveTabGids().then(function (m) { return m; }, function () { return {}; });
+    function fetchTab(s) {
+      var firstUrl = s.gid ? (CSV + "&gid=" + s.gid) : (s.key === "calendar" ? CSV : null);
+      var first = firstUrl
+        ? loadCSV(firstUrl).then(function (rows) { return rows && rows.length ? rows : null; }, function () { return null; })
+        : Promise.resolve(null);
+      return first.then(function (rows) {
+        if (rows) return rows;
+        return dirP.then(function (map) {
           var gid = map[s.tab];
-          var url = gid ? (CSV + "&gid=" + gid) : (s.key === "calendar" ? CSV : null);
-          if (!url) return Promise.resolve([s.key, null]);
-          var p = loadCSV(url).then(function (rows) { return [s.key, rows]; });
-          if (!s.required) p = p.catch(function () { return [s.key, null]; });
-          return p;
-        }));
-      })
-      .then(function (pairs) {
-        var data = {};
-        pairs.forEach(function (p) { data[p[0]] = p[1]; });
-        build(data);
-      })
-      .catch(fail);
+          if (gid && gid !== s.gid) return loadCSV(CSV + "&gid=" + gid).then(function (r) { return r && r.length ? r : null; }, function () { return null; });
+          if (s.key === "calendar") return loadCSV(CSV).then(function (r) { return r; }, function () { return null; });
+          return null;
+        });
+      });
+    }
+    var jobs = {};
+    SOURCES.forEach(function (s) { jobs[s.key] = fetchTab(s); });
+    // Early first-paint: render the default General Information -> Dining view as
+    // soon as that one tab arrives, not after all ~10 fetches complete. The full
+    // build() still runs below to finalize the nav + every other tab. (#2)
+    if (jobs.generalInfo) jobs.generalInfo.then(function (rows) {
+      if (built || !rows) return;
+      generalInfo = rows.map(function (r) { return (r[0] || "").trim(); });
+      var top = currentTop(), sub = top.subs[subSel[top.id]] || top.subs[0];
+      if (sub && sub.kind === "dining") renderDining();
+    });
+    var keys = Object.keys(jobs);
+    Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
+      var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
+      if (SOURCES.some(function (s) { return s.required && !data[s.key]; })) { fail(new Error("required tab unavailable")); return; }
+      build(data);
+    }).catch(fail);
   }
 
   // ---- boot --------------------------------------------------------------
