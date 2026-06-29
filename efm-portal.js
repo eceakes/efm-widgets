@@ -54,6 +54,12 @@
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
+  // Alexander Technique instructor headshots are bundled in the repo (served via the
+  // same CDN base as the campus map, so they track the deployed commit). Keyed by
+  // "lastname|first-initial" so a name typo in the sheet still matches; a Photo column
+  // URL in the sheet overrides this, and a missing photo falls back to initials.
+  var AT_PHOTO_BY_KEY = { "copeland|s": CDN_BASE + "efm-alexander-copeland.jpg" };
+
   // Student Handbook is hosted on the main EFM website's CDN (not this repo), so
   // it is an absolute URL rather than one derived from CDN_BASE. Update here if
   // the handbook is re-posted to a new URL.
@@ -73,6 +79,7 @@
     { key: "sectionals", tab: "Sectional Rehearsals", gid: "436439129" },
     { key: "studio", tab: "Faculty Studio Classes", gid: "166720750" },
     { key: "concerto", tab: "Concerto Competition", gid: "1210854934" },
+    { key: "alexander", tab: "Alexander Technique", gid: "1260076144" },
     // Student-Rosters tab: per-ensemble seating-roster PDFs, gated by a Release? cell.
     { key: "rosters", tab: "Student-Rosters", gid: "2066588541" },
     // Dedicated ESO/GSO tabs (lean layout: Date, Day, Time, Room, Room Name,
@@ -119,6 +126,7 @@
       { label: "GSO Sectionals", kind: "sectional", code: "GSO" },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Lessons", kind: "lessons" },
+      { label: "Alexander Technique", kind: "alexander" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
@@ -387,6 +395,7 @@
   var viewLabel = "";      // label for the current view's .ics calendar name + filename
   var viewFeedKey = "";    // feed ?view= key for the current view ("" = no live subscribe feed)
   var infoTabs = {};       // source key -> raw rows for the info tabs (placement/sectionals/studio/concerto)
+  var atData = null;        // Alexander Technique tab -> { people:[{name,location,details,contact,photo,calendly}], about } (renderAlexander)
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
@@ -1007,6 +1016,129 @@
     announce(facultyDir.length + " faculty contacts shown.");
   }
 
+  // ---- Alexander Technique ----------------------------------------------
+  // A small instructor table (Name, Location, Details, Contact [, Photo, Calendly,
+  // About]) rendered as headshot cards like the People > Faculty view, plus an
+  // inline Calendly scheduler when a booking URL is supplied, so students can sign
+  // up for a lesson without leaving the portal. Header-keyed (columns matched by
+  // name) so a reorder or rename survives; rows with no Name are skipped.
+  function parseAlexander(rows) {
+    rows = rows || []; if (!rows.length) return null;
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].map(function (x) { return clean(x).toLowerCase(); }).indexOf("name") !== -1) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) return null;
+    var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var x = hdr.indexOf(arguments[a]); if (x !== -1) return x; } return -1; }
+    var iName = col("name", "instructor", "teacher", "faculty"),
+        iLoc = col("location", "room", "studio"),
+        iDet = col("details", "offering", "notes"),
+        iContact = col("contact information", "contact", "email", "email address", "e-mail"),
+        iPhone = col("phone", "telephone", "cell", "mobile", "phone number"),
+        iWeb = col("website", "web", "site", "web site", "url"),
+        iPhoto = col("photo", "headshot", "image", "picture", "img", "photo url", "portrait"),
+        iCal = col("calendly", "scheduling", "schedule", "booking", "sign up", "signup", "calendly url"),
+        iAbout = col("about", "overview", "intro", "description");
+    var people = [], about = "";
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j];
+      if (iAbout !== -1 && iAbout !== iDet && !about) about = clean(c[iAbout]);
+      var name = iName !== -1 ? clean(c[iName]) : "";
+      if (!name) continue;
+      people.push({
+        name: name,
+        location: iLoc !== -1 ? clean(c[iLoc]) : "",
+        details: iDet !== -1 ? clean(c[iDet]) : "",
+        contact: iContact !== -1 ? clean(c[iContact]) : "",
+        phone: iPhone !== -1 ? clean(c[iPhone]) : "",
+        website: iWeb !== -1 ? clean(c[iWeb]) : "",
+        photo: iPhoto !== -1 ? clean(c[iPhoto]) : "",
+        calendly: iCal !== -1 ? clean(c[iCal]) : ""
+      });
+    }
+    if (!people.length && !about) return null;
+    return { people: people, about: about };
+  }
+  // Photo: a sheet Photo-column URL wins; else a headshot bundled in the repo (keyed
+  // by name); else initials. (An image inserted INTO a sheet cell is not in the CSV,
+  // so it cannot be read here; only a text URL or a bundled asset works.)
+  function bundledPhoto(p) {
+    var keys = nameKeys(p.name);
+    for (var i = 0; i < keys.length; i++) { if (AT_PHOTO_BY_KEY[keys[i]]) return AT_PHOTO_BY_KEY[keys[i]]; }
+    return "";
+  }
+  function atPhoto(p) { return safeUrl(p.photo) || bundledPhoto(p); }
+  function telHref(s) { return String(s || "").replace(/[^0-9+]/g, ""); }
+  function webLabel(u) { return String(u || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, ""); }
+  // Calendly renders its booking page directly inside an iframe when embed_type=Inline
+  // is set, so no third-party script is needed (keeps the widget's no-injected-script posture).
+  function calendlyEmbedSrc(url) {
+    var u = safeUrl(url); if (!u || !/calendly\.com/i.test(u)) return u || "";
+    if (/[?&]embed_type=/i.test(u)) return u;
+    return u + (u.indexOf("?") === -1 ? "?" : "&") + "embed_domain=easternfestivalofmusic.org&embed_type=Inline";
+  }
+  // Split an About/bio cell into paragraphs on blank lines (a multi-paragraph bio
+  // pasted into one cell), collapsing single newlines within a paragraph to spaces.
+  function aboutParas(text) {
+    return String(text || "").split(/\n\s*\n+/).map(function (s) { return s.replace(/\s*\n\s*/g, " ").trim(); }).filter(Boolean);
+  }
+  function renderAlexander() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var d = atData;
+    if (!d || (!d.people.length && !d.about)) { finishList("", 0, "", "Alexander Technique information will appear here once it is posted."); return; }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Alexander Technique</div>';
+    if (d.people.length) {
+      html += '<div class="efmp-cards">';
+      d.people.forEach(function (p) {
+        var photo = atPhoto(p), bundled = bundledPhoto(p), fb = (bundled && bundled !== photo) ? bundled : "";
+        var avatar = '<span class="efmp-card__avatar">' + (photo
+          ? '<img src="' + esc(photo) + '" alt="' + esc(p.name) + '"' + (fb ? ' data-fallback="' + esc(fb) + '"' : "") + ' loading="lazy">'
+          : '<span class="efmp-card__initials">' + esc(facultyInitials(p.name)) + "</span>") + "</span>";
+        var isEmail = /@/.test(p.contact);
+        var cal = safeUrl(p.calendly), web = safeUrl(p.website);
+        var actions = "";
+        if (p.contact && isEmail) actions += '<a class="efmp-at__btn efmp-at__btn--ghost" href="mailto:' + esc(p.contact) + '">Email</a>';
+        if (cal) actions += '<a class="efmp-at__btn" href="' + esc(cal) + '" target="_blank" rel="noopener noreferrer">Schedule a Lesson</a>';
+        var body =
+          '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
+          (p.details ? '<div class="efmp-card__title">' + esc(p.details) + "</div>" : "") +
+          (p.location ? '<div class="efmp-card__office">Location: ' + esc(p.location) + "</div>" : "") +
+          (p.phone ? '<div class="efmp-card__office">Phone: <a href="tel:' + esc(telHref(p.phone)) + '">' + esc(p.phone) + "</a></div>" : "") +
+          (web ? '<div class="efmp-card__office">Website: <a href="' + esc(web) + '" target="_blank" rel="noopener noreferrer">' + esc(webLabel(p.website)) + "</a></div>" : "") +
+          (p.contact && !isEmail ? '<div class="efmp-card__contact">' + esc(p.contact) + "</div>" : "") +
+          (actions ? '<div class="efmp-at__actions">' + actions + "</div>" : "");
+        html += '<div class="efmp-card efmp-card--person">' + avatar + '<div class="efmp-card__body">' + body + "</div></div>";
+      });
+      html += "</div>";
+    }
+    if (d.about) {
+      html += '<div class="efmp-info__dept" role="heading" aria-level="4">About</div>';
+      aboutParas(d.about).forEach(function (para) { html += "<p>" + esc(para) + "</p>"; });
+    }
+    // Inline scheduler(s): book a lesson in place. One iframe per instructor that has a URL.
+    d.people.forEach(function (p) {
+      var src = calendlyEmbedSrc(p.calendly);
+      if (!src) return;
+      html += '<div class="efmp-info__dept" role="heading" aria-level="4">Schedule a Lesson with ' + esc(p.name) + "</div>" +
+        '<div class="efmp-calendly"><iframe class="efmp-calendly__frame" src="' + esc(src) +
+          '" title="Schedule an Alexander Technique lesson with ' + esc(p.name) + '" loading="lazy"></iframe></div>' +
+        '<p class="efmp-calendly__hint"><a href="' + esc(safeUrl(p.calendly)) +
+          '" target="_blank" rel="noopener noreferrer">Open the scheduler in a new tab</a> if the calendar does not load above.</p>';
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    // Broken headshot URL -> try the bundled repo copy (data-fallback), then initials.
+    Array.prototype.forEach.call(list.querySelectorAll(".efmp-card__avatar img"), function (img) {
+      function toInitials() { var par = img.parentNode; if (!par) return; par.textContent = ""; var ph = document.createElement("span"); ph.className = "efmp-card__initials"; ph.textContent = facultyInitials(img.getAttribute("alt") || ""); par.appendChild(ph); }
+      function fail() { var f = img.getAttribute("data-fallback"); if (f && img.src !== f) { img.removeAttribute("data-fallback"); img.src = f; return; } toInitials(); }
+      img.addEventListener("error", fail);
+      if (img.complete && img.naturalWidth === 0) fail();
+    });
+    announce("Alexander Technique information shown.");
+  }
+
   function renderMap() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -1203,7 +1335,7 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
@@ -1212,6 +1344,7 @@
     else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else if (sub.kind === "lessons") renderLessons();
+    else if (sub.kind === "alexander") renderAlexander();
     else if (sub.weeks && weekSel != null && weeksFor(sub)[weekSel]) renderRoster(weeksFor(sub)[weekSel]);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
@@ -1686,6 +1819,7 @@
 
     // Info tabs (raw rows) + the section -> room table used for sectional modals.
     ["placement", "sectionals", "studio", "concerto"].forEach(function (k) { infoTabs[k] = data[k] || null; });
+    atData = parseAlexander(data.alexander);
     sectionalLocations = data.sectionals ? parseSectionalLocations(data.sectionals) : [];
     sectionalData = parseSectionals(data.sectionals);
 

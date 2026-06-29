@@ -74,7 +74,8 @@
     sectionals:  { name: "Sectional Rehearsals", gid: "436439129" },
     studio:      { name: "Faculty Studio Classes", gid: "166720750" },
     concerto:    { name: "Concerto Competition", gid: "1210854934" },
-    lessons:     { name: "Faculty Lesson Locations", gid: "1473494961" }
+    lessons:     { name: "Faculty Lesson Locations", gid: "1473494961" },
+    alexander:   { name: "Alexander Technique", gid: "1260076144" }
   };
 
   // Headshots. Faculty photos come from the same roster sheet the public Faculty
@@ -104,6 +105,12 @@
   })();
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
+
+  // Alexander Technique instructor headshots bundled in the repo (served via the same
+  // CDN base as the campus map, so they track the deployed commit). Keyed by
+  // "lastname|first-initial"; a sheet Headshot/Photo URL overrides this, and a missing
+  // photo falls back to initials.
+  var AT_PHOTO_BY_KEY = { "copeland|s": CDN_BASE + "efm-alexander-copeland.jpg" };
 
   var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -161,6 +168,7 @@
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Lessons", kind: "lessons" },
+      { label: "Alexander Technique", kind: "alexander" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "contacts", label: "Contacts", subs: [
       { label: "Faculty", kind: "facultyCards" },
@@ -407,6 +415,7 @@
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
   var announcements = [];  // {text,dateRaw,key,logic,type,audience} from the Master Calendar "Announcements" tab
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the Master Calendar "Faculty Lesson Locations" tab
+  var atData = null;       // Alexander Technique tab -> { people:[{name,location,details,contact,phone,website,photo,calendly}], about } (renderAlexander)
   var allRows = [];        // every Master Calendar row (Room Schedule tab)
   var ensDetail = {};      // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var seenRooms = {};      // room codes actually used (-> which per-room pills to build)
@@ -822,6 +831,137 @@
     html += "</div>";
     list.innerHTML = html;
     announce("Private lessons shown.");
+    syncBox();
+  }
+
+  /* ---- Alexander Technique ---------------------------------------------- */
+  // The Master Calendar "Alexander Technique" tab (Name, Location, Details, Email,
+  // Phone, Website, Calendly, Headshot) rendered as an instructor card plus an inline
+  // Calendly scheduler so faculty (and students, in the 2026 portal) can book a lesson
+  // in place. Header-keyed so a column reorder or rename survives. Mirrors the 2026 portal.
+  function parseAlexander(rows) {
+    rows = rows || []; if (!rows.length) return null;
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].map(function (x) { return clean(x).toLowerCase(); }).indexOf("name") !== -1) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) return null;
+    var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var x = hdr.indexOf(arguments[a]); if (x !== -1) return x; } return -1; }
+    var iName = col("name", "instructor", "teacher", "faculty"),
+        iLoc = col("location", "room", "studio"),
+        iDet = col("details", "offering", "notes"),
+        iContact = col("contact information", "contact", "email", "email address", "e-mail"),
+        iPhone = col("phone", "telephone", "cell", "mobile", "phone number"),
+        iWeb = col("website", "web", "site", "web site", "url"),
+        iPhoto = col("photo", "headshot", "image", "picture", "img", "photo url", "portrait"),
+        iCal = col("calendly", "scheduling", "schedule", "booking", "sign up", "signup", "calendly url"),
+        iAbout = col("about", "overview", "intro", "description");
+    var people = [], about = "";
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j];
+      if (iAbout !== -1 && iAbout !== iDet && !about) about = clean(c[iAbout]);
+      var name = iName !== -1 ? clean(c[iName]) : "";
+      if (!name) continue;
+      people.push({
+        name: name,
+        location: iLoc !== -1 ? clean(c[iLoc]) : "",
+        details: iDet !== -1 ? clean(c[iDet]) : "",
+        contact: iContact !== -1 ? clean(c[iContact]) : "",
+        phone: iPhone !== -1 ? clean(c[iPhone]) : "",
+        website: iWeb !== -1 ? clean(c[iWeb]) : "",
+        photo: iPhoto !== -1 ? clean(c[iPhoto]) : "",
+        calendly: iCal !== -1 ? clean(c[iCal]) : ""
+      });
+    }
+    if (!people.length && !about) return null;
+    return { people: people, about: about };
+  }
+  function bundledPhoto(p) { var keys = nameKeys(p.name); for (var i = 0; i < keys.length; i++) { if (AT_PHOTO_BY_KEY[keys[i]]) return AT_PHOTO_BY_KEY[keys[i]]; } return ""; }
+  function atPhoto(p) { return safeUrl(p.photo) || bundledPhoto(p); }
+  function webLabel(u) { return String(u || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, ""); }
+  // Calendly renders its booking page directly inside an iframe when embed_type=Inline
+  // is set, so no third-party script is needed (keeps the no-injected-script posture).
+  function calendlyEmbedSrc(url) {
+    var u = safeUrl(url); if (!u || !/calendly\.com/i.test(u)) return u || "";
+    if (/[?&]embed_type=/i.test(u)) return u;
+    return u + (u.indexOf("?") === -1 ? "?" : "&") + "embed_domain=easternfestivalofmusic.org&embed_type=Inline";
+  }
+  // Split an About/bio cell into paragraphs on blank lines (a multi-paragraph bio
+  // pasted into one cell), collapsing single newlines within a paragraph to spaces.
+  function aboutParas(text) {
+    return String(text || "").split(/\n\s*\n+/).map(function (s) { return s.replace(/\s*\n\s*/g, " ").trim(); }).filter(Boolean);
+  }
+  // Headshot with the URL -> bundled-repo-copy -> initials fallback chain (mirrors avatarEl).
+  function atAvatarEl(p) {
+    var av = document.createElement("span"); av.className = "efmfp-card__avatar";
+    function toInitials() { av.textContent = ""; var ph = document.createElement("span"); ph.className = "efmfp-card__initials"; ph.textContent = initials(p.name); av.appendChild(ph); }
+    var url = atPhoto(p), bundled = bundledPhoto(p);
+    if (url) {
+      var img = document.createElement("img"); img.src = url; img.alt = ""; img.loading = "lazy";
+      if (bundled && bundled !== url) img.setAttribute("data-fallback", bundled);
+      img.addEventListener("error", function () { var f = img.getAttribute("data-fallback"); if (f && img.src !== f) { img.removeAttribute("data-fallback"); img.src = f; return; } toInitials(); });
+      av.appendChild(img);
+    } else { toInitials(); }
+    return av;
+  }
+  function atCardEl(p) {
+    var card = document.createElement("div"); card.className = "efmfp-card";
+    card.appendChild(atAvatarEl(p));
+    var body = document.createElement("div"); body.className = "efmfp-card__body";
+    var name = document.createElement("div"); name.className = "efmfp-card__name"; name.setAttribute("role", "heading"); name.setAttribute("aria-level", "4"); name.textContent = p.name; body.appendChild(name);
+    if (p.details) { var r = document.createElement("div"); r.className = "efmfp-card__role"; r.textContent = p.details; body.appendChild(r); }
+    if (p.location) { var l = document.createElement("div"); l.className = "efmfp-card__role"; l.textContent = "Location: " + p.location; body.appendChild(l); }
+    var web = safeUrl(p.website);
+    if (web) {
+      var wl = document.createElement("div"); wl.className = "efmfp-card__role";
+      wl.appendChild(document.createTextNode("Website: "));
+      var wa = document.createElement("a"); wa.className = "efmfp-at__weblink"; wa.href = web; wa.target = "_blank"; wa.rel = "noopener noreferrer"; wa.textContent = webLabel(p.website);
+      wl.appendChild(wa); body.appendChild(wl);
+    }
+    var cts = document.createElement("div"); cts.className = "efmfp-card__contacts";
+    var tel = contactLink("tel", p.phone); if (tel) cts.appendChild(tel);
+    var mail = contactLink("mail", p.contact); if (mail) cts.appendChild(mail);
+    if (cts.childNodes.length) body.appendChild(cts);
+    var cal = safeUrl(p.calendly);
+    if (cal) {
+      var acts = document.createElement("div"); acts.className = "efmfp-at__actions";
+      var sb = document.createElement("a"); sb.className = "efmfp-at__btn"; sb.href = cal; sb.target = "_blank"; sb.rel = "noopener noreferrer"; sb.textContent = "Schedule a Lesson";
+      acts.appendChild(sb); body.appendChild(acts);
+    }
+    card.appendChild(body);
+    return card;
+  }
+  function renderAlexander() {
+    banner.hidden = true; status.hidden = true;
+    var d = atData;
+    if (!d || (!d.people.length && !d.about)) {
+      list.innerHTML = ""; status.textContent = "Alexander Technique information will appear here once it is posted."; status.hidden = false;
+      announce(status.textContent); syncBox(); return;
+    }
+    var wrap = document.createElement("div"); wrap.className = "efmfp-contact";
+    var head = document.createElement("div"); head.className = "efmfp-info__head"; head.setAttribute("role", "heading"); head.setAttribute("aria-level", "3"); head.textContent = "Alexander Technique"; wrap.appendChild(head);
+    if (d.people.length) {
+      var grid = document.createElement("div"); grid.className = "efmfp-at__grid";
+      d.people.forEach(function (p) { grid.appendChild(atCardEl(p)); });
+      wrap.appendChild(grid);
+    }
+    if (d.about) {
+      var ah = document.createElement("div"); ah.className = "efmfp-info__sub"; ah.setAttribute("role", "heading"); ah.setAttribute("aria-level", "4"); ah.textContent = "About"; wrap.appendChild(ah);
+      aboutParas(d.about).forEach(function (para) { var ab = document.createElement("p"); ab.className = "efmfp-at__about"; ab.textContent = para; wrap.appendChild(ab); });
+    }
+    d.people.forEach(function (p) {
+      var src = calendlyEmbedSrc(p.calendly); if (!src) return;
+      var h = document.createElement("div"); h.className = "efmfp-info__sub"; h.setAttribute("role", "heading"); h.setAttribute("aria-level", "4"); h.textContent = "Schedule a Lesson with " + p.name; wrap.appendChild(h);
+      var box = document.createElement("div"); box.className = "efmfp-calendly";
+      var ifr = document.createElement("iframe"); ifr.className = "efmfp-calendly__frame"; ifr.src = src; ifr.title = "Schedule an Alexander Technique lesson with " + p.name; ifr.loading = "lazy"; box.appendChild(ifr); wrap.appendChild(box);
+      var hint = document.createElement("p"); hint.className = "efmfp-calendly__hint";
+      var a = document.createElement("a"); a.href = safeUrl(p.calendly); a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "Open the scheduler in a new tab"; hint.appendChild(a);
+      hint.appendChild(document.createTextNode(" if the calendar does not load above.")); wrap.appendChild(hint);
+    });
+    list.innerHTML = "";
+    list.appendChild(wrap);
+    announce("Alexander Technique information shown.");
     syncBox();
   }
 
@@ -1337,6 +1477,7 @@
     if (k === "dining") renderDining();
     else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "lessons") renderLessons();
+    else if (k === "alexander") renderAlexander();
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "aroundCampus") renderAroundCampus();
     else if (k === "tickets") renderTickets();
@@ -1982,6 +2123,7 @@
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
     infoRows = data.info || [];
     lessons = parseLessons(data.lessons);
+    atData = parseAlexander(data.alexander);
     announcements = data.announcements ? parseAnnouncements(data.announcements) : [];
     renderTicker();
 
@@ -2052,6 +2194,7 @@
       studio: job(MC_CSV, mcDirP, MC_TABS.studio),
       concerto: job(MC_CSV, mcDirP, MC_TABS.concerto),
       lessons: job(MC_CSV, mcDirP, MC_TABS.lessons),
+      alexander: job(MC_CSV, mcDirP, MC_TABS.alexander),
       facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
       fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
     };
