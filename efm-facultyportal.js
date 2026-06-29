@@ -766,12 +766,13 @@
   // by header name so they can be reordered or renamed in the sheet.
   function parseLessons(rows) {
     if (!rows || !rows.length) return [];
-    var ni = 0, ri = 1, ii = 2, start = 0;
+    var ni = 0, ri = 1, ii = 2, si = -1, start = 0;
     for (var h = 0; h < rows.length; h++) {
       var lc = rows[h].map(function (c) { return clean(c).toLowerCase(); });
       if (lc.indexOf("name") !== -1 && lc.indexOf("instrument") !== -1) {
         ni = lc.indexOf("name"); ii = lc.indexOf("instrument");
         ri = lc.indexOf("room"); if (ri === -1) ri = lc.indexOf("location"); if (ri === -1) ri = lc.indexOf("studio");
+        si = lc.indexOf("students"); if (si === -1) si = lc.indexOf("student");
         start = h + 1; break;
       }
     }
@@ -779,39 +780,45 @@
     rows.slice(start).forEach(function (r) {
       var name = clean(r[ni]), inst = clean(r[ii]), room = ri >= 0 ? clean(r[ri]) : "";
       if (!name) return;
+      var students = si >= 0 ? clean(r[si]).split(/[,\n;]+/).map(function (s) { return s.trim(); }).filter(Boolean) : [];
       var key = inst || "Other";
       if (!byInst[key]) { byInst[key] = []; order.push(key); }
-      byInst[key].push({ name: name, room: room });
+      byInst[key].push({ name: name, room: room, students: students });
     });
     return order.map(function (k) { return { instrument: k, people: byInst[k] }; });
   }
 
   // General Information -> "Lessons" pill: faculty private-lesson locations from
   // the Master Calendar "Faculty Lesson Locations" tab, grouped by instrument.
+  // "Lessons" pill: private-lesson assignments from the Faculty Lesson Locations tab,
+  // grouped Instrument -> Faculty (+ room) -> students. Only faculty who have students
+  // assigned are shown. Matches the 2026 portal's Lessons tab.
   function renderLessons() {
     banner.hidden = true; status.hidden = true;
-    if (!lessons.length) {
+    var groups = lessons.map(function (g) {
+      return { instrument: g.instrument, people: g.people.filter(function (p) { return p.students && p.students.length; }) };
+    }).filter(function (g) { return g.people.length; });
+    if (!groups.length) {
       list.innerHTML = "";
-      status.textContent = "Faculty lesson locations will appear here once posted.";
+      status.textContent = "Lesson assignments will appear here once posted.";
       status.hidden = false;
-      announce("Faculty lesson locations will appear here once posted.");
+      announce("Lesson assignments will appear here once posted.");
       syncBox();
       return;
     }
-    var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">Faculty Lesson Locations</div>';
-    var people = 0;
-    lessons.forEach(function (g) {
+    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">Private Lessons</div>';
+    groups.forEach(function (g) {
       html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(g.instrument) + "</div>";
       html += '<div class="efmfp-info__card">';
       g.people.forEach(function (p) {
         html += '<div class="efmfp-info__meal"><b>' + esc(p.name) + "</b><span>" + esc(p.room || "Location to be announced") + "</span></div>";
-        people++;
+        html += '<div class="efmfp-lesson__students">' + esc(p.students.join(", ")) + "</div>";
       });
       html += "</div>";
     });
     html += "</div>";
     list.innerHTML = html;
-    announce(people + " faculty lesson locations shown.");
+    announce("Private lessons shown.");
     syncBox();
   }
 

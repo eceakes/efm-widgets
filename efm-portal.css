@@ -329,6 +329,15 @@
   #efm-portal a.efmp-card--link:hover { border-color: var(--efmp-ink); box-shadow: 0 4px 14px rgba(9, 12, 38, .08); }
   #efm-portal a.efmp-card--link:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
   #efm-portal a.efmp-card--link .efmp-card__contact { color: var(--efmp-ink) !important; text-decoration: underline; }
+  /* faculty directory cards: a circular headshot (avatar) beside the contact info */
+  #efm-portal a.efmp-card--person { display: flex; gap: 12px; align-items: flex-start; }
+  #efm-portal .efmp-card__avatar {
+    flex: 0 0 auto; width: 56px; height: 56px; border-radius: 50%; overflow: hidden;
+    background: var(--efmp-soft); display: flex; align-items: center; justify-content: center;
+  }
+  #efm-portal .efmp-card__avatar img { width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block; }
+  #efm-portal .efmp-card__initials { font-family: var(--efmp-name-font); color: var(--efmp-role); font-size: 17px; letter-spacing: .02em; }
+  #efm-portal .efmp-card__body { min-width: 0; flex: 1; }
 
   /* --- announcements tab list --- */
   #efm-portal .efmp-ann {

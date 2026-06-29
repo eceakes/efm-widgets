@@ -27,6 +27,12 @@
   // tab (gid 0, leftmost) is the single source of truth for faculty emails; fetched
   // here so the student Faculty directory shows the same contacts with no duplicate sheet.
   var FP_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZk_YQ_WA4LsSFN_jv7HHlZwDS9UHrZvLrk7NoOV4czo6KBG_36pt0ymOUDwabyFhqXvX_GSXcgBDx/pub?single=true&output=csv&gid=";
+  // 2026 Faculty roster (same sheet the public Faculty page + faculty portal use):
+  // supplies headshots + section grouping. gviz primary (CORS-clean), publish-CSV fallback.
+  var ROSTER_CSV = "https://docs.google.com/spreadsheets/d/1PuagTf2lB19eRNRmbaUdYzKytzoLCQ6PsRrgBAxvPTw/gviz/tq?tqx=out:csv&gid=1338599143";
+  var ROSTER_CSV_FALLBACK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlBTW1VcRV6-cDZfm9ibRqo23_c1BAvMRfC3eoTj502VrUaxov7OsDY6anYA7a8akD8bz9IfCCDJ3i/pub?gid=1338599143&single=true&output=csv";
+  // Faculty section heading order, mirroring the public Faculty page.
+  var SECTION_ORDER = ["Conductors", "Flute", "Oboe", "Clarinet", "Bassoon", "French Horn", "Trumpet", "Trombone", "Tuba", "Percussion & Timpani", "Harp", "Piano", "Violin", "Viola", "Cello", "Double Bass"];
   var TAB_CALENDAR = "Master Calendar"; // looked up by NAME (gids change on rebuild)
   var TAB_LEGEND = "Legend";
   var YEAR = 2026;
@@ -112,6 +118,7 @@
       { label: "ESO Sectionals", kind: "sectional", code: "ESO" },
       { label: "GSO Sectionals", kind: "sectional", code: "GSO" },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
+      { label: "Lessons", kind: "lessons" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
@@ -794,12 +801,13 @@
   // by header name so they can be reordered or renamed in the sheet.
   function parseLessons(rows) {
     if (!rows || !rows.length) return [];
-    var ni = 0, ri = 1, ii = 2, start = 0;
+    var ni = 0, ri = 1, ii = 2, si = -1, start = 0;
     for (var h = 0; h < rows.length; h++) {
       var lc = rows[h].map(function (c) { return (c || "").trim().toLowerCase(); });
       if (lc.indexOf("name") !== -1 && lc.indexOf("instrument") !== -1) {
         ni = lc.indexOf("name"); ii = lc.indexOf("instrument");
         ri = lc.indexOf("room"); if (ri === -1) ri = lc.indexOf("location"); if (ri === -1) ri = lc.indexOf("studio");
+        si = lc.indexOf("students"); if (si === -1) si = lc.indexOf("student");
         start = h + 1; break;
       }
     }
@@ -809,11 +817,39 @@
       var inst = (r[ii] || "").trim();
       var room = (ri >= 0 ? (r[ri] || "") : "").trim();
       if (!name) return;
+      var students = si >= 0 ? (r[si] || "").split(/[,\n;]+/).map(function (s) { return s.trim(); }).filter(Boolean) : [];
       var key = inst || "Other";
       if (!byInst[key]) { byInst[key] = []; order.push(key); }
-      byInst[key].push({ name: name, room: room });
+      byInst[key].push({ name: name, room: room, students: students });
     });
     return order.map(function (k) { return { instrument: k, people: byInst[k] }; });
+  }
+
+  // Auditions & Classes -> "Lessons" pill: private-lesson assignments from the Faculty
+  // Lesson Locations tab, grouped Instrument -> Faculty (+ room) -> students. Only
+  // faculty who have students assigned are shown.
+  function renderLessons() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var groups = lessons.map(function (g) {
+      return { instrument: g.instrument, people: g.people.filter(function (p) { return p.students && p.students.length; }) };
+    }).filter(function (g) { return g.people.length; });
+    if (!groups.length) { finishList("", 0, "", "Lesson assignments will appear here once posted."); return; }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Private Lessons</div>';
+    groups.forEach(function (g) {
+      html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.instrument) + '</div><div class="efmp-cards">';
+      g.people.forEach(function (p) {
+        html += '<div class="efmp-card">' +
+          '<div class="efmp-card__name">' + esc(p.name) + '</div>' +
+          (p.room ? '<div class="efmp-card__title">' + esc(p.room) + '</div>' : '') +
+          '<div class="efmp-card__contact">' + esc(p.students.join(", ")) + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+    list.innerHTML = html;
+    announce("Private lessons shown.");
   }
 
   // Faculty private-lesson locations from the Master Calendar "Faculty Lesson
@@ -904,25 +940,70 @@
     return out;
   }
 
-  // People -> "Faculty" view: a faculty directory. Each card shows name, instrument,
-  // a "Chamber Coach" chip (if they coach), the lesson studio (if posted), and a
-  // tap-to-email link. Studio + coach status are joined by name in build().
+  // Faculty roster sheet -> nameKey -> { section, photo, role }, for the headshot +
+  // section-grouping join (the same roster the public Faculty page uses).
+  function parseRoster(rows) {
+    rows = rows || []; if (!rows.length) return {};
+    var hdr = rows[0].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var x = hdr.indexOf(arguments[a]); if (x !== -1) return x; } return -1; }
+    var iName = col("name", "full name"), iSec = col("section", "instrument"),
+        iPhoto = col("photo", "image", "headshot", "picture", "img", "photo url", "portrait"),
+        iRole = col("role", "title", "position");
+    var map = {};
+    for (var i = 1; i < rows.length; i++) {
+      var c = rows[i]; var nm = clean(c[iName]); if (!nm) continue;
+      var entry = { section: iSec >= 0 ? clean(c[iSec]) : "", photo: iPhoto >= 0 ? clean(c[iPhoto]) : "", role: iRole >= 0 ? clean(c[iRole]) : "" };
+      nameKeys(nm).forEach(function (k) { if (!map[k]) map[k] = entry; });
+    }
+    return map;
+  }
+  function facultyInitials(name) {
+    var p = String(name || "").split(/\s+/).filter(Boolean);
+    return ((p[0] ? p[0].charAt(0) : "") + (p.length > 1 ? p[p.length - 1].charAt(0) : "")).toUpperCase();
+  }
+
+  // People -> "Faculty" view: a faculty directory grouped by section (like the public
+  // Faculty page), with headshots. Each card: avatar, name, role/instrument, a
+  // "Chamber Coach" chip, lesson studio, and tap-to-email. Photo + section join from
+  // the roster sheet; studio + coach status from the lesson + coaches sheets.
   function renderFacultyView() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     if (!facultyDir.length) { finishList("", 0, "", "The faculty directory will appear here once posted."); return; }
-    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Faculty Contacts</div><div class="efmp-cards">';
+    var bySec = {}, seen = [];
     facultyDir.forEach(function (p) {
-      var inner =
-        '<span class="efmp__sr">Email </span>' +
-        '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
-        '<div class="efmp-card__title">' + esc(p.instrument || "Faculty") + (p.isCoach ? ' <span class="efmp-chip">Chamber Coach</span>' : "") + "</div>" +
-        (p.room ? '<div class="efmp-card__office">Lesson studio: ' + esc(p.room) + "</div>" : "") +
-        '<div class="efmp-card__contact">' + esc(p.email) + "</div>";
-      html += '<a class="efmp-card efmp-card--link" href="mailto:' + esc(p.email) + '">' + inner + "</a>";
+      var sec = p.section || p.instrument || "Faculty";
+      if (!bySec[sec]) { bySec[sec] = []; seen.push(sec); }
+      bySec[sec].push(p);
     });
-    html += "</div></div>";
+    var ordered = SECTION_ORDER.filter(function (s) { return bySec[s]; })
+      .concat(seen.filter(function (s) { return SECTION_ORDER.indexOf(s) === -1; }));
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Faculty Contacts</div>';
+    ordered.forEach(function (sec) {
+      html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(sec) + '</div><div class="efmp-cards">';
+      bySec[sec].forEach(function (p) {
+        var photo = safeUrl(p.photo);
+        var avatar = '<span class="efmp-card__avatar">' + (photo
+          ? '<img src="' + esc(photo) + '" alt="' + esc(p.name) + '" loading="lazy">'
+          : '<span class="efmp-card__initials">' + esc(facultyInitials(p.name)) + "</span>") + "</span>";
+        var body =
+          '<span class="efmp__sr">Email </span>' +
+          '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
+          '<div class="efmp-card__title">' + esc(p.roleTitle || p.instrument || "Faculty") + (p.isCoach ? ' <span class="efmp-chip">Chamber Coach</span>' : "") + "</div>" +
+          (p.room ? '<div class="efmp-card__office">Lesson studio: ' + esc(p.room) + "</div>" : "") +
+          '<div class="efmp-card__contact">' + esc(p.email) + "</div>";
+        html += '<a class="efmp-card efmp-card--link efmp-card--person" href="mailto:' + esc(p.email) + '">' + avatar + '<div class="efmp-card__body">' + body + "</div></a>";
+      });
+      html += "</div>";
+    });
+    html += "</div>";
     list.innerHTML = html;
+    // Broken headshot URL -> fall back to initials (also catches an already-failed load).
+    Array.prototype.forEach.call(list.querySelectorAll(".efmp-card__avatar img"), function (img) {
+      function fail() { var par = img.parentNode; if (!par) return; par.textContent = ""; var ph = document.createElement("span"); ph.className = "efmp-card__initials"; ph.textContent = facultyInitials(img.getAttribute("alt") || ""); par.appendChild(ph); }
+      img.addEventListener("error", fail);
+      if (img.complete && img.naturalWidth === 0) fail();
+    });
     announce(facultyDir.length + " faculty contacts shown.");
   }
 
@@ -1122,7 +1203,7 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
@@ -1130,6 +1211,7 @@
     else if (sub.kind === "aroundCampus") renderAroundCampus();
     else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
     else if (sub.kind === "infoTab") renderInfoTab(sub);
+    else if (sub.kind === "lessons") renderLessons();
     else if (sub.weeks && weekSel != null && weeksFor(sub)[weekSel]) renderRoster(weeksFor(sub)[weekSel]);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
@@ -1589,10 +1671,16 @@
     // Enrich the faculty directory with lesson studio + chamber-coach status, joined
     // by name (full name OR lastname|first-initial, to bridge nicknames across sheets).
     (function () {
-      var roomByKey = {}, coachKeys = {};
+      var roomByKey = {}, coachKeys = {}, roster = parseRoster(data.facultyRoster);
       lessons.forEach(function (g) { (g.people || []).forEach(function (pp) { if (pp.name && pp.room) nameKeys(pp.name).forEach(function (k) { if (!roomByKey[k]) roomByKey[k] = pp.room; }); }); });
       parseChamberCoachNames(generalInfo).forEach(function (nm) { nameKeys(nm).forEach(function (k) { coachKeys[k] = true; }); });
-      facultyDir.forEach(function (p) { nameKeys(p.name).forEach(function (k) { if (!p.room && roomByKey[k]) p.room = roomByKey[k]; if (coachKeys[k]) p.isCoach = true; }); });
+      facultyDir.forEach(function (p) {
+        nameKeys(p.name).forEach(function (k) {
+          if (!p.room && roomByKey[k]) p.room = roomByKey[k];
+          if (coachKeys[k]) p.isCoach = true;
+          if (roster[k]) { if (!p.section) p.section = roster[k].section; if (!p.photo) p.photo = roster[k].photo; if (!p.roleTitle) p.roleTitle = roster[k].role; }
+        });
+      });
     })();
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
 
@@ -1692,6 +1780,9 @@
     SOURCES.forEach(function (s) { jobs[s.key] = fetchTab(s); });
     // Faculty emails: the Faculty-Portal workbook's FacultyContact tab (gid 0).
     jobs.facultyContacts = loadCSV(FP_CSV + "0").then(function (r) { return r && r.length ? r : null; }, function () { return null; });
+    // Faculty headshots + section grouping from the public roster sheet (gviz, pub fallback).
+    jobs.facultyRoster = loadCSV(ROSTER_CSV).then(function (r) { return r && r.length ? r : null; }, function () { return null; })
+      .then(function (r) { return r || loadCSV(ROSTER_CSV_FALLBACK).then(function (r2) { return r2 && r2.length ? r2 : null; }, function () { return null; }); });
     _generalInfoP = jobs.generalInfo || null;
     var keys = Object.keys(jobs);
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
