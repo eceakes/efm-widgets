@@ -39,7 +39,10 @@
   var HERO_GHOST_LABEL   = "More ways to give";     /* scrolls to "ways to give" */
 
   /* ---------- the giving platform ---------- */
-  var DONATE_BASE = "https://ahrpferd.donorsupport.co/page/EFMDonations";
+  /* Fundraise Up campaign that every gift link routes to. To use a DIFFERENT
+     campaign on a specific page, set data-efmd-donate-url="..." on the
+     #efm-donate host div in that page's embed; it overrides this default. */
+  var DONATE_BASE = "https://ahrpferd.donorsupport.co/page/outreachdonations";
   var DEFAULT_FREQ = "monthly";   /* "monthly" or "once": which ladder is shown first (Fundraise Up's own default is monthly) */
 
   /* Suggested amounts. amount = WHOLE DOLLARS (no $ or commas). label = a short
@@ -365,6 +368,7 @@
   function boot(){
     host=document.getElementById("efm-donate");
     if(!host) return;
+    var ov=host.getAttribute("data-efmd-donate-url"); if(ov){ ov=httpUrl(ov); if(ov) DONATE_BASE=ov; }   /* per-page campaign override */
     rootEl  = host.querySelector("[data-efmd-root]") || host;
     statusEl= host.querySelector("[data-efmd-status]"); if(statusEl) statusEl.setAttribute("role","status");
     render();
