@@ -31,7 +31,7 @@
      (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
      (blank both to hide the tab). */
   var PROGRAM_BOOK_EMBED_URL = "https://online.flippingbook.com/view/416920229/";   /* flipbook viewer ("" -> show the PDF inline instead) */
-  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17+%282%29.pdf";   /* PDF: download + screen-reader-accessible alternative to the flipbook */
+  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17-d59928dd.pdf";   /* PDF: download + screen-reader-accessible alternative to the flipbook */
   var PROGRAM_BOOK_TITLE = "2026 Program Book";
   var PROGRAM_BOOK_BLURB = "Flip through the season program book below, or download the PDF.";
 
