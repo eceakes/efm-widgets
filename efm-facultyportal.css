@@ -34,6 +34,45 @@
     text-align: center; margin: 0 0 18px;
   }
 
+  /* --- announcements ticker: side-scrolling, pinned above the tabs --- */
+  #efm-faculty-portal .efmfp__ticker {
+    display: flex; align-items: stretch; overflow: hidden; position: relative;
+    background: var(--efmfp-ink); color: #fff; border-radius: 999px; margin: 0 0 16px;
+  }
+  #efm-faculty-portal .efmfp__ticker[hidden] { display: none; }
+  #efm-faculty-portal .efmfp-ticker__label {
+    flex: 0 0 auto; display: flex; align-items: center; white-space: nowrap;
+    font-family: var(--efmfp-name-font); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; background: rgba(255, 255, 255, .16); padding: 0 13px;
+  }
+  #efm-faculty-portal .efmfp-ticker__viewport { flex: 1 1 auto; overflow: hidden; }
+  #efm-faculty-portal .efmfp-ticker__track {
+    display: inline-flex; align-items: center; white-space: nowrap;
+    padding: 9px 0; will-change: transform; animation: efmfp-marquee 32s linear infinite;
+  }
+  #efm-faculty-portal .efmfp-ticker__seq { display: inline-flex; align-items: center; }
+  #efm-faculty-portal .efmfp__ticker:hover .efmfp-ticker__track,
+  #efm-faculty-portal .efmfp__ticker.efmfp-paused .efmfp-ticker__track { animation-play-state: paused; }
+  #efm-faculty-portal .efmfp-ticker__item { font-family: var(--efmfp-name-font); font-size: 14px; padding: 0 26px; }
+  #efm-faculty-portal .efmfp-ticker__item::after { content: "\25C6"; opacity: .5; margin-left: 26px; }
+  /* category chip (from the Announcements "Type" column), shown before each item */
+  #efm-faculty-portal .efmfp-ticker__type {
+    display: inline-block; font-family: var(--efmfp-name-font); font-size: 10.5px;
+    letter-spacing: .06em; text-transform: uppercase; background: rgba(255, 255, 255, .2);
+    border-radius: 999px; padding: 2px 9px; margin-right: 6px; vertical-align: middle;
+  }
+  #efm-faculty-portal .efmfp-ticker__pause {
+    flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; line-height: 1;
+    background: rgba(255, 255, 255, .16); color: #fff; font-size: 13px; padding: 0 13px;
+  }
+  #efm-faculty-portal .efmfp-ticker__pause:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  @keyframes efmfp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) {
+    #efm-faculty-portal .efmfp-ticker__track { animation: none; padding-left: 14px; }
+    #efm-faculty-portal .efmfp-ticker__viewport { overflow-x: auto; }
+    #efm-faculty-portal .efmfp-ticker__pause { display: none; }
+  }
+
   /* --- top-level tabs: underline --- */
   /* 7 tabs: "safe center" keeps the bar centered when it fits but falls back to
      start-aligned (never clipping the first/active tab) when it overflows; the

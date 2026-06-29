@@ -219,6 +219,12 @@
   #efm-portal .efmp__ticker.efmp-paused .efmp-ticker__track { animation-play-state: paused; }
   #efm-portal .efmp-ticker__item { font-family: var(--efmp-name-font); font-size: 14px; padding: 0 26px; }
   #efm-portal .efmp-ticker__item::after { content: "\25C6"; opacity: .5; margin-left: 26px; }
+  /* category chip (from the Announcements "Type" column), shown before each item */
+  #efm-portal .efmp-ticker__type {
+    display: inline-block; font-family: var(--efmp-name-font); font-size: 10.5px;
+    letter-spacing: .06em; text-transform: uppercase; background: rgba(255, 255, 255, .2);
+    border-radius: 999px; padding: 2px 9px; margin-right: 6px; vertical-align: middle;
+  }
   #efm-portal .efmp-ticker__pause {
     flex: 0 0 auto; appearance: none; border: 0; cursor: pointer; line-height: 1;
     background: rgba(255, 255, 255, .16); color: #fff; font-size: 13px; padding: 0 13px;

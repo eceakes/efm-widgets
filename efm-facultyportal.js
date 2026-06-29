@@ -62,6 +62,7 @@
     ESO:         { name: "ESO", gid: "1603346554" },
     GSO:         { name: "GSO", gid: "727646847" },
     generalInfo: { name: "General Information", gid: "1031874194" },
+    announcements: { name: "Announcements", gid: "1387308195" },
     // Full master calendar + Legend -> the Room Schedule tab (today + per-room).
     master:      { name: "Master Calendar", gid: "310873840" },
     legend:      { name: "Legend", gid: "578774100" },
@@ -129,11 +130,8 @@
     // matched by heading text.
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
-      { label: "Maintenance", kind: "giSection", match: /^(urgent )?maintenance/i, head: "Maintenance" },
-      { label: "Mail", kind: "giSection", match: /^mail\b/i, head: "Mail" },
+      { label: "Around Campus", kind: "aroundCampus" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
-      { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
-      { label: "Keys", kind: "infoSection", match: ["key"] },
       { label: "Documents", kind: "infoSection", match: ["document"], all: true },
       { label: "Tickets", kind: "tickets" } ] },
     // Calendar: ensemble schedules + Outreach + All Events (the whole festival).
@@ -395,6 +393,7 @@
   var staffPeople = [];
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
+  var announcements = [];  // {text,dateRaw,key,logic,type,audience} from the Master Calendar "Announcements" tab
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the Master Calendar "Faculty Lesson Locations" tab
   var allRows = [];        // every Master Calendar row (Room Schedule tab)
   var ensDetail = {};      // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
@@ -406,7 +405,7 @@
   var topSel = NAV[0].id, subSel = {};
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
-  var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, icsBtn, modal, srLive, lastFocus;
+  var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, icsBtn, modal, srLive, lastFocus, ticker;
 
   function currentTop() { for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i]; return NAV[0]; }
   function currentSub() { var t = currentTop(); return t.subs[subSel[t.id]] || t.subs[0]; }
@@ -807,14 +806,26 @@
   // tab. Most pills show the first matching section; a pill with all:true (Documents)
   // renders every matching section stacked (e.g. both "Library Documents" and
   // "Festival Documents For Print" become download-button lists under one pill).
-  function renderInfoSection(sub) {
-    banner.hidden = true; status.hidden = true;
+  // Inner HTML for the major section(s) of the Faculty-Portal "General-Information"
+  // tab whose head matches matchTerms (first match, or all when all=true). Returns
+  // "" if none. Used by renderInfoSection and the "Around Campus" pill.
+  function infoSectionInner(matchTerms, all) {
     var matches = infoSections().filter(function (s) {
       var h = s.head.toLowerCase();
-      return sub.match.some(function (m) { return h.indexOf(m) !== -1; });
+      return matchTerms.some(function (m) { return h.indexOf(m) !== -1; });
     });
-    if (!sub.all) matches = matches.slice(0, 1);
-    if (!matches.length) {
+    if (!all) matches = matches.slice(0, 1);
+    var html = "";
+    matches.forEach(function (match) {
+      html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
+      html += renderInfoBlocksHTML(match.blocks);
+    });
+    return html;
+  }
+  function renderInfoSection(sub) {
+    banner.hidden = true; status.hidden = true;
+    var inner = infoSectionInner(sub.match, sub.all);
+    if (!inner) {
       list.innerHTML = "";
       status.textContent = "This information will appear here once it is posted.";
       status.hidden = false;
@@ -822,13 +833,7 @@
       syncBox();
       return;
     }
-    var html = '<div class="efmfp-info efmfp-info--center">';
-    matches.forEach(function (match) {
-      html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(match.head) + "</div>";
-      html += renderInfoBlocksHTML(match.blocks);
-    });
-    html += "</div>";
-    list.innerHTML = html;
+    list.innerHTML = '<div class="efmfp-info efmfp-info--center">' + inner + "</div>";
     announce(sub.label + " shown.");
     syncBox();
   }
@@ -842,38 +847,61 @@
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
-  // General Information -> "Maintenance" / "Mail" pills, from the Master Calendar
-  // "General Information" tab (same source as Dining). Driven by the sub's `match`
-  // (start heading regex) + `head` (title): shows the lines from that heading up to
-  // the next section heading; a "Label: value" line becomes a sub-head + paragraph.
-  function renderMCSection(sub) {
-    banner.hidden = true; status.hidden = true;
+  // Render one General Information cell, which may carry several newline-separated
+  // lines (e.g. a "Maintenance Procedures" heading then paragraphs). A short line
+  // becomes a sub-heading; a "Heading: text" line becomes a sub-heading + paragraph;
+  // a sentence / long line becomes a paragraph. Shared by the Maintenance + Mail pills.
+  function giCellHTML(cell) {
+    var out = "";
+    String(cell).split(/\r?\n/).forEach(function (raw) {
+      var s = raw.trim();
+      if (!s) return;
+      var ci = s.indexOf(":");
+      var label = ci >= 0 ? s.slice(0, ci).trim() : s;
+      var value = ci >= 0 ? s.slice(ci + 1).trim() : "";
+      var headish = label.split(/\s+/).length <= 4 && !/[.!?]$/.test(label);   // short, not a sentence
+      if (ci >= 0 && value && headish) out += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
+      else if (ci >= 0 && !value && headish) out += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(label) + "</div>";
+      else if (ci < 0 && headish) out += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(s) + "</div>";
+      else out += "<p>" + esc(s) + "</p>";
+    });
+    return out;
+  }
+
+  // A Master Calendar General Information section (Maintenance, Mail) by start-
+  // heading regex + display head. Returns the section's inner HTML (head + card),
+  // or "" if absent. Used by the "Around Campus" pill.
+  function mcSectionInner(matchRe, head) {
     var lines = diningLines.filter(function (l) { return l !== ""; });
     var start = -1;
-    for (var i = 0; i < lines.length; i++) { if (sub.match.test(lines[i])) { start = i; break; } }
-    if (start < 0) {
+    for (var i = 0; i < lines.length; i++) { if (matchRe.test(lines[i])) { start = i; break; } }
+    if (start < 0) return "";
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
+    var html = '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(head) + '</div><div class="efmfp-info__card">';
+    lines.slice(start, end).forEach(function (l) { html += giCellHTML(l); });
+    return html + "</div>";
+  }
+
+  // General Information -> "Around Campus" pill: maintenance + mail (Master Calendar
+  // General Information) + keys + wifi (Faculty-Portal General-Information sheet),
+  // stacked in one panel.
+  function renderAroundCampus() {
+    banner.hidden = true; status.hidden = true;
+    var inner = mcSectionInner(/^(urgent )?maintenance/i, "Maintenance") +
+      mcSectionInner(/^mail\b/i, "Mail") +
+      infoSectionInner(["key"], false) +
+      infoSectionInner(["wifi", "wi-fi"], false);
+    if (!inner) {
       list.innerHTML = "";
-      status.textContent = sub.label + " information will appear here once posted.";
+      status.textContent = "Campus information will appear here once posted.";
       status.hidden = false;
-      announce(sub.label + " will appear here once posted.");
+      announce("Campus information will appear here once posted.");
       syncBox();
       return;
     }
-    var end = lines.length;
-    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
-    var html = '<div class="efmfp-info efmfp-info--center">' +
-      '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(sub.head || sub.label) + "</div>" +
-      '<div class="efmfp-info__card">';
-    lines.slice(start, end).forEach(function (l) {
-      var ci = l.indexOf(":");
-      var label = ci >= 0 ? l.slice(0, ci).trim() : "";
-      var value = ci >= 0 ? l.slice(ci + 1).trim() : "";
-      if (label && value) html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
-      else html += "<p>" + esc(l) + "</p>";
-    });
-    html += "</div></div>";
-    list.innerHTML = html;
-    announce(sub.label + " shown.");
+    list.innerHTML = '<div class="efmfp-info efmfp-info--center">' + inner + "</div>";
+    announce("Around campus information shown.");
     syncBox();
   }
 
@@ -1242,7 +1270,7 @@
     else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "lessons") renderLessons();
     else if (k === "infoSection") renderInfoSection(sub);
-    else if (k === "giSection") renderMCSection(sub);
+    else if (k === "aroundCampus") renderAroundCampus();
     else if (k === "tickets") renderTickets();
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
@@ -1705,6 +1733,78 @@
     var n = 0, iv = setInterval(function () { syncBox(); if (++n >= 16) clearInterval(iv); }, 250);
   }
 
+  /* ---- announcements ticker (side-scrolling, pinned above the tabs) ----- */
+  // Master Calendar "Announcements" tab. Columns resolved BY NAME (header row),
+  // falling back to legacy positions (Text=0, Date=1, Logic=2). Optional Type ->
+  // a category chip; optional Audience (All / Students / Faculty) gates the portal.
+  function parseAnnouncements(rows) {
+    if (!rows || !rows.length) return [];
+    var hdr = rows[0].map(function (c) { return clean(c).toLowerCase(); });
+    function col(names, dflt) { for (var n = 0; n < names.length; n++) { var x = hdr.indexOf(names[n]); if (x !== -1) return x; } return dflt; }
+    var iText = col(["announcement text", "text", "announcement"], 0);
+    var iDate = col(["date"], 1);
+    var iLogic = col(["logic"], 2);
+    var iType = col(["type", "category"], -1);
+    var iAud = col(["audience", "portal", "who"], -1);
+    var out = [];
+    for (var i = 1; i < rows.length; i++) {
+      var r = rows[i];
+      var text = clean(r[iText]), date = clean(r[iDate]), logic = clean(r[iLogic]);
+      if (!text && !date) continue;
+      out.push({ text: text, dateRaw: date, key: dateKey(date), logic: logic,
+        type: iType >= 0 ? clean(r[iType]) : "",
+        audience: iAud >= 0 ? clean(r[iAud]) : "" });
+    }
+    return out;
+  }
+  // This portal's audience tag: a row shows here when its Audience cell is blank /
+  // "All" or names this portal, so student-only rows stay out of the faculty ticker.
+  var PORTAL_AUDIENCE = "facult";
+  function audienceShows(aud) {
+    var a = clean(aud).toLowerCase();
+    if (!a || a === "all" || a === "everyone" || a === "everybody" || a === "both") return true;
+    return a.indexOf(PORTAL_AUDIENCE) !== -1;   // "faculty" contains "facult"
+  }
+  function renderTicker() {
+    if (!ticker) return;
+    var tk = todayKey();
+    var withText = announcements.filter(function (a) { return a.text && audienceShows(a.audience); });
+    // Priority: any "Override" row wins and shows EXCLUSIVELY (chronological); else
+    // today's date-matched rows; else fall forward to upcoming so the bar is never
+    // blank when something is on the way.
+    var overrides = withText.filter(function (a) { return /override/i.test(a.logic); });
+    var items;
+    if (overrides.length) {
+      items = overrides.slice().sort(function (a, b) { return (a.key === null ? 99999 : a.key) - (b.key === null ? 99999 : b.key); });
+    } else {
+      var todays = withText.filter(function (a) { return a.key !== null && a.key === tk; });
+      items = todays.length ? todays
+        : withText.filter(function (a) { return a.key !== null && tk !== null && a.key >= tk; }).sort(function (a, b) { return a.key - b.key; });
+    }
+    if (!items.length) { ticker.hidden = true; ticker.innerHTML = ""; return; }
+    var seq = items.map(function (a) {
+      var chip = a.type ? '<span class="efmfp-ticker__type">' + esc(a.type) + "</span> " : "";
+      return '<span class="efmfp-ticker__item">' + chip + esc(a.text) + "</span>";
+    }).join("");
+    // The track holds the sequence twice for a seamless marquee; the second copy
+    // is aria-hidden so a screen reader reads each announcement only once.
+    ticker.innerHTML =
+      '<span class="efmfp-ticker__label">Announcements</span>' +
+      '<div class="efmfp-ticker__viewport"><div class="efmfp-ticker__track">' +
+        '<span class="efmfp-ticker__seq">' + seq + '</span>' +
+        '<span class="efmfp-ticker__seq" aria-hidden="true">' + seq + '</span>' +
+      "</div></div>" +
+      '<button type="button" class="efmfp-ticker__pause" aria-pressed="false" aria-label="Pause announcements">∥</button>';
+    ticker.hidden = false;
+    var btn = ticker.querySelector(".efmfp-ticker__pause");
+    btn.addEventListener("click", function () {
+      var paused = ticker.classList.toggle("efmfp-paused");
+      btn.setAttribute("aria-pressed", paused ? "true" : "false");
+      btn.setAttribute("aria-label", paused ? "Play announcements" : "Pause announcements");
+      btn.innerHTML = paused ? "▶" : "∥";
+    });
+  }
+
   /* ---- load ------------------------------------------------------------ */
   function loadCSV(url) {
     return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }).then(parseCSV);
@@ -1791,6 +1891,8 @@
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
     infoRows = data.info || [];
     lessons = parseLessons(data.lessons);
+    announcements = data.announcements ? parseAnnouncements(data.announcements) : [];
+    renderTicker();
 
     searchBox.addEventListener("input", renderList);
     renderNav();
@@ -1831,6 +1933,7 @@
       ESO: job(MC_CSV, mcDirP, MC_TABS.ESO),
       GSO: job(MC_CSV, mcDirP, MC_TABS.GSO),
       generalInfo: job(MC_CSV, mcDirP, MC_TABS.generalInfo),
+      announcements: job(MC_CSV, mcDirP, MC_TABS.announcements),
       master: job(MC_CSV, mcDirP, MC_TABS.master),
       legend: job(MC_CSV, mcDirP, MC_TABS.legend),
       placement: job(MC_CSV, mcDirP, MC_TABS.placement),
@@ -1882,6 +1985,13 @@
     srLive = document.createElement("div");
     srLive.className = "efmfp__sr"; srLive.setAttribute("aria-live", "polite"); srLive.setAttribute("aria-atomic", "true");
     root.appendChild(srLive); announce("Loading the faculty portal…");
+
+    // Announcements ticker, injected ABOVE the nav tabs (just under the title).
+    ticker = document.createElement("div");
+    ticker.className = "efmfp__ticker"; ticker.id = "efmfp-ticker"; ticker.hidden = true;
+    var tabsEl = root.querySelector(".efmfp__tabs");
+    if (tabsEl && tabsEl.parentNode) tabsEl.parentNode.insertBefore(ticker, tabsEl);
+    else root.insertBefore(ticker, root.firstChild);
 
     icsBtn = document.createElement("button");
     icsBtn.type = "button"; icsBtn.id = "efmfp-ics"; icsBtn.className = "efmfp__ics"; icsBtn.hidden = true;

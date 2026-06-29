@@ -86,12 +86,8 @@
   var NAV = [
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
-      { label: "Building Access Hours", kind: "buildingAccess" },
-      { label: "Maintenance", kind: "giSection", match: /^(urgent )?maintenance/i, head: "Maintenance" },
-      { label: "Mail", kind: "giSection", match: /^mail\b/i, head: "Mail" },
-      { label: "Chamber Coaches", kind: "chamberCoaches" },
-      { label: "Lessons", kind: "lessons" },
-      { label: "Staff Contacts", kind: "staffList" },
+      { label: "Around Campus", kind: "aroundCampus" },
+      { label: "People", kind: "people" },
       { label: "Student Handbook", kind: "handbook" } ] },
     { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
@@ -589,13 +585,12 @@
     announce("Dining information shown.");
   }
 
-  // General Information -> "Staff Contacts" pill: the staff directory cards,
-  // grouped by department, each a tap-to-email / tap-to-call target.
-  function renderStaffList() {
-    banner.hidden = true; banner.textContent = "";
-    status.hidden = true; status.textContent = "";
-    if (!staff.length) { finishList("", 0, "", "Staff contacts will appear here once posted."); return; }
-    var html = '<div class="efmp-info">', people = 0;
+  // Staff directory cards grouped by department, each a tap-to-email / tap-to-call
+  // target. Returns the section's inner HTML (with a "Staff Contacts" head), or ""
+  // if absent. Used by the "People" pill.
+  function staffListInner() {
+    if (!staff.length) return "";
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Staff Contacts</div>';
     staff.forEach(function (g) {
       if (g.dept) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.dept) + "</div>";
       html += '<div class="efmp-cards">';
@@ -616,31 +611,26 @@
         html += href
           ? '<a class="efmp-card efmp-card--link" href="' + esc(href) + '">' + inner + "</a>"
           : '<div class="efmp-card">' + inner + "</div>";
-        people++;
       });
       html += "</div>";
     });
-    html += "</div>";
-    list.innerHTML = html;
-    announce(people + " staff contacts shown.");
+    return html;
   }
 
-  // General Information -> "Chamber Coaches" pill: the chamber music coaches
-  // roster (instrument groups + names) that lives below the dining hours on the
-  // General Information tab.
-  function renderChamberCoaches() {
-    banner.hidden = true; banner.textContent = "";
-    status.hidden = true; status.textContent = "";
+  // The chamber music coaches roster (instrument groups + names) that lives below
+  // the dining hours on the General Information tab. Returns the section's inner
+  // HTML, or "" if absent. Used by the "People" pill.
+  function chamberCoachesInner() {
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     var start = -1;
     for (var i = 0; i < lines.length; i++) { if (/^chamber music coaches/i.test(lines[i])) { start = i; break; } }
-    if (start < 0) { finishList("", 0, "", "Chamber music coaches will appear here once posted."); return; }
-    // The "Off Campus Dining" section follows the roster on the same tab (its own
-    // pill); stop the roster before it so its text doesn't bleed in as coach names.
+    if (start < 0) return "";
+    // The "Off Campus Dining" section follows the roster on the same tab; stop the
+    // roster before it so its text doesn't bleed in as coach names.
     var end = lines.length;
     for (var e = start + 1; e < lines.length; e++) { if (/^off[\s-]*campus dining/i.test(lines[e])) { end = e; break; } }
     var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
-    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Chamber Music Coaches</div>';
     var curNames = [], curSec = null;
     function flush() {
       if (curSec) {
@@ -654,25 +644,20 @@
       else curNames.push(l);
     });
     flush();
-    html += "</div>";
-    list.innerHTML = html;
-    announce("Chamber music coaches shown.");
+    return html;
   }
 
-  // General Information -> "Building Access Hours" pill: the "Student Access
-  // Hours" section on the General Information tab (building -> hours pairs, with
-  // a "PERCUSSION ONLY:" sub-heading). It sits between the dining hours and the
-  // Chamber Music Coaches roster; the section ends at whichever heading follows.
-  function renderBuildingAccess() {
-    banner.hidden = true; banner.textContent = "";
-    status.hidden = true; status.textContent = "";
+  // The "Student Access Hours" section (building -> hours pairs, with a "PERCUSSION
+  // ONLY:" sub-heading). Returns the section's inner HTML (head + rows), or "" if
+  // absent. Used by the "Around Campus" pill.
+  function buildingAccessInner() {
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     var start = -1;
     for (var i = 0; i < lines.length; i++) { if (/^(student|building) access hours/i.test(lines[i])) { start = i; break; } }
-    if (start < 0) { finishList("", 0, "", "Building access hours will appear here once posted."); return; }
+    if (start < 0) return "";
     var end = lines.length;
     for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
-    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Building Access Hours</div>';
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Building Access Hours</div>';
     lines.slice(start + 1, end).forEach(function (l) {
       var ci = l.indexOf(":");
       var label = ci >= 0 ? l.slice(0, ci).trim() : l;
@@ -683,9 +668,7 @@
         html += '<div class="efmp-kv"><b>' + esc(label) + "</b><span>" + esc(value) + "</span></div>";
       }
     });
-    html += "</div>";
-    list.innerHTML = html;
-    announce("Building access hours shown.");
+    return html;
   }
 
   // Section headings on the Master Calendar "General Information" tab. A pill that
@@ -697,30 +680,53 @@
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
-  // General Information -> generic section pill (Maintenance, Mail), driven by the
-  // sub's `match` (start heading regex) + `head` (display title). Shows the lines
-  // from that heading up to the next section heading: a "Label: value" line becomes
-  // a sub-heading + paragraph; a plain line becomes a paragraph.
-  function renderGISection(sub) {
-    banner.hidden = true; banner.textContent = "";
-    status.hidden = true; status.textContent = "";
+  // Render one General Information cell, which may carry several newline-separated
+  // lines (e.g. a "Maintenance Procedures" heading then paragraphs). A short line
+  // becomes a sub-heading; a "Heading: text" line becomes a sub-heading + paragraph;
+  // a sentence / long line becomes a paragraph. Shared by the Maintenance + Mail pills.
+  function giCellHTML(cell) {
+    var out = "";
+    String(cell).split(/\r?\n/).forEach(function (raw) {
+      var s = raw.trim();
+      if (!s) return;
+      var ci = s.indexOf(":");
+      var label = ci >= 0 ? s.slice(0, ci).trim() : s;
+      var value = ci >= 0 ? s.slice(ci + 1).trim() : "";
+      var headish = label.split(/\s+/).length <= 4 && !/[.!?]$/.test(label);   // short, not a sentence
+      if (ci >= 0 && value && headish) out += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
+      else if (ci >= 0 && !value && headish) out += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(label) + "</div>";
+      else if (ci < 0 && headish) out += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(s) + "</div>";
+      else out += "<p>" + esc(s) + "</p>";
+    });
+    return out;
+  }
+
+  // A General Information section (Maintenance, Mail) by start-heading regex +
+  // display head. Returns the section's inner HTML (head + cells), or "" if absent.
+  // Used by the "Around Campus" pill.
+  function giSectionInner(matchRe, head) {
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     var start = -1;
-    for (var i = 0; i < lines.length; i++) { if (sub.match.test(lines[i])) { start = i; break; } }
-    if (start < 0) { finishList("", 0, "", sub.label + " information will appear here once posted."); return; }
+    for (var i = 0; i < lines.length; i++) { if (matchRe.test(lines[i])) { start = i; break; } }
+    if (start < 0) return "";
     var end = lines.length;
     for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
-    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">' + esc(sub.head || sub.label) + "</div>";
-    lines.slice(start, end).forEach(function (l) {
-      var ci = l.indexOf(":");
-      var label = ci >= 0 ? l.slice(0, ci).trim() : "";
-      var value = ci >= 0 ? l.slice(ci + 1).trim() : "";
-      if (label && value) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
-      else html += "<p>" + esc(l) + "</p>";
-    });
-    html += "</div>";
-    list.innerHTML = html;
-    announce(sub.label + " shown.");
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(head) + "</div>";
+    lines.slice(start, end).forEach(function (l) { html += giCellHTML(l); });
+    return html;
+  }
+
+  // General Information -> "Around Campus" pill: building access hours + maintenance
+  // + mail, stacked in one panel (each its own sub-section, in sheet order).
+  function renderAroundCampus() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var inner = buildingAccessInner() +
+      giSectionInner(/^(urgent )?maintenance/i, "Maintenance") +
+      giSectionInner(/^mail\b/i, "Mail");
+    if (!inner) { finishList("", 0, "", "Campus information will appear here once posted."); return; }
+    list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
+    announce("Around campus information shown.");
   }
 
   // Parse the Master Calendar "Faculty Lesson Locations" tab (Name / Room /
@@ -750,24 +756,30 @@
     return order.map(function (k) { return { instrument: k, people: byInst[k] }; });
   }
 
-  // General Information -> "Lessons" pill: faculty private-lesson locations from
-  // the Master Calendar "Faculty Lesson Locations" tab, grouped by instrument.
-  function renderLessons() {
-    banner.hidden = true; banner.textContent = "";
-    status.hidden = true; status.textContent = "";
-    if (!lessons.length) { finishList("", 0, "", "Faculty lesson locations will appear here once posted."); return; }
-    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Faculty Lesson Locations</div>';
-    var people = 0;
+  // Faculty private-lesson locations from the Master Calendar "Faculty Lesson
+  // Locations" tab, grouped by instrument. Returns the section's inner HTML, or ""
+  // if absent. Used by the "People" pill.
+  function lessonsInner() {
+    if (!lessons.length) return "";
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Faculty Lesson Locations</div>';
     lessons.forEach(function (g) {
       html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(g.instrument) + "</div>";
       g.people.forEach(function (p) {
         html += '<div class="efmp-kv"><b>' + esc(p.name) + "</b><span>" + esc(p.room || "Location to be announced") + "</span></div>";
-        people++;
       });
     });
-    html += "</div>";
-    list.innerHTML = html;
-    announce(people + " faculty lesson locations shown.");
+    return html;
+  }
+
+  // General Information -> "People" pill: chamber music coaches + faculty lesson
+  // locations + staff contacts, stacked in one panel.
+  function renderPeople() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var inner = chamberCoachesInner() + lessonsInner() + staffListInner();
+    if (!inner) { finishList("", 0, "", "This information will appear here once posted."); return; }
+    list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
+    announce("People information shown.");
   }
 
   function renderMap() {
@@ -942,26 +954,32 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "buildingAccess" || sub.kind === "giSection" || sub.kind === "lessons");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
-    else if (sub.kind === "buildingAccess") renderBuildingAccess();
-    else if (sub.kind === "giSection") renderGISection(sub);
-    else if (sub.kind === "chamberCoaches") renderChamberCoaches();
-    else if (sub.kind === "lessons") renderLessons();
-    else if (sub.kind === "staffList") renderStaffList();
+    else if (sub.kind === "aroundCampus") renderAroundCampus();
+    else if (sub.kind === "people") renderPeople();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
   }
 
   // ---- announcements ticker (side-scrolling, pinned under the search box) --
+  // This portal's audience tag. A row shows here when its Audience cell is
+  // blank / "All" or names this portal, so faculty-only rows stay out of the
+  // student ticker (and vice-versa in the faculty portal).
+  var PORTAL_AUDIENCE = "student";
+  function audienceShows(aud) {
+    var a = (aud || "").trim().toLowerCase();
+    if (!a || a === "all" || a === "everyone" || a === "everybody" || a === "both") return true;
+    return a.indexOf(PORTAL_AUDIENCE) !== -1;   // "students" contains "student"
+  }
   function renderTicker() {
     if (!ticker) return;
     var tk = todayKey();
-    var withText = announcements.filter(function (a) { return a.text; });
+    var withText = announcements.filter(function (a) { return a.text && audienceShows(a.audience); });
     // Priority: any "Override" row wins and shows EXCLUSIVELY (multiple overrides
     // are shown together, in chronological order); else today's date-matched
     // rows; else fall forward to all upcoming announcements so the bar is never
@@ -980,7 +998,10 @@
             .sort(function (a, b) { return a.key - b.key; });
     }
     if (!items.length) { ticker.hidden = true; ticker.innerHTML = ""; return; }
-    var seq = items.map(function (a) { return '<span class="efmp-ticker__item">' + esc(a.text) + "</span>"; }).join("");
+    var seq = items.map(function (a) {
+      var chip = a.type ? '<span class="efmp-ticker__type">' + esc(a.type) + "</span> " : "";
+      return '<span class="efmp-ticker__item">' + chip + esc(a.text) + "</span>";
+    }).join("");
     // The track holds the sequence twice for a seamless marquee; the second copy
     // is aria-hidden so a screen reader reads each announcement only once.
     ticker.innerHTML =
@@ -1226,13 +1247,27 @@
     allRows.forEach(function (r, i) { r.seq = i; });
   }
 
+  // Announcements tab. Columns are resolved BY NAME from the header row, falling
+  // back to the legacy positions (Text=0, Date=1, Logic=2) so an older sheet keeps
+  // working. The optional Type column drives a category chip in the ticker; the
+  // optional Audience column (All / Students / Faculty) gates which portal shows it.
   function parseAnnouncements(rows) {
+    if (!rows || !rows.length) return [];
+    var hdr = rows[0].map(function (c) { return (c || "").trim().toLowerCase(); });
+    function col(names, dflt) { for (var n = 0; n < names.length; n++) { var x = hdr.indexOf(names[n]); if (x !== -1) return x; } return dflt; }
+    var iText = col(["announcement text", "text", "announcement"], 0);
+    var iDate = col(["date"], 1);
+    var iLogic = col(["logic"], 2);
+    var iType = col(["type", "category"], -1);
+    var iAud = col(["audience", "portal", "who"], -1);
     var out = [];
     for (var i = 1; i < rows.length; i++) {  // skip header
       var r = rows[i];
-      var text = (r[0] || "").trim(), date = (r[1] || "").trim(), logic = (r[2] || "").trim();
+      var text = (r[iText] || "").trim(), date = (r[iDate] || "").trim(), logic = (r[iLogic] || "").trim();
       if (!text && !date) continue;
-      out.push({ text: text, dateRaw: date, key: dateKey(date), logic: logic });
+      out.push({ text: text, dateRaw: date, key: dateKey(date), logic: logic,
+        type: iType >= 0 ? (r[iType] || "").trim() : "",
+        audience: iAud >= 0 ? (r[iAud] || "").trim() : "" });
     }
     return out;
   }
