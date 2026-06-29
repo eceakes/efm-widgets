@@ -39,10 +39,12 @@
   var HERO_GHOST_LABEL   = "More ways to give";     /* scrolls to "ways to give" */
 
   /* ---------- the giving platform ---------- */
-  /* Fundraise Up campaign that every gift link routes to. To use a DIFFERENT
-     campaign on a specific page, set data-efmd-donate-url="..." on the
-     #efm-donate host div in that page's embed; it overrides this default. */
-  var DONATE_BASE = "https://ahrpferd.donorsupport.co/page/outreachdonations";
+  /* Default Fundraise Up campaign every gift link routes to. The regular
+     /donate page uses this original campaign. To route a SPECIFIC page to a
+     different campaign, set data-efmd-donate-url="..." on the #efm-donate host
+     div in that page's embed; it overrides this default (e.g. the
+     /outreachdonations landing page points at the outreachdonations campaign). */
+  var DONATE_BASE = "https://ahrpferd.donorsupport.co/page/EFMDonations";
   var DEFAULT_FREQ = "monthly";   /* "monthly" or "once": which ladder is shown first (Fundraise Up's own default is monthly) */
 
   /* Suggested amounts. amount = WHOLE DOLLARS (no $ or commas). label = a short
