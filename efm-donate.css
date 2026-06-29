@@ -59,6 +59,12 @@
 #efm-donate .efmd-btn--cream{ background:var(--efmd-cream)!important; color:var(--efmd-ink)!important; }
 #efm-donate .efmd-btn--cream:hover{ background:#fff!important; }
 
+/* ================= page title ================= */
+#efm-donate .efmd-pagetitle{
+  font-family:var(--efmd-title-font)!important; color:var(--efmd-ink)!important; font-weight:400!important;
+  text-align:center; font-size:clamp(28px,3cqi + 16px,42px); line-height:1.08; letter-spacing:.005em; margin:2px 0 16px;
+}
+
 /* ================= eyebrow ribbon ================= */
 #efm-donate .efmd-ribbon{
   font-family:var(--efmd-name-font); color:var(--efmd-ink); background:var(--efmd-soft);
@@ -180,7 +186,8 @@
 #efm-donate .efmd-legacy__title{ margin:0 0 14px; }
 #efm-donate .efmd-legacy__body{ color:#3a4054; font-size:16.5px; line-height:1.62; }
 #efm-donate .efmd-legacy__body p{ margin:0 0 12px; } #efm-donate .efmd-legacy__body p:last-child{ margin-bottom:0; }
-#efm-donate .efmd-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:26px 0 0; }
+#efm-donate .efmd-stats__cap{ font-family:var(--efmd-name-font)!important; color:var(--efmd-role)!important; font-size:12.5px; letter-spacing:.09em; text-transform:uppercase; text-align:center; margin:26px 0 0; }
+#efm-donate .efmd-stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:12px 0 0; }
 #efm-donate .efmd-stat{ background:#fff; border:1px solid var(--efmd-rule); border-radius:14px; padding:18px 14px; }
 #efm-donate .efmd-stat__big{ display:block; font-family:var(--efmd-name-font); color:var(--efmd-ink); font-size:26px; line-height:1.05; }
 #efm-donate .efmd-stat__small{ display:block; color:var(--efmd-role); font-size:13px; line-height:1.35; margin-top:6px; }

@@ -26,6 +26,9 @@
      blank id the button still works, it just lands on the default fund.
      ============================================================ */
 
+  /* ---------- page header ---------- */
+  var PAGE_TITLE = "Support the Festival";   /* the page's own title, shown at the top above the hero; "" hides it */
+
   /* ---------- HERO + framing ---------- */
   var EYEBROW   = "Inaugural Season 2026 | Guilford College, Greensboro";
   var HERO_TITLE = "Help bring the music home.";
@@ -92,13 +95,15 @@
   /* ---------- legacy + stat strip ---------- */
   var LEGACY_TITLE = "A tradition worth continuing";
   var LEGACY_BODY  =
-    "The festival was founded in Greensboro in 1961 by Sheldon Morgenstern, on the campus of Guilford College. Across its history it has welcomed more than ten thousand musicians from forty countries, among them the trumpeter Wynton Marsalis and the cellist Sterling Elliott. Today the Eastern Festival of Music carries that tradition forward, with Gerard Schwarz as music director through 2030. Your support is how a beloved summer of music continues for the next generation of artists.";
-  /* Heritage figures (continuation framing, not this entity's current-year counts). Confirm with Eric before launch. */
+    "In 1961, Sheldon Morgenstern founded a summer music festival on the campus of Guilford College in Greensboro, and over the decades it grew into a celebrated home for young artists, among them the trumpeter Wynton Marsalis and the cellist Sterling Elliott. The Eastern Festival of Music is a new festival, created to honor that legacy and carry its spirit forward on the same Greensboro campus. Gerard Schwarz, who served as that festival's music director for nearly twenty years, now leads the Eastern Festival of Music through 2030. Your support is what brings this new chapter to life for the next generation of musicians.";
+  /* These figures belong to the ORIGINAL festival Morgenstern founded, NOT to EFM.
+     STATS_CAPTION scopes them as an inherited legacy so nothing reads as EFM's own
+     track record. "" hides the caption. Confirm the numbers with Eric before launch. */
+  var STATS_CAPTION = "The legacy we carry forward";
   var STATS = [
     { big:"60+",     small:"years of summer music-making" },
     { big:"10,000+", small:"musicians from 40 countries" },
-    { big:"4,500+",  small:"alumni, including Wynton Marsalis" },
-    { big:"14-24", small:"the ages we train, from around the world" },
+    { big:"4,500+",  small:"alumni worldwide" },
     { big:"5 weeks", small:"each summer at Guilford College" }
   ];
 
@@ -183,6 +188,8 @@
     l.textContent=""; try{ window.requestAnimationFrame(function(){ l.textContent=msg; }); }catch(e){ l.textContent=msg; } }
 
   /* ====================== SECTIONS ====================== */
+  function secPageTitle(){ if(!PAGE_TITLE) return ""; return heading(1,"efmd-pagetitle", PAGE_TITLE); }
+
   function secEyebrow(){ if(!EYEBROW) return "";
     return '<div class="efmd-ribbon">'+escapeHtml(EYEBROW)+'</div>'; }
 
@@ -193,7 +200,7 @@
     if(waysShown()) btns+='<button type="button" class="efmd-btn efmd-btn--ghost" data-scroll="efmd-ways">'+escapeHtml(HERO_GHOST_LABEL)+'</button>';
     return '<section class="efmd-hero'+(bg?' efmd-hero--photo':'')+'"'+(bg?' style="background-image:linear-gradient(135deg,rgba(14,23,142,.86),rgba(10,17,112,.92)),url(\''+escapeHtml(bg)+'\')"':'')+'>'+
         '<div class="efmd-hero__inner">'+
-          heading(1,"efmd-hero__title", HERO_TITLE)+
+          heading(2,"efmd-hero__title", HERO_TITLE)+
           (HERO_COPY?'<p class="efmd-hero__copy">'+escapeHtml(HERO_COPY)+'</p>':'')+
           '<div class="efmd-hero__actions">'+btns+'</div>'+
         '</div></section>';
@@ -268,7 +275,9 @@
       '</div></section>'; }
 
   function secLegacy(){ if(!LEGACY_TITLE && !LEGACY_BODY && !(STATS&&STATS.length)) return "";
-    var stats=(STATS&&STATS.length)?'<div class="efmd-stats">'+STATS.map(function(s){ if(!s||!s.big) return "";
+    var stats=(STATS&&STATS.length)?
+      (STATS_CAPTION?'<div class="efmd-stats__cap">'+escapeHtml(STATS_CAPTION)+'</div>':"")+
+      '<div class="efmd-stats">'+STATS.map(function(s){ if(!s||!s.big) return "";
       return '<div class="efmd-stat"><span class="efmd-stat__big">'+escapeHtml(s.big)+'</span><span class="efmd-stat__small">'+escapeHtml(s.small||"")+'</span></div>'; }).join("")+'</div>':"";
     return '<section class="efmd-legacy">'+
       (LEGACY_TITLE?heading(2,"efmd-legacy__title", LEGACY_TITLE):"")+
@@ -303,7 +312,7 @@
 
   /* ====================== RENDER ====================== */
   function render(){
-    var html=secEyebrow()+secHero()+secThesis()+secFunds()+secLadder()+secFounders()+secLegacy()+secWays()+secTrust();
+    var html=secPageTitle()+secEyebrow()+secHero()+secThesis()+secFunds()+secLadder()+secFounders()+secLegacy()+secWays()+secTrust();
     rootEl.innerHTML='<div class="efmd-sr-only" data-efmd-live aria-live="polite" aria-atomic="true"></div>'+html;
     if(statusEl) statusEl.hidden=true;
     wireInteractions();
