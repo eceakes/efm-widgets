@@ -126,7 +126,9 @@
   // NAV[0] is the default tab on load. Tab order left -> right; mirrors the 2026
   // portal (General Information | Calendar | Classes & Assignments | … | Campus Map
   // | Room Schedule) with the faculty-only Contact tabs kept together.
-  var NAV = [
+  // NAV is rebuilt from this template at the start of every build() (cloneNav), so
+  // the SWR cache->fresh double-build never duplicates appended room tabs.
+  var NAV_TEMPLATE = [
     // General Information is now pill-split (like the 2026 portal). "Dining" is the
     // Master Calendar dining block (on-campus hours + off-campus options); the rest
     // are major sections pulled from the Faculty-Portal "General-Information" tab,
@@ -169,6 +171,8 @@
     { id: "rooms", label: "Room Schedule", subs: [
       { label: "Today", kind: "roomsToday" } ] }  // per-room pills appended after data loads
   ];
+  function cloneNav() { return JSON.parse(JSON.stringify(NAV_TEMPLATE)); }
+  var NAV = cloneNav();
 
   /* ---- small inline icons --------------------------------------------- */
   var PHONE_ICO = '<svg class="efmfp-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
@@ -410,6 +414,7 @@
 
   var modalData = [], viewEvents = [], viewLabel = "", viewFeedKey = "";
   var built = false;        // true once the full build() has run (gates the early first-paint)
+  var _generalInfoP = null; // in-flight General Information fetch, for the early Dining paint
   var topSel = NAV[0].id, subSel = {};
   NAV.forEach(function (t) { subSel[t.id] = 0; });
 
@@ -1301,6 +1306,18 @@
   /* ---- master render dispatch ------------------------------------------ */
   function renderList() {
     var sub = currentSub();
+    // The nav is interactive from first paint (boot calls renderNav before the
+    // ~20 sheets load). Until the data arrives (build() sets `built`), a tab click
+    // would otherwise paint an empty "No services scheduled" view; show the loading
+    // state instead. build() re-renders the current view once everything is in.
+    if (!built) {
+      banner.hidden = true;
+      if (controls) controls.hidden = true;
+      list.innerHTML = "";
+      status.textContent = "Loading the faculty portal…";
+      status.hidden = false;
+      return;
+    }
     modalData = []; viewEvents = []; viewLabel = ""; viewFeedKey = "";
     var k = sub.kind;
     // Search + Add-to-Calendar belong to the agenda views (schedules + rooms).
@@ -1873,6 +1890,12 @@
 
   function build(data) {
     built = true;
+    // Reset accumulating state so build() is safe to run twice (SWR: paint cached
+    // data, then re-render if the fresh fetch differs). cloneNav() gives a pristine
+    // NAV; allRows/seenRooms are push-accumulated by parseCalendar.
+    NAV = cloneNav();
+    allRows = [];
+    seenRooms = {};
     // contacts
     facultyPeople = data.faculty ? parseContacts(data.faculty, "faculty") : [];
     fellowPeople = data.fellows ? parseContacts(data.fellows, "fellows") : [];
@@ -1952,7 +1975,6 @@
     announcements = data.announcements ? parseAnnouncements(data.announcements) : [];
     renderTicker();
 
-    searchBox.addEventListener("input", renderList);
     renderNav();
     renderList();
   }
@@ -1962,16 +1984,36 @@
     if (window.console) console.error("EFM faculty portal load failed:", err);
   }
 
-  function run() {
-    // Resolve the published-tab directories in parallel, but DON'T block on them.
-    // Each tab fetches by its known gid first; it only waits on the directory if
-    // that gid fetch comes back empty (the sheet was rebuilt and gids moved). This
-    // keeps the ~0.5s directory round-trip off the critical path. (#1)
-    var fpDirP = resolveDir(FP_PUBHTML), mcDirP = resolveDir(MC_PUBHTML);
+  // ---- SWR cache: instant repeat loads ----------------------------------
+  // Paint the last-seen data immediately from localStorage, then revalidate in the
+  // background and re-render only if the fresh fetch differs. (#4)
+  var CACHE_KEY = "efmfp-cache-v1", CACHE_MAX_AGE = 2 * 24 * 60 * 60 * 1000;   // paint cache up to 2 days old; always revalidate
+  function _ls() { try { return window.localStorage; } catch (e) { return null; } }
+  function readCache() {
+    var ls = _ls(); if (!ls) return null;
+    try {
+      var o = JSON.parse(ls.getItem(CACHE_KEY) || "null");
+      if (!o || !o.d) return null;
+      if (typeof o.t === "number" && (Date.now() - o.t) > CACHE_MAX_AGE) return null;
+      return o.d;
+    } catch (e) { return null; }
+  }
+  function writeCache(data) {
+    var ls = _ls(); if (!ls) return;
+    try { ls.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+  }
+
+  function startFetches() {
+    // Lazy directory: each tab fetches by its known gid first; the ~1.2s published
+    // -tab directory is only fetched if a gid actually misses (a sheet rebuild moved
+    // it), which never happens in practice. So two slow fetches stay off the critical
+    // path AND off the wire entirely on a normal load. (#1)
+    function lazyDir(url) { var p; return function () { return p || (p = resolveDir(url)); }; }
+    var fpDirP = lazyDir(FP_PUBHTML), mcDirP = lazyDir(MC_PUBHTML);
     function job(csvBase, dirP, tab) {
       return loadFirst([csvBase + tab.gid]).then(function (rows) {
         if (rows && rows.length) return rows;                 // known gid worked
-        return dirP.then(function (dir) {                      // gid stale -> resolved gid
+        return dirP().then(function (dir) {                   // gid stale -> resolve by name (lazy)
           var gid = dir && dir[tab.name];
           return (gid && gid !== tab.gid) ? loadFirst([csvBase + gid]) : null;
         });
@@ -2003,20 +2045,15 @@
       facultyPhotos: loadFirst(FACULTY_PHOTO_URLS),
       fellowPhotos: loadFirst(FELLOW_PHOTO_URLS)
     };
-    // Early first-paint: render the default General Information -> Dining view as
-    // soon as that one tab arrives, instead of waiting for all ~19 fetches. The
-    // full build() (which finalizes nav + every other tab) still runs below. (#2)
-    jobs.generalInfo.then(function (rows) {
-      if (built || !rows) return;
-      diningLines = rows.map(function (r) { return clean(r[0]); });
-      var sub = currentSub();
-      if (sub && sub.kind === "dining") renderDining();
-    });
+    // Expose General Information so boot() can early-paint the default Dining view
+    // the moment that tab arrives (rendering needs the DOM, so the paint itself is
+    // wired in boot, not here). The full build() runs once all tabs resolve. (#2)
+    _generalInfoP = jobs.generalInfo;
     var keys = Object.keys(jobs);
-    Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
+    return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
       var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
-      build(data);
-    }).catch(fail);
+      return data;
+    });
   }
 
   /* ---- boot ------------------------------------------------------------ */
@@ -2081,9 +2118,36 @@
     list.addEventListener("keydown", function (e) { if (e.key !== "Enter" && e.key !== " ") return; var r = e.target.closest ? e.target.closest("[data-mi]") : null; if (r) { e.preventDefault(); openModal(modalData[+r.getAttribute("data-mi")]); } });
 
     wireBox();
+    searchBox.addEventListener("input", renderList);   // wired once (build() no longer re-adds it)
     renderNav();
-    run();
+    if (!_dataPromise) _dataPromise = startFetches();   // host appeared after the script ran
+    // SWR: paint the last-cached data instantly, then revalidate. With no usable
+    // cache, fall back to the early Dining paint while the first fetch lands. (#2)(#4)
+    var cacheStr = null;
+    var cached = readCache();
+    if (cached && cached.EFO) {
+      try { cacheStr = JSON.stringify(cached); } catch (e) { cacheStr = null; }
+      build(cached);
+    } else if (_generalInfoP) {
+      _generalInfoP.then(function (rows) {
+        if (built || !rows) return;
+        diningLines = rows.map(function (r) { return clean(r[0]); });
+        var sub = currentSub();
+        if (sub && sub.kind === "dining") renderDining();
+      });
+    }
+    _dataPromise.then(function (data) {
+      var freshStr; try { freshStr = JSON.stringify(data); } catch (e) { freshStr = null; }
+      if (data.EFO) writeCache(data);   // don't cache a load where the core calendar fetch failed
+      if (!built || freshStr === null || freshStr !== cacheStr) build(data);   // first paint, or the data changed
+      cacheStr = freshStr;
+    }).catch(function (e) { if (!built) fail(e); });
   }
+  // (#2) Kick the data fetch off the moment this script runs: the host div is parsed
+  // just above this <script>, so it is already in the DOM. This overlaps the ~20
+  // sheet fetches with the rest of the Duda page's load instead of waiting for its
+  // DOMContentLoaded. No-ops if the widget isn't on the page.
+  var _dataPromise = document.getElementById("efm-faculty-portal") ? startFetches() : null;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();

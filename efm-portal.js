@@ -85,7 +85,9 @@
 
   // ---- navigation model -------------------------------------------------
   // Tab order (left -> right). NAV[0] is also the default tab shown on load.
-  var NAV = [
+  // NAV is rebuilt from this template at the start of every build() (cloneNav), so
+  // the SWR cache->fresh double-build never duplicates appended room tabs.
+  var NAV_TEMPLATE = [
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
@@ -112,6 +114,8 @@
     { id: "rooms", label: "Room Schedule", subs: [
       { label: "Today", kind: "roomsToday" } ] }  // room tabs appended after data loads
   ];
+  function cloneNav() { return JSON.parse(JSON.stringify(NAV_TEMPLATE)); }
+  var NAV = cloneNav();
 
   // ---- helpers ------------------------------------------------------------
   function parseCSV(text) {
@@ -1468,6 +1472,12 @@
 
   function build(data) {
     built = true;
+    // Reset the accumulating state so build() is safe to run twice (SWR: paint
+    // cached data, then re-render if the fresh fetch differs). cloneNav() gives a
+    // pristine NAV; allRows/seenRooms are push-accumulated by parseCalendar.
+    NAV = cloneNav();
+    allRows = [];
+    seenRooms = {};
     if (data.legend) applyLegend(data.legend);
     if (data.staff) staff = parseStaff(data.staff);
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
@@ -1505,7 +1515,6 @@
     appendRoomTabs();
     renderTicker();
 
-    searchBox.addEventListener("input", renderList);
     renderNav();
     renderList();
   }
@@ -1524,8 +1533,34 @@
   // the directory is resolved in parallel and only consulted when a gid fetch
   // comes back empty (sheet rebuilt -> gids moved). calendar also falls back to
   // the bare CSV (first tab = Master Calendar) so the schedule still renders. (#1)
-  function run() {
-    var dirP = resolveTabGids().then(function (m) { return m; }, function () { return {}; });
+  // ---- SWR cache: instant repeat loads ----------------------------------
+  // Paint the last-seen data immediately from localStorage, then revalidate in the
+  // background and re-render only if the fresh fetch differs. (#4)
+  var _generalInfoP = null;   // in-flight General Information fetch, for the early Dining paint
+  var CACHE_KEY = "efmp-cache-v1", CACHE_MAX_AGE = 2 * 24 * 60 * 60 * 1000;   // paint cache up to 2 days old; always revalidate
+  function _ls() { try { return window.localStorage; } catch (e) { return null; } }
+  function readCache() {
+    var ls = _ls(); if (!ls) return null;
+    try {
+      var o = JSON.parse(ls.getItem(CACHE_KEY) || "null");
+      if (!o || !o.d) return null;
+      if (typeof o.t === "number" && (Date.now() - o.t) > CACHE_MAX_AGE) return null;
+      return o.d;
+    } catch (e) { return null; }
+  }
+  function writeCache(data) {
+    var ls = _ls(); if (!ls) return;
+    try { ls.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+  }
+
+  // Kick off all source-tab fetches and resolve to the { key: rows } data object.
+  // Touches no DOM, so it can run before DOMContentLoaded. (#2)
+  function startFetches() {
+    // Lazy directory: only fetch the published-tab directory if a known gid misses
+    // (a sheet rebuild moved it), which never happens normally, so that ~1.2s fetch
+    // stays off the wire entirely on a normal load. (#1)
+    var _dir = null;
+    function dir() { return _dir || (_dir = resolveTabGids().then(function (m) { return m; }, function () { return {}; })); }
     function fetchTab(s) {
       var firstUrl = s.gid ? (CSV + "&gid=" + s.gid) : (s.key === "calendar" ? CSV : null);
       var first = firstUrl
@@ -1533,7 +1568,7 @@
         : Promise.resolve(null);
       return first.then(function (rows) {
         if (rows) return rows;
-        return dirP.then(function (map) {
+        return dir().then(function (map) {
           var gid = map[s.tab];
           if (gid && gid !== s.gid) return loadCSV(CSV + "&gid=" + gid).then(function (r) { return r && r.length ? r : null; }, function () { return null; });
           if (s.key === "calendar") return loadCSV(CSV).then(function (r) { return r; }, function () { return null; });
@@ -1543,21 +1578,12 @@
     }
     var jobs = {};
     SOURCES.forEach(function (s) { jobs[s.key] = fetchTab(s); });
-    // Early first-paint: render the default General Information -> Dining view as
-    // soon as that one tab arrives, not after all ~10 fetches complete. The full
-    // build() still runs below to finalize the nav + every other tab. (#2)
-    if (jobs.generalInfo) jobs.generalInfo.then(function (rows) {
-      if (built || !rows) return;
-      generalInfo = rows.map(function (r) { return (r[0] || "").trim(); });
-      var top = currentTop(), sub = top.subs[subSel[top.id]] || top.subs[0];
-      if (sub && sub.kind === "dining") renderDining();
-    });
+    _generalInfoP = jobs.generalInfo || null;
     var keys = Object.keys(jobs);
-    Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
+    return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
       var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
-      if (SOURCES.some(function (s) { return s.required && !data[s.key]; })) { fail(new Error("required tab unavailable")); return; }
-      build(data);
-    }).catch(fail);
+      return data;
+    });
   }
 
   // ---- boot --------------------------------------------------------------
@@ -1646,8 +1672,34 @@
       if (row) { e.preventDefault(); openModal(modalData[+row.getAttribute("data-mi")]); }
     });
 
-    run();
+    searchBox.addEventListener("input", renderList);   // wired once (build() no longer re-adds it)
+    if (!_dataPromise) _dataPromise = startFetches();  // host appeared after the script ran
+    // SWR: paint the last-cached data instantly, then revalidate. With no usable
+    // cache, fall back to the early Dining paint while the first fetch lands. (#2)(#4)
+    var cacheStr = null;
+    var cached = readCache();
+    if (cached && !SOURCES.some(function (s) { return s.required && !cached[s.key]; })) {
+      try { cacheStr = JSON.stringify(cached); } catch (e) { cacheStr = null; }
+      build(cached);
+    } else if (_generalInfoP) {
+      _generalInfoP.then(function (rows) {
+        if (built || !rows) return;
+        generalInfo = rows.map(function (r) { return (r[0] || "").trim(); });
+        var top = currentTop(), sub = top.subs[subSel[top.id]] || top.subs[0];
+        if (sub && sub.kind === "dining") renderDining();
+      });
+    }
+    _dataPromise.then(function (data) {
+      if (SOURCES.some(function (s) { return s.required && !data[s.key]; })) { if (!built) fail(new Error("required tab unavailable")); return; }
+      var freshStr; try { freshStr = JSON.stringify(data); } catch (e) { freshStr = null; }
+      writeCache(data);
+      if (!built || freshStr === null || freshStr !== cacheStr) build(data);   // first paint, or the data changed
+      cacheStr = freshStr;
+    }).catch(function (e) { if (!built) fail(e); });
   }
+  // (#2) Kick the data fetch off the moment this script runs (the host div sits just
+  // above this <script>), instead of waiting for the whole Duda page's DOMContentLoaded.
+  var _dataPromise = document.getElementById("efm-portal") ? startFetches() : null;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();
