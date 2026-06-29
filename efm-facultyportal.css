@@ -313,8 +313,21 @@
   #efm-faculty-portal .efmfp-card__link span { min-width: 0; overflow-wrap: anywhere; }
 
   /* --- Alexander Technique: card grid, schedule button, website link, inline Calendly --- */
-  #efm-faculty-portal .efmfp-at__grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 380px)); gap: 14px; margin: 6px 0 4px;
+  #efm-faculty-portal .efmfp-at__note {
+    background: var(--efmfp-soft); border: 1px solid var(--efmfp-rule); border-left: 4px solid var(--efmfp-ink);
+    border-radius: 8px; padding: 11px 15px; margin: 2px 0 14px; color: var(--efmfp-ink);
+    font-size: 14px; line-height: 1.5;
+  }
+  /* A single larger profile card (one instructor looked small in the auto-fill grid):
+     wider, with a big headshot; stacks centered on narrow screens. */
+  #efm-faculty-portal .efmfp-at__grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 6px 0 6px; }
+  #efm-faculty-portal .efmfp-at__grid .efmfp-card { max-width: 680px; align-items: flex-start; gap: 22px; padding: 20px 22px; }
+  #efm-faculty-portal .efmfp-at__grid .efmfp-card__avatar { width: clamp(116px, 16cqi, 148px); height: clamp(116px, 16cqi, 148px); }
+  #efm-faculty-portal .efmfp-at__grid .efmfp-card__name { font-size: 21px !important; }
+  @media (max-width: 540px) {
+    #efm-faculty-portal .efmfp-at__grid .efmfp-card { flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+    #efm-faculty-portal .efmfp-at__grid .efmfp-card__contacts { align-items: center; }
+    #efm-faculty-portal .efmfp-at__grid .efmfp-at__actions { justify-content: center; }
   }
   #efm-faculty-portal .efmfp-at__about { color: var(--efmfp-role); font-size: 15px; line-height: 1.6; margin: 8px 0 0; max-width: 70ch; }
   #efm-faculty-portal .efmfp-at__weblink { color: var(--efmfp-ink); text-decoration: underline; font-style: normal; }

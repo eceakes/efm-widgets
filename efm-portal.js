@@ -59,6 +59,9 @@
   // "lastname|first-initial" so a name typo in the sheet still matches; a Photo column
   // URL in the sheet overrides this, and a missing photo falls back to initials.
   var AT_PHOTO_BY_KEY = { "copeland|s": CDN_BASE + "efm-alexander-copeland.jpg" };
+  // Cost disclaimer shown atop the Alexander Technique tab. A "Cost Note" column in the
+  // sheet overrides this; this default shows when that column is blank or absent.
+  var AT_COST_NOTE_DEFAULT = "Please note: Alexander Technique lessons are an additional cost and are not included in tuition or scholarships.";
 
   // Student Handbook is hosted on the main EFM website's CDN (not this repo), so
   // it is an absolute URL rather than one derived from CDN_BASE. Update here if
@@ -1039,11 +1042,13 @@
         iWeb = col("website", "web", "site", "web site", "url"),
         iPhoto = col("photo", "headshot", "image", "picture", "img", "photo url", "portrait"),
         iCal = col("calendly", "scheduling", "schedule", "booking", "sign up", "signup", "calendly url"),
-        iAbout = col("about", "overview", "intro", "description");
-    var people = [], about = "";
+        iAbout = col("about", "overview", "intro", "description"),
+        iNote = col("cost note", "cost", "pricing", "fee", "note", "disclaimer");
+    var people = [], about = "", note = "";
     for (var j = headerIdx + 1; j < rows.length; j++) {
       var c = rows[j];
       if (iAbout !== -1 && iAbout !== iDet && !about) about = clean(c[iAbout]);
+      if (iNote !== -1 && !note) note = clean(c[iNote]);
       var name = iName !== -1 ? clean(c[iName]) : "";
       if (!name) continue;
       people.push({
@@ -1058,7 +1063,7 @@
       });
     }
     if (!people.length && !about) return null;
-    return { people: people, about: about };
+    return { people: people, about: about, note: note };
   }
   // Photo: a sheet Photo-column URL wins; else a headshot bundled in the repo (keyed
   // by name); else initials. (An image inserted INTO a sheet cell is not in the CSV,
@@ -1089,8 +1094,10 @@
     var d = atData;
     if (!d || (!d.people.length && !d.about)) { finishList("", 0, "", "Alexander Technique information will appear here once it is posted."); return; }
     var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Alexander Technique</div>';
+    var costNote = d.note || AT_COST_NOTE_DEFAULT;
+    if (costNote) html += '<div class="efmp-at__note">' + esc(costNote) + "</div>";
     if (d.people.length) {
-      html += '<div class="efmp-cards">';
+      html += '<div class="efmp-at__cards">';
       d.people.forEach(function (p) {
         var photo = atPhoto(p), bundled = bundledPhoto(p), fb = (bundled && bundled !== photo) ? bundled : "";
         var avatar = '<span class="efmp-card__avatar">' + (photo
@@ -1109,7 +1116,7 @@
           (web ? '<div class="efmp-card__office">Website: <a href="' + esc(web) + '" target="_blank" rel="noopener noreferrer">' + esc(webLabel(p.website)) + "</a></div>" : "") +
           (p.contact && !isEmail ? '<div class="efmp-card__contact">' + esc(p.contact) + "</div>" : "") +
           (actions ? '<div class="efmp-at__actions">' + actions + "</div>" : "");
-        html += '<div class="efmp-card efmp-card--person">' + avatar + '<div class="efmp-card__body">' + body + "</div></div>";
+        html += '<div class="efmp-at__card">' + avatar + '<div class="efmp-card__body">' + body + "</div></div>";
       });
       html += "</div>";
     }

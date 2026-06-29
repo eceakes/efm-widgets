@@ -111,6 +111,9 @@
   // "lastname|first-initial"; a sheet Headshot/Photo URL overrides this, and a missing
   // photo falls back to initials.
   var AT_PHOTO_BY_KEY = { "copeland|s": CDN_BASE + "efm-alexander-copeland.jpg" };
+  // Cost disclaimer shown atop the Alexander Technique tab. A "Cost Note" column in the
+  // sheet overrides this; this default shows when that column is blank or absent.
+  var AT_COST_NOTE_DEFAULT = "Please note: Alexander Technique lessons are an additional cost and are not included in tuition or scholarships.";
 
   var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -856,11 +859,13 @@
         iWeb = col("website", "web", "site", "web site", "url"),
         iPhoto = col("photo", "headshot", "image", "picture", "img", "photo url", "portrait"),
         iCal = col("calendly", "scheduling", "schedule", "booking", "sign up", "signup", "calendly url"),
-        iAbout = col("about", "overview", "intro", "description");
-    var people = [], about = "";
+        iAbout = col("about", "overview", "intro", "description"),
+        iNote = col("cost note", "cost", "pricing", "fee", "note", "disclaimer");
+    var people = [], about = "", note = "";
     for (var j = headerIdx + 1; j < rows.length; j++) {
       var c = rows[j];
       if (iAbout !== -1 && iAbout !== iDet && !about) about = clean(c[iAbout]);
+      if (iNote !== -1 && !note) note = clean(c[iNote]);
       var name = iName !== -1 ? clean(c[iName]) : "";
       if (!name) continue;
       people.push({
@@ -875,7 +880,7 @@
       });
     }
     if (!people.length && !about) return null;
-    return { people: people, about: about };
+    return { people: people, about: about, note: note };
   }
   function bundledPhoto(p) { var keys = nameKeys(p.name); for (var i = 0; i < keys.length; i++) { if (AT_PHOTO_BY_KEY[keys[i]]) return AT_PHOTO_BY_KEY[keys[i]]; } return ""; }
   function atPhoto(p) { return safeUrl(p.photo) || bundledPhoto(p); }
@@ -941,6 +946,8 @@
     }
     var wrap = document.createElement("div"); wrap.className = "efmfp-contact";
     var head = document.createElement("div"); head.className = "efmfp-info__head"; head.setAttribute("role", "heading"); head.setAttribute("aria-level", "3"); head.textContent = "Alexander Technique"; wrap.appendChild(head);
+    var costNote = d.note || AT_COST_NOTE_DEFAULT;
+    if (costNote) { var nt = document.createElement("div"); nt.className = "efmfp-at__note"; nt.textContent = costNote; wrap.appendChild(nt); }
     if (d.people.length) {
       var grid = document.createElement("div"); grid.className = "efmfp-at__grid";
       d.people.forEach(function (p) { grid.appendChild(atCardEl(p)); });
