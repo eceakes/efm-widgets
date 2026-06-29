@@ -86,6 +86,7 @@
   var NAV = [
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
+      { label: "Building Access Hours", kind: "buildingAccess" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Lessons", kind: "lessons" },
       { label: "Staff Contacts", kind: "staffList" },
@@ -564,7 +565,7 @@
     // (the coaches roster, or off-campus dining if the roster is absent).
     var hall = all.slice();
     if (hall.length && /^general information$/i.test(hall[0])) hall = hall.slice(1);
-    for (var di = 0; di < hall.length; di++) { if (/^chamber music coaches/i.test(hall[di]) || /^off[\s-]*campus dining/i.test(hall[di])) { hall = hall.slice(0, di); break; } }
+    for (var di = 0; di < hall.length; di++) { if (/^(student|building) access hours/i.test(hall[di]) || /^chamber music coaches/i.test(hall[di]) || /^off[\s-]*campus dining/i.test(hall[di])) { hall = hall.slice(0, di); break; } }
     // Off-campus dining block: from its heading to the end of the tab.
     var off = [];
     for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
@@ -654,6 +655,35 @@
     html += "</div>";
     list.innerHTML = html;
     announce("Chamber music coaches shown.");
+  }
+
+  // General Information -> "Building Access Hours" pill: the "Student Access
+  // Hours" section on the General Information tab (building -> hours pairs, with
+  // a "PERCUSSION ONLY:" sub-heading). It sits between the dining hours and the
+  // Chamber Music Coaches roster; the section ends at whichever heading follows.
+  function renderBuildingAccess() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var lines = generalInfo.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (/^(student|building) access hours/i.test(lines[i])) { start = i; break; } }
+    if (start < 0) { finishList("", 0, "", "Building access hours will appear here once posted."); return; }
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (/^chamber music coaches/i.test(lines[e]) || /^off[\s-]*campus dining/i.test(lines[e])) { end = e; break; } }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Building Access Hours</div>';
+    lines.slice(start + 1, end).forEach(function (l) {
+      var ci = l.indexOf(":");
+      var label = ci >= 0 ? l.slice(0, ci).trim() : l;
+      var value = ci >= 0 ? l.slice(ci + 1).trim() : "";
+      if (!value) {                                              // a bare label like "PERCUSSION ONLY:" -> sub-heading
+        html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(label.replace(/:\s*$/, "")) + "</div>";
+      } else {                                                   // "Building: hours" -> key/value row
+        html += '<div class="efmp-kv"><b>' + esc(label) + "</b><span>" + esc(value) + "</span></div>";
+      }
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce("Building access hours shown.");
   }
 
   // Parse the Master Calendar "Faculty Lesson Locations" tab (Name / Room /
@@ -875,11 +905,12 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "lessons");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "buildingAccess" || sub.kind === "lessons");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
+    else if (sub.kind === "buildingAccess") renderBuildingAccess();
     else if (sub.kind === "chamberCoaches") renderChamberCoaches();
     else if (sub.kind === "lessons") renderLessons();
     else if (sub.kind === "staffList") renderStaffList();

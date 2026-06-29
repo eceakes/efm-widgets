@@ -662,11 +662,12 @@
     var html = '<div class="efmfp-info efmfp-info--center">';
     var all = diningLines.filter(function (l) { return l !== ""; })
       .filter(function (l) { return !/^general information$/i.test(l); });
-    // The General Information tab stacks the dining hall hours, a "Chamber Music
-    // Coaches" roster (its own pill), then "Off Campus Dining". This pill shows the
-    // dining hall hours followed by the off-campus block, skipping the roster.
+    // The General Information tab stacks the dining hall hours, a "Student Access
+    // Hours" block (student-portal only), a "Chamber Music Coaches" roster (its own
+    // pill), then "Off Campus Dining". This pill shows the dining hall hours
+    // followed by the off-campus block, skipping the access hours + roster.
     var dl = all.slice();
-    for (var ci = 0; ci < dl.length; ci++) { if (/^chamber music coaches/i.test(dl[ci]) || /^off[\s-]*campus dining/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
+    for (var ci = 0; ci < dl.length; ci++) { if (/^(student|building) access hours/i.test(dl[ci]) || /^chamber music coaches/i.test(dl[ci]) || /^off[\s-]*campus dining/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
     // Off-campus dining block: from its heading to the end of the tab.
     var off = [];
     for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
