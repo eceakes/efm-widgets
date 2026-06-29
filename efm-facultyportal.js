@@ -61,6 +61,9 @@
     // (the big Master Calendar tab leaves those columns blank). See build().
     ESO:         { name: "ESO", gid: "1603346554" },
     GSO:         { name: "GSO", gid: "727646847" },
+    // Shared student-orchestra seating rosters (same tab the 2026 portal reads):
+    // "Week N (ESO|GSO)" rows gated by a Release? cell.
+    studentRosters: { name: "Student-Rosters", gid: "2066588541" },
     generalInfo: { name: "General Information", gid: "1031874194" },
     announcements: { name: "Announcements", gid: "1387308195" },
     // Full master calendar + Legend -> the Room Schedule tab (today + per-room).
@@ -88,7 +91,7 @@
 
   // Live subscribe feed (same Apps Script web app as the 2026 portal).
   var SUBSCRIBE_BASE = "https://script.google.com/macros/s/AKfycbz6fh9qP2zQnaRfzV2qW0dndtwUrhXahOLuxxDmibCxqPaQOlW-_D98EUpUlWkAY07tFA/exec";
-  var FEED_VIEWS = { EFO: "efo", ECP: "ecp" };   // Outreach has no live feed (.ics export only)
+  var FEED_VIEWS = { EFO: "efo", ECP: "ecp", ESO: "eso", GSO: "gso" };   // Outreach + REP have no live feed (.ics export only)
   var YEAR = 2026;
 
   // Campus map assets sit next to this script in the repo. Derive the CDN base
@@ -135,14 +138,17 @@
       { label: "Documents", kind: "infoSection", match: ["document"], all: true },
       { label: "Tickets", kind: "tickets" } ] },
     // Calendar: ensemble schedules + Outreach + All Events (the whole festival).
-    // The "Eastern Festival Orchestra" pill (weeks: true) reveals a 3rd-level week
-    // nav of the released roster weeks; with no week chosen it shows the full EFO
-    // schedule, and a week shows that week's roster + services (build() / renderNav).
+    // The EFO, ESO and GSO pills (weeks: true) reveal a 3rd-level week nav of the
+    // released roster weeks (EFO from the Faculty-Portal Rosters tab; ESO/GSO from
+    // the Master Calendar Student-Rosters tab). With no week chosen the pill shows
+    // the full ensemble schedule; a week shows that week's roster + services.
     { id: "calendar", label: "Calendar", subs: [
       { label: "Eastern Festival Orchestra", kind: "ensemble", code: "EFO", weeks: true },
       { label: "Eastern Chamber Players", kind: "ensemble", code: "ECP" },
       { label: "Repertory Orchestra", kind: "ensemble", code: "REP" },
       { label: "Outreach", kind: "ensemble", code: "OUT" },
+      { label: "ESO", kind: "ensemble", code: "ESO", weeks: true },
+      { label: "GSO", kind: "ensemble", code: "GSO", weeks: true },
       { label: "All Events", kind: "allEvents" } ] },
     // One grouped tab; the class + assignment pages are sub-tab pills. A pill
     // carrying showWhen appears only if that tab's Show/Hide cell reads "Yes"
@@ -382,8 +388,10 @@
   /* ---- state ----------------------------------------------------------- */
   var ensembles = {};      // code -> [serviceRow]
   var efoAnchors = {};     // concert number -> dateKey (for roster week inference)
+  var ensAnchors = {};     // ESO/GSO code -> { cycleN: dateKey } (student-orchestra roster windows)
   var rostersAll = [];     // [{title, link, release}]
-  var calendarWeeks = [];  // released roster weeks -> 3rd-level nav under Eastern Festival Orchestra
+  var calendarWeeks = [];  // released EFO roster weeks (Faculty-Portal Rosters tab)
+  var ensWeeks = {};       // ensemble code -> [{label, roster}] released week pills (EFO + ESO + GSO)
   var weekSel = null;      // selected EFO week index, or null = full EFO schedule
   var sectionalData = null; // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
   var sectionalEns = "ESO"; // selected sectionals ensemble (3rd-level under the Sectionals pill)
@@ -452,14 +460,15 @@
     if (subnav2) {
       subnav2.innerHTML = "";
       var activeSub = top.subs[subSel[top.id]];
-      if (top.id === "calendar" && activeSub && activeSub.weeks && calendarWeeks.length) {
+      var weeks = top.id === "calendar" ? weeksFor(activeSub) : [];
+      if (weeks.length) {
         subnav2.hidden = false;
-        calendarWeeks.forEach(function (w, i) {
+        weeks.forEach(function (w, i) {
           var b = document.createElement("button");
           b.type = "button"; b.textContent = w.label;
           var on = i === weekSel; b.className = on ? "efmfp-active" : "";
           if (on) b.setAttribute("aria-current", "true");
-          // Clicking the active week toggles back to the full EFO schedule.
+          // Clicking the active week toggles back to the full ensemble schedule.
           b.onclick = function () { weekSel = (weekSel === i ? null : i); renderNav(); renderList(); };
           subnav2.appendChild(b);
         });
@@ -1186,6 +1195,11 @@
   }
 
   /* ---- rosters --------------------------------------------------------- */
+  // Released roster-week pills for a weeks:true ensemble sub (EFO/ESO/GSO).
+  function weeksFor(sub) {
+    if (!sub || !sub.weeks || !sub.code) return [];
+    return ensWeeks[sub.code] || [];
+  }
   // Build EFO concert anchors (concert N -> dateKey) from the EFO tab.
   function buildAnchors() {
     efoAnchors = {};
@@ -1194,23 +1208,49 @@
       if (m && r.key !== null) efoAnchors[parseInt(m[1], 10)] = r.key;
     });
   }
+  // ESO/GSO concert-cycle anchors (cycle N -> dateKey) from the dedicated ESO/GSO
+  // tabs: cycles 2..N from the numbered "ESO 2" / "GSO 5 / ESO 5" rows, cycle 1
+  // from the combined opening gala ("ESO/GSO/EFO", an event naming >=2 bare codes).
+  function buildEnsAnchors(code) {
+    var a = {};
+    (ensembles[code] || []).forEach(function (r) {
+      if (r.key === null) return;
+      var m = clean(r.event).match(new RegExp(code + "\\s*0*(\\d+)", "i"));
+      if (m) a[parseInt(m[1], 10)] = r.key;
+    });
+    if (a[1] === undefined) {
+      (ensembles[code] || []).some(function (r) {
+        if (r.key === null) return false;
+        var bare = clean(r.event).split("/").map(function (s) { return s.trim().toUpperCase(); })
+          .filter(function (t) { return t === "ESO" || t === "GSO" || t === "EFO"; });
+        if (bare.length >= 2) { a[1] = r.key; return true; }
+        return false;
+      });
+    }
+    return a;
+  }
   // Parse "Week 1", "Week 1 (Mozart)" -> { week, qualifier }
   function rosterMeta(title) {
     var w = clean(title).match(/week\s*0*(\d+)/i);
     var q = clean(title).match(/\(([^)]+)\)/);
     return { week: w ? parseInt(w[1], 10) : null, qualifier: q ? q[1].trim() : "" };
   }
-  // The EFO services belonging to a roster row, inferred from concert cycles.
-  function rosterServices(rosterTitle) {
+  // The services belonging to a roster row, inferred from concert cycles. EFO uses
+  // its own anchors + program-qualifier filtering (its "(Mozart)" parenthetical
+  // names a program); ESO/GSO use their own anchors and skip the qualifier filter
+  // (their parenthetical names the ensemble, not a program).
+  function rosterServices(code, rosterTitle) {
     var meta = rosterMeta(rosterTitle);
     if (meta.week === null) return [];
-    var upper = efoAnchors[meta.week];
+    var anchors = code === "EFO" ? efoAnchors : (ensAnchors[code] || {});
+    var upper = anchors[meta.week];
     if (upper === undefined) return [];                 // that concert not in the calendar yet
-    var lower = efoAnchors[meta.week - 1];               // previous concert (undefined for week 1)
-    var rows = (ensembles.EFO || []).filter(function (r) {
+    var lower = anchors[meta.week - 1];                  // previous concert (undefined for week 1)
+    var rows = (ensembles[code] || []).filter(function (r) {
       if (r.key === null) return false;
       return (lower === undefined ? r.key <= upper : (r.key > lower && r.key <= upper));
     });
+    if (code !== "EFO") return rows;                     // ESO/GSO: parenthetical is the ensemble
     if (meta.qualifier) {
       var qre = new RegExp(meta.qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
       rows = rows.filter(function (r) { return qre.test(r.event); });
@@ -1229,7 +1269,8 @@
     return rows;
   }
 
-  function renderRoster(roster) {
+  function renderRoster(code, roster) {
+    code = code || "EFO";
     banner.hidden = true; status.hidden = true;
     modalData = []; viewEvents = [];
     var html = '<div class="efmfp-roster">';
@@ -1241,18 +1282,18 @@
     html += "</div>";
     list.innerHTML = html;
 
-    // EFO services for this week
-    var svc = rosterServices(roster.title);
+    // That ensemble's services for this week
+    var svc = rosterServices(code, roster.title);
     var svcWrap = document.createElement("div");
-    svcWrap.innerHTML = '<div class="efmfp-roster__svc-head" role="heading" aria-level="3">EFO Services</div><div id="efmfp-roster-svc"></div>';
+    svcWrap.innerHTML = '<div class="efmfp-roster__svc-head" role="heading" aria-level="3">' + esc(code) + ' Services</div><div id="efmfp-roster-svc"></div>';
     list.querySelector(".efmfp-roster").appendChild(svcWrap);
     // temporarily point rendering at the services sub-list
     var svcList = svcWrap.querySelector("#efmfp-roster-svc");
     // render agenda into svcList (temporarily retarget the shared list pointer)
     var saved = list; list = svcList;
-    renderAgenda(svc, { feedKey: "", noun: "service", emptyMsg: "No EFO services for this week yet." });   // .ics export covers the subset
+    renderAgenda(svc, { feedKey: "", noun: "service", emptyMsg: "No " + code + " services for this week yet." });   // .ics export covers the subset
     list = saved;
-    viewLabel = roster.title + " EFO Services";
+    viewLabel = roster.title + " " + code + " Services";
     updateICSButton();
     syncBox();
   }
@@ -1278,9 +1319,10 @@
     else if (k === "ensemble") {
       // Eastern Festival Orchestra: a chosen week shows that week's roster +
       // services; with no week chosen it shows the full EFO schedule.
-      if (sub.weeks && weekSel != null && calendarWeeks[weekSel]) {
-        viewLabel = calendarWeeks[weekSel].roster.title;
-        renderRoster(calendarWeeks[weekSel].roster);
+      var ws = weeksFor(sub);
+      if (sub.weeks && weekSel != null && ws[weekSel]) {
+        viewLabel = ws[weekSel].roster.title;
+        renderRoster(sub.code, ws[weekSel].roster);
       } else {
         viewLabel = sub.code === "OUT" ? "EFM Outreach" : "EFM " + sub.code;
         renderAgenda(ensembles[sub.code] || [], {
@@ -1300,7 +1342,7 @@
       var upcoming = (tk === null) ? allRows : allRows.filter(function (r) { return r.key !== null && r.key >= tk; });
       renderAgenda(upcoming, { feedKey: "all", noun: "event", emptyMsg: "No upcoming events scheduled." });
     }
-    else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.roster); }
+    else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.code, sub.roster); }
     else if (k === "roomsToday") {
       var t = todayRows(null);
       var roomed = t.rows.filter(function (r) { return r.roomTokens.length > 0; });
@@ -1845,7 +1887,10 @@
     ensembles.ECP = parseEnsemble(data.ECP);
     ensembles.REP = parseEnsemble(data.REP);
     ensembles.OUT = parseEnsemble(data.OUT);
+    ensembles.ESO = parseEnsemble(data.ESO);
+    ensembles.GSO = parseEnsemble(data.GSO);
     buildAnchors();
+    ensAnchors = { ESO: buildEnsAnchors("ESO"), GSO: buildEnsAnchors("GSO") };
 
     // Classes & Assignments info tabs + conditional pills: a showWhen pill stays only
     // when its tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
@@ -1861,10 +1906,10 @@
     // (date+ensemble+clock -> {details, pdf}) so parseCalendar can graft them onto
     // the otherwise-blank ESO/GSO rows in All Events / Room Schedule.
     ensDetail = {};
-    [["ESO", data.ESO], ["GSO", data.GSO]].forEach(function (pair) {
-      parseEnsemble(pair[1]).forEach(function (r) {
+    ["ESO", "GSO"].forEach(function (code) {
+      (ensembles[code] || []).forEach(function (r) {
         if (!r.details && !r.pdf) return;
-        var k = r.key + "|" + pair[0] + "|" + clockKey(r.time);
+        var k = r.key + "|" + code + "|" + clockKey(r.time);
         if (!ensDetail[k]) ensDetail[k] = {};
         if (r.details && !ensDetail[k].details) ensDetail[k].details = r.details;
         if (r.pdf && !ensDetail[k].pdf) ensDetail[k].pdf = r.pdf;
@@ -1886,6 +1931,19 @@
     calendarWeeks = rostersAll
       .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
       .map(function (o) { return { label: o.title, roster: o }; });
+    // Unified per-ensemble week pills: EFO from the Faculty-Portal Rosters tab
+    // (above); ESO/GSO from the shared Master Calendar Student-Rosters tab, where
+    // each title "Week N (ESO|GSO)" names its ensemble in the parenthetical.
+    ensWeeks = { EFO: calendarWeeks, ESO: [], GSO: [] };
+    (data.studentRosters ? parseRosters(data.studentRosters) : [])
+      .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
+      .forEach(function (o) {
+        var m = rosterMeta(o.title), code = clean(m.qualifier).toUpperCase();
+        if ((code === "ESO" || code === "GSO") && m.week != null) ensWeeks[code].push({ label: "Week " + m.week, roster: o });
+      });
+    ["ESO", "GSO"].forEach(function (code) {
+      ensWeeks[code].sort(function (a, b) { return rosterMeta(a.roster.title).week - rosterMeta(b.roster.title).week; });
+    });
     if (weekSel != null && weekSel >= calendarWeeks.length) weekSel = null;
     // info text: dining (master calendar) + the Faculty-Portal General-Information tab (full rows)
     diningLines = data.generalInfo ? data.generalInfo.map(function (r) { return clean(r[0]); }) : [];
@@ -1932,6 +1990,7 @@
       OUT: job(MC_CSV, mcDirP, MC_TABS.OUT),
       ESO: job(MC_CSV, mcDirP, MC_TABS.ESO),
       GSO: job(MC_CSV, mcDirP, MC_TABS.GSO),
+      studentRosters: job(MC_CSV, mcDirP, MC_TABS.studentRosters),
       generalInfo: job(MC_CSV, mcDirP, MC_TABS.generalInfo),
       announcements: job(MC_CSV, mcDirP, MC_TABS.announcements),
       master: job(MC_CSV, mcDirP, MC_TABS.master),
