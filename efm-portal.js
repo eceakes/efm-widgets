@@ -87,6 +87,8 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
       { label: "Building Access Hours", kind: "buildingAccess" },
+      { label: "Maintenance", kind: "giSection", match: /^(urgent )?maintenance/i, head: "Maintenance" },
+      { label: "Mail", kind: "giSection", match: /^mail\b/i, head: "Mail" },
       { label: "Chamber Coaches", kind: "chamberCoaches" },
       { label: "Lessons", kind: "lessons" },
       { label: "Staff Contacts", kind: "staffList" },
@@ -669,7 +671,7 @@
     for (var i = 0; i < lines.length; i++) { if (/^(student|building) access hours/i.test(lines[i])) { start = i; break; } }
     if (start < 0) { finishList("", 0, "", "Building access hours will appear here once posted."); return; }
     var end = lines.length;
-    for (var e = start + 1; e < lines.length; e++) { if (/^chamber music coaches/i.test(lines[e]) || /^off[\s-]*campus dining/i.test(lines[e])) { end = e; break; } }
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
     var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Building Access Hours</div>';
     lines.slice(start + 1, end).forEach(function (l) {
       var ci = l.indexOf(":");
@@ -684,6 +686,41 @@
     html += "</div>";
     list.innerHTML = html;
     announce("Building access hours shown.");
+  }
+
+  // Section headings on the Master Calendar "General Information" tab. A pill that
+  // shows one section slices from its heading to the next heading in this list, so
+  // a new section (maintenance, mail, ...) never bleeds into a neighboring pill.
+  var GI_HEADINGS = [
+    /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
+    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i
+  ];
+  function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
+
+  // General Information -> generic section pill (Maintenance, Mail), driven by the
+  // sub's `match` (start heading regex) + `head` (display title). Shows the lines
+  // from that heading up to the next section heading: a "Label: value" line becomes
+  // a sub-heading + paragraph; a plain line becomes a paragraph.
+  function renderGISection(sub) {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var lines = generalInfo.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (sub.match.test(lines[i])) { start = i; break; } }
+    if (start < 0) { finishList("", 0, "", sub.label + " information will appear here once posted."); return; }
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">' + esc(sub.head || sub.label) + "</div>";
+    lines.slice(start, end).forEach(function (l) {
+      var ci = l.indexOf(":");
+      var label = ci >= 0 ? l.slice(0, ci).trim() : "";
+      var value = ci >= 0 ? l.slice(ci + 1).trim() : "";
+      if (label && value) html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
+      else html += "<p>" + esc(l) + "</p>";
+    });
+    html += "</div>";
+    list.innerHTML = html;
+    announce(sub.label + " shown.");
   }
 
   // Parse the Master Calendar "Faculty Lesson Locations" tab (Name / Room /
@@ -905,12 +942,13 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "buildingAccess" || sub.kind === "lessons");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "staffList" || sub.kind === "chamberCoaches" || sub.kind === "buildingAccess" || sub.kind === "giSection" || sub.kind === "lessons");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "buildingAccess") renderBuildingAccess();
+    else if (sub.kind === "giSection") renderGISection(sub);
     else if (sub.kind === "chamberCoaches") renderChamberCoaches();
     else if (sub.kind === "lessons") renderLessons();
     else if (sub.kind === "staffList") renderStaffList();

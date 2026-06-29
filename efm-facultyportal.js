@@ -129,6 +129,8 @@
     // matched by heading text.
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
+      { label: "Maintenance", kind: "giSection", match: /^(urgent )?maintenance/i, head: "Maintenance" },
+      { label: "Mail", kind: "giSection", match: /^mail\b/i, head: "Mail" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Wifi Access", kind: "infoSection", match: ["wifi", "wi-fi"] },
       { label: "Keys", kind: "infoSection", match: ["key"] },
@@ -831,6 +833,50 @@
     syncBox();
   }
 
+  // Section headings on the Master Calendar "General Information" tab (the Dining
+  // source). A pill that shows one section slices from its heading to the next
+  // heading in this list, so a new section never bleeds into a neighboring pill.
+  var GI_HEADINGS = [
+    /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
+    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i
+  ];
+  function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
+
+  // General Information -> "Maintenance" / "Mail" pills, from the Master Calendar
+  // "General Information" tab (same source as Dining). Driven by the sub's `match`
+  // (start heading regex) + `head` (title): shows the lines from that heading up to
+  // the next section heading; a "Label: value" line becomes a sub-head + paragraph.
+  function renderMCSection(sub) {
+    banner.hidden = true; status.hidden = true;
+    var lines = diningLines.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (sub.match.test(lines[i])) { start = i; break; } }
+    if (start < 0) {
+      list.innerHTML = "";
+      status.textContent = sub.label + " information will appear here once posted.";
+      status.hidden = false;
+      announce(sub.label + " will appear here once posted.");
+      syncBox();
+      return;
+    }
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
+    var html = '<div class="efmfp-info efmfp-info--center">' +
+      '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(sub.head || sub.label) + "</div>" +
+      '<div class="efmfp-info__card">';
+    lines.slice(start, end).forEach(function (l) {
+      var ci = l.indexOf(":");
+      var label = ci >= 0 ? l.slice(0, ci).trim() : "";
+      var value = ci >= 0 ? l.slice(ci + 1).trim() : "";
+      if (label && value) html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(label) + "</div><p>" + esc(value) + "</p>";
+      else html += "<p>" + esc(l) + "</p>";
+    });
+    html += "</div></div>";
+    list.innerHTML = html;
+    announce(sub.label + " shown.");
+    syncBox();
+  }
+
   // General Information -> "Tickets" pill: the "Ticketing Process" policy blurb
   // followed by the Friends & Family comp codes, each with a Reserve link. Codes
   // that map to a concert in the calendar also show that concert's date + name.
@@ -1196,6 +1242,7 @@
     else if (k === "chamberCoaches") renderChamberCoaches();
     else if (k === "lessons") renderLessons();
     else if (k === "infoSection") renderInfoSection(sub);
+    else if (k === "giSection") renderMCSection(sub);
     else if (k === "tickets") renderTickets();
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
