@@ -243,7 +243,7 @@
     border: 1px solid var(--efmfp-rule); border-radius: 14px; padding: 18px 22px; margin: 0 0 16px; background: #fff;
   }
   #efm-faculty-portal .efmfp-info__meal { display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; margin: 0 0 6px; }
-  #efm-faculty-portal .efmfp-lesson__students { color: var(--efmfp-role); font-size: 14px; line-height: 1.5; margin: 1px 0 12px; }
+  #efm-faculty-portal .efmfp-lesson__students { color: var(--efmfp-role); font-size: 14px; line-height: 1.5; margin: 4px 0 0; overflow-wrap: anywhere; }
   #efm-faculty-portal .efmfp-info__meal b {
     font-family: var(--efmfp-name-font); color: var(--efmfp-ink); font-weight: 400; min-width: 96px; display: inline-block;
   }

@@ -806,13 +806,16 @@
       syncBox();
       return;
     }
-    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">Private Lessons</div>';
+    var html = '<div class="efmfp-contact"><div class="efmfp-info__head" role="heading" aria-level="3">Private Lessons</div>';
     groups.forEach(function (g) {
       html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(g.instrument) + "</div>";
-      html += '<div class="efmfp-info__card">';
+      html += '<div class="efmfp-grid">';
       g.people.forEach(function (p) {
-        html += '<div class="efmfp-info__meal"><b>' + esc(p.name) + "</b><span>" + esc(p.room || "Location to be announced") + "</span></div>";
-        html += '<div class="efmfp-lesson__students">' + esc(p.students.join(", ")) + "</div>";
+        html += '<div class="efmfp-card efmfp-card--nophoto"><div class="efmfp-card__body">' +
+          '<div class="efmfp-card__name">' + esc(p.name) + "</div>" +
+          (p.room ? '<div class="efmfp-card__role">' + esc(p.room) + "</div>" : "") +
+          '<div class="efmfp-lesson__students">' + esc(p.students.join(", ")) + "</div>" +
+          "</div></div>";
       });
       html += "</div>";
     });
