@@ -92,7 +92,7 @@
   /* ---------- "be a founder" band ---------- */
   var FOUNDERS_TITLE = "Be a founder of the 2026 season";
   var FOUNDERS_COPY  =
-    "Every institution has a founding moment, and this is ours. Supporters who help launch the inaugural season are recognized as founding members of the Eastern Festival of Music. Your name belongs to the summer the music came home.";
+    "Every institution has a founding moment, and this is ours. Your gift helps launch the inaugural season of the Eastern Festival of Music. Help write the first chapter of our story this summer.";
   /* Recognition levels ship hidden until Eric defines real thresholds + benefits.
      To turn them on, add entries like { name:"Conductor's Circle", from:"$1,000", benefit:"Program-book listing" }. */
   var FOUNDERS_CIRCLES = [];
