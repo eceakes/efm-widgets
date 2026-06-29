@@ -63,6 +63,8 @@
     { key: "sectionals", tab: "Sectional Rehearsals", gid: "436439129" },
     { key: "studio", tab: "Faculty Studio Classes", gid: "166720750" },
     { key: "concerto", tab: "Concerto Competition", gid: "1210854934" },
+    // Student-Rosters tab: per-ensemble seating-roster PDFs, gated by a Release? cell.
+    { key: "rosters", tab: "Student-Rosters", gid: "2066588541" },
     // Dedicated ESO/GSO tabs (lean layout: Date, Day, Time, Room, Room Name,
     // Conductor / Soloist, Event, Details, [PDF Link]). The big "Master Calendar"
     // tab leaves Details/PDF blank for ESO/GSO rows, so we join them in by NAME
@@ -91,9 +93,12 @@
       { label: "Student Handbook", kind: "handbook" } ] },
     { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
-      { label: "ESO Schedule", kind: "ensemble", code: "ESO" },
-      { label: "GSO Schedule", kind: "ensemble", code: "GSO" },
+      { label: "ESO Schedule", kind: "ensemble", code: "ESO", weeks: true },
+      { label: "GSO Schedule", kind: "ensemble", code: "GSO", weeks: true },
       { label: "All Concerts", kind: "type", value: "Concert / Performance" } ] },
+    // ESO/GSO Schedule carry weeks:true: when selected, the released seating-roster
+    // weeks from the Student-Rosters sheet appear as a third-level subnav (renderNav),
+    // and choosing one shows that week's roster (PDF + that cycle's services).
     // One grouped tab; the four info pages are sub-tab pills. A pill carrying
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
@@ -369,12 +374,16 @@
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
+  var rostersAll = [];         // [{title, link, release}] from the Student-Rosters tab
+  var rosterWeeks = [];        // released, well-formed roster weeks: [{code, week, title, link}]
+  var ensAnchors = {};         // ensemble code -> { cycleN: dateKey }, for roster service windows
 
   var topSel = NAV[0].id;
   var subSel = {};  // topId -> sub index
   NAV.forEach(function (t) { subSel[t.id] = 0; });
+  var weekSel = null;  // selected roster-week index within the active ESO/GSO Schedule, or null = full schedule
 
-  var root, topnav, subnav, list, status, banner, searchBox, controls, ticker, modal, icsBtn, srLive, lastFocus;
+  var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, ticker, modal, icsBtn, srLive, lastFocus;
 
   function currentTop() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].id === topSel) return NAV[i];
@@ -425,6 +434,14 @@
   }
 
   // ---- rendering ------------------------------------------------------------
+  // The released roster weeks for an ESO/GSO Schedule sub (weeks:true), sorted by
+  // week number. Empty for any other sub, so the third-level nav stays hidden.
+  function weeksFor(sub) {
+    if (!sub || !sub.weeks || !sub.code) return [];
+    return rosterWeeks.filter(function (w) { return w.code === sub.code; })
+      .sort(function (a, b) { return a.week - b.week; });
+  }
+
   function renderNav() {
     topnav.innerHTML = "";
     NAV.forEach(function (t) {
@@ -448,10 +465,30 @@
       if (on) b.setAttribute("aria-current", "true");
       b.onclick = function () {
         if (s.kind === "jump") { topSel = s.target; renderNav(); renderList(); return; }
-        subSel[top.id] = i; renderNav(); renderList();
+        subSel[top.id] = i; weekSel = null; renderNav(); renderList();
       };
       subnav.appendChild(b);
     });
+    // Third level: a selected ESO/GSO Schedule pill (weeks:true) reveals its
+    // released roster weeks. Clicking a week shows that week's roster; clicking the
+    // active week again toggles back to the full ensemble schedule.
+    if (subnav2) {
+      subnav2.innerHTML = "";
+      var weeks = weeksFor(top.subs[subSel[top.id]]);
+      if (weeks.length) {
+        subnav2.hidden = false;
+        weeks.forEach(function (w, i) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = "Week " + w.week;
+          var on = i === weekSel; b.className = on ? "efmp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          b.onclick = function () { weekSel = (weekSel === i ? null : i); renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else {
+        subnav2.hidden = true;
+      }
+    }
   }
 
   // Build one agenda row. opts: { big, small, title, when:[], chips:[{label,ens}], modal }
@@ -947,6 +984,30 @@
     announce(ens + " sectionals shown.");
   }
 
+  // Rosters tab: a seating-roster PDF for ESO/GSO plus that concert cycle's
+  // services. The services reuse renderAgenda (so search + the .ics export work)
+  // by briefly pointing the shared list element at a sub-container, leaving the
+  // PDF block above it untouched.
+  function renderRoster(sub) {
+    banner.hidden = true; banner.textContent = "";
+    viewLabel = sub.title + " Services"; viewFeedKey = "";   // a single week is a subset, not the full live feed
+    var link = safeUrl(sub.link);
+    list.innerHTML = '<div class="efmp-roster">' +
+      '<div class="efmp-roster__pdf"><div>' +
+        '<div class="efmp-roster__pdf-name">' + esc(sub.title) + ' Roster</div>' +
+        '<div class="efmp-roster__pdf-meta">' + (link ? "PDF document" : "PDF not posted yet") + '</div>' +
+      '</div>' +
+      (link ? '<a class="efmp-roster__btn" href="' + esc(link) + '" target="_blank" rel="noopener noreferrer">View / Download PDF</a>' : "") +
+      '</div>' +
+      '<div class="efmp-roster__svc-head" role="heading" aria-level="3">' + esc(sub.code) + ' Services</div>' +
+      '<div id="efmp-roster-svc"></div>' +
+      '</div>';
+    var svcList = document.getElementById("efmp-roster-svc");
+    var saved = list; list = svcList;
+    renderAgenda({ rows: rosterServices(sub.code, sub.week), banner: "" });
+    list = saved;
+  }
+
   function renderList() {
     var top = currentTop();
     var sub = top.subs[subSel[top.id]] || top.subs[0];
@@ -962,6 +1023,7 @@
     else if (sub.kind === "aroundCampus") renderAroundCampus();
     else if (sub.kind === "people") renderPeople();
     else if (sub.kind === "infoTab") renderInfoTab(sub);
+    else if (sub.weeks && weekSel != null && weeksFor(sub)[weekSel]) renderRoster(weeksFor(sub)[weekSel]);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
   }
@@ -1247,6 +1309,78 @@
     allRows.forEach(function (r, i) { r.seq = i; });
   }
 
+  // ---- rosters (Student-Rosters tab) -------------------------------------
+  // Header-keyed parse of the Student-Rosters tab. Each row is a seating roster
+  // for one ensemble-week ("Week N (ESO|GSO)") with a PDF link and a Release?
+  // gate, mirroring the faculty portal's Rosters mechanism. Columns by name so
+  // order/casing changes survive; falls back to the first column for the title.
+  function parseRosters(rows) {
+    rows = rows || [];
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      var lc = rows[i].map(function (x) { return clean(x).toLowerCase(); });
+      if (lc.indexOf("week/title") !== -1 || lc.indexOf("week / title") !== -1 || lc.indexOf("title") !== -1 ||
+          (lc.indexOf("week") !== -1 && lc.indexOf("link") !== -1)) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) return [];
+    var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var x = hdr.indexOf(arguments[a]); if (x !== -1) return x; } return -1; }
+    var iTitle = col("week/title", "week / title", "week", "title", "roster"); if (iTitle === -1) iTitle = 0;
+    var iLink = col("link", "url", "pdf", "pdf link", "roster link");
+    var iRel = col("release?", "release", "released", "publish", "show");
+    var out = [];
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j]; if (!c.join("").trim()) continue;
+      var title = clean(c[iTitle]); if (!title) continue;
+      out.push({ title: title, link: iLink !== -1 ? safeUrl(c[iLink]) : "", release: iRel !== -1 ? clean(c[iRel]) : "" });
+    }
+    return out;
+  }
+  // "Week 1 (ESO)" -> { week: 1, code: "ESO" }. The parenthetical names the ensemble.
+  function rosterMeta(title) {
+    var w = clean(title).match(/week\s*0*(\d+)/i);
+    var q = clean(title).match(/\(([^)]+)\)/);
+    var code = "";
+    if (q) { var u = q[1].trim().toUpperCase(); if (u === "ESO" || u === "GSO") code = u; }
+    return { week: w ? parseInt(w[1], 10) : null, code: code };
+  }
+  // Concert-cycle anchors for an ensemble: cycle N -> the dateKey of that concert.
+  // Cycles 2..N come from the numbered "ESO 2" / "GSO 5 / ESO 5" Concert rows;
+  // cycle 1 is the combined opening gala (the earliest row whose Event names two
+  // or more bare orchestra codes, e.g. "ESO/GSO/EFO"), which has no "ESO 1" row.
+  function buildEnsAnchors(code) {
+    var a = {};
+    allRows.forEach(function (r) {
+      if (r.key === null || r.ensTokens.indexOf(code) === -1) return;
+      if (r.type === "Concert / Performance") {
+        var m = clean(r.event).match(new RegExp(code + "\\s*0*(\\d+)", "i"));
+        if (m) a[parseInt(m[1], 10)] = r.key;
+      }
+    });
+    if (a[1] === undefined) {
+      for (var i = 0; i < allRows.length; i++) {
+        var r = allRows[i];
+        if (r.key === null || r.ensTokens.indexOf(code) === -1) continue;
+        var bare = clean(r.event).split("/").map(function (s) { return s.trim().toUpperCase(); })
+          .filter(function (t) { return t === "ESO" || t === "GSO" || t === "EFO"; });
+        if (bare.length >= 2) { a[1] = r.key; break; }
+      }
+    }
+    return a;
+  }
+  // The ensemble's services for a roster week: every row tagged with that ensemble
+  // from the previous cycle's concert (exclusive) through this cycle's concert.
+  function rosterServices(code, week) {
+    var a = ensAnchors[code] || {};
+    var upper = a[week];
+    if (upper === undefined) return [];               // that concert not in the calendar yet
+    var lower = a[week - 1];                            // undefined for week 1
+    return allRows.filter(function (r) {
+      if (r.key === null || r.ensTokens.indexOf(code) === -1) return false;
+      return lower === undefined ? r.key <= upper : (r.key > lower && r.key <= upper);
+    });
+  }
+
   // Announcements tab. Columns are resolved BY NAME from the header row, falling
   // back to the legacy positions (Text=0, Date=1, Logic=2) so an older sheet keeps
   // working. The optional Type column drives a category chip in the ticker; the
@@ -1344,6 +1478,15 @@
     ["placement", "sectionals", "studio", "concerto"].forEach(function (k) { infoTabs[k] = data[k] || null; });
     sectionalLocations = data.sectionals ? parseSectionalLocations(data.sectionals) : [];
     sectionalData = parseSectionals(data.sectionals);
+
+    // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
+    // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
+    // "Week N (ESO|GSO)"; rosterMeta pulls the ensemble + week.
+    rostersAll = data.rosters ? parseRosters(data.rosters) : [];
+    rosterWeeks = rostersAll
+      .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
+      .map(function (o) { var m = rosterMeta(o.title); return { code: m.code, week: m.week, title: o.title, link: o.link }; })
+      .filter(function (s) { return s.code && s.week != null; });
     // Conditional sub-tabs (Placement Auditions, Concerto Competition) appear only
     // when their tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
     NAV.forEach(function (t) {
@@ -1358,6 +1501,7 @@
     parseEnsembleDetails(data.esoDetails, "ESO", ensDetail);
     parseEnsembleDetails(data.gsoDetails, "GSO", ensDetail);
     parseCalendar(data.calendar);
+    ensAnchors = { ESO: buildEnsAnchors("ESO"), GSO: buildEnsAnchors("GSO") };
     appendRoomTabs();
     renderTicker();
 
@@ -1424,6 +1568,14 @@
     if (!root) return;
     topnav = document.getElementById("efmp-topnav");
     subnav = document.getElementById("efmp-subnav");
+    // Third-level nav (roster weeks under ESO/GSO Schedule), injected so the pasted
+    // embed markup never has to change.
+    subnav2 = document.createElement("nav");
+    subnav2.id = "efmp-subnav2";
+    subnav2.className = "efmp__subtabs efmp__subtabs--week";
+    subnav2.setAttribute("aria-label", "Roster week");
+    subnav2.hidden = true;
+    if (subnav && subnav.parentNode) subnav.parentNode.insertBefore(subnav2, subnav.nextSibling);
     list = document.getElementById("efmp-list");
     status = document.getElementById("efmp-status");
     banner = document.getElementById("efmp-banner");
