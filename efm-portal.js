@@ -23,6 +23,10 @@
   var PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQg7mhQsWCaOdsg1k_z-TkSHRqNDTuAQE7NEXr6xzCBR-psxMoQGExmVlINpF-xu_3FIgbE4qSK1aAJ";
   var CSV = PUB + "/pub?output=csv";   // bare CSV = the document's first (left-most) tab
   var PUBHTML = PUB + "/pubhtml";       // published tab directory: maps tab name -> gid
+  // Faculty-Portal workbook (same one the faculty portal reads). Its "FacultyContact"
+  // tab (gid 0, leftmost) is the single source of truth for faculty emails; fetched
+  // here so the student Faculty directory shows the same contacts with no duplicate sheet.
+  var FP_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQZk_YQ_WA4LsSFN_jv7HHlZwDS9UHrZvLrk7NoOV4czo6KBG_36pt0ymOUDwabyFhqXvX_GSXcgBDx/pub?single=true&output=csv&gid=";
   var TAB_CALENDAR = "Master Calendar"; // looked up by NAME (gids change on rebuild)
   var TAB_LEGEND = "Legend";
   var YEAR = 2026;
@@ -370,6 +374,7 @@
   var generalInfo = [];    // raw lines
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the "Faculty Lesson Locations" tab
   var staff = [];          // [{ dept, people:[{name,title,contact,office}] }] from the "Staff List" tab
+  var facultyDir = [];     // [{name, last, instrument, email}] from the Faculty-Portal FacultyContact tab
   var modalData = [];      // rebuilt each renderList; index referenced by row data-mi
   var viewEvents = [];     // normalized {title,dateStr,timeStr,location,description} for the current view's .ics
   var viewLabel = "";      // label for the current view's .ics calendar name + filename
@@ -386,6 +391,8 @@
   var subSel = {};  // topId -> sub index
   NAV.forEach(function (t) { subSel[t.id] = 0; });
   var weekSel = null;  // selected roster-week index within the active ESO/GSO Schedule, or null = full schedule
+  var peopleView = "faculty";   // People tab third-level view: "faculty" | "staff"
+  var PEOPLE_VIEWS = [{ label: "Faculty", key: "faculty" }, { label: "Staff", key: "staff" }];
 
   var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, ticker, modal, icsBtn, srLive, lastFocus;
 
@@ -478,7 +485,8 @@
     // active week again toggles back to the full ensemble schedule.
     if (subnav2) {
       subnav2.innerHTML = "";
-      var weeks = weeksFor(top.subs[subSel[top.id]]);
+      var activeSub = top.subs[subSel[top.id]];
+      var weeks = weeksFor(activeSub);
       if (weeks.length) {
         subnav2.hidden = false;
         weeks.forEach(function (w, i) {
@@ -487,6 +495,17 @@
           var on = i === weekSel; b.className = on ? "efmp-active" : "";
           if (on) b.setAttribute("aria-current", "true");
           b.onclick = function () { weekSel = (weekSel === i ? null : i); renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else if (activeSub && activeSub.kind === "people") {
+        // People -> third-level Faculty | Staff pills.
+        subnav2.hidden = false;
+        PEOPLE_VIEWS.forEach(function (v) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = v.label;
+          var on = v.key === peopleView; b.className = on ? "efmp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          b.onclick = function () { peopleView = v.key; renderNav(); renderList(); };
           subnav2.appendChild(b);
         });
       } else {
@@ -812,15 +831,99 @@
     return html;
   }
 
-  // General Information -> "People" pill: chamber music coaches + faculty lesson
-  // locations + staff contacts, stacked in one panel.
-  function renderPeople() {
+  // People -> "Staff" view: the office/admin staff contacts (faculty + coaches live
+  // under the "Faculty" view).
+  function renderStaffView() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
-    var inner = chamberCoachesInner() + lessonsInner() + staffListInner();
-    if (!inner) { finishList("", 0, "", "This information will appear here once posted."); return; }
+    var inner = staffListInner();
+    if (!inner) { finishList("", 0, "", "Staff contacts will appear here once posted."); return; }
     list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
-    announce("People information shown.");
+    announce("Staff contacts shown.");
+  }
+
+  // ---- faculty directory name-join helpers ------------------------------
+  // Lesson studio + chamber-coach status live in their own sheets, keyed by name, so
+  // we join them onto the FacultyContact rows. Names don't always match exactly across
+  // sheets ("Cathy" vs "Catherine", "Dan" vs "Daniel"), so we key on BOTH the full
+  // normalized name AND "lastname|first-initial".
+  function normName(s) {
+    return String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  }
+  function nameKeys(name) {
+    var n = normName(name); if (!n) return [];
+    var parts = n.split(" "), keys = [n];
+    if (parts.length >= 2) keys.push(parts[parts.length - 1] + "|" + parts[0].charAt(0));
+    return keys;
+  }
+  // Coach names from the General Information "Chamber Music Coaches" block (section
+  // headings + names), returned flat. Mirrors chamberCoachesInner's parsing.
+  function parseChamberCoachNames(infoLines) {
+    var lines = (infoLines || []).filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (/^chamber music coaches/i.test(lines[i])) { start = i; break; } }
+    if (start < 0) return [];
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (/^off[\s-]*campus dining/i.test(lines[e]) || /^(student|building) access hours/i.test(lines[e])) { end = e; break; } }
+    var SECTIONS = { "violin": 1, "viola": 1, "cello": 1, "bass": 1, "double bass": 1, "woodwind": 1, "woodwinds": 1, "brass": 1, "harp": 1, "piano": 1, "harp/piano": 1, "percussion": 1, "string fellows coach": 1, "conducting": 1 };
+    var out = [];
+    lines.slice(start + 1, end).forEach(function (l) { if (!SECTIONS[l.toLowerCase().trim()]) out.push(l.trim()); });
+    return out;
+  }
+
+  // Faculty contact directory from the Faculty-Portal "FacultyContact" tab. Header
+  // -keyed (columns by name) so a sheet rename survives; keeps only rows with a real
+  // email; sorted by last name. Powers the General Information -> "Faculty" pill.
+  function parseFacultyDirectory(rows) {
+    rows = rows || [];
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      var lc = rows[i].map(function (x) { return clean(x).toLowerCase(); });
+      if (lc.indexOf("email address") !== -1 || lc.indexOf("email") !== -1 ||
+          (lc.indexOf("first name") !== -1 && lc.indexOf("last name") !== -1)) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) return [];
+    var hdr = rows[headerIdx].map(function (h) { return clean(h).toLowerCase(); });
+    function col() { for (var a = 0; a < arguments.length; a++) { var x = hdr.indexOf(arguments[a]); if (x !== -1) return x; } return -1; }
+    var iFirst = col("first name", "first"), iLast = col("last name", "last", "surname"),
+        iName = col("name", "full name"), iInst = col("instrument", "section"),
+        iEmail = col("email address", "email", "e-mail");
+    if (iEmail === -1) return [];
+    var out = [];
+    for (var j = headerIdx + 1; j < rows.length; j++) {
+      var c = rows[j]; if (!c.join("").trim()) continue;
+      var email = clean(c[iEmail]);
+      if (!email || !/@/.test(email)) continue;   // skip rows with no real email
+      var name = iName !== -1 ? clean(c[iName]) : "";
+      if (!name) name = (clean(iFirst !== -1 ? c[iFirst] : "") + " " + clean(iLast !== -1 ? c[iLast] : "")).replace(/\s+/g, " ").trim();
+      if (!name) continue;
+      out.push({ name: name, last: iLast !== -1 ? clean(c[iLast]) : name, instrument: iInst !== -1 ? clean(c[iInst]) : "", email: email });
+    }
+    out.sort(function (a, b) { var x = (a.last || a.name).toLowerCase(), y = (b.last || b.name).toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; });
+    return out;
+  }
+
+  // People -> "Faculty" view: a faculty directory. Each card shows name, instrument,
+  // a "Chamber Coach" chip (if they coach), the lesson studio (if posted), and a
+  // tap-to-email link. Studio + coach status are joined by name in build().
+  function renderFacultyView() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    if (!facultyDir.length) { finishList("", 0, "", "The faculty directory will appear here once posted."); return; }
+    var html = '<div class="efmp-info"><div class="efmp-info__head" role="heading" aria-level="3">Faculty Contacts</div><div class="efmp-cards">';
+    facultyDir.forEach(function (p) {
+      var inner =
+        '<span class="efmp__sr">Email </span>' +
+        '<div class="efmp-card__name">' + esc(p.name) + "</div>" +
+        '<div class="efmp-card__title">' + esc(p.instrument || "Faculty") + (p.isCoach ? ' <span class="efmp-chip">Chamber Coach</span>' : "") + "</div>" +
+        (p.room ? '<div class="efmp-card__office">Lesson studio: ' + esc(p.room) + "</div>" : "") +
+        '<div class="efmp-card__contact">' + esc(p.email) + "</div>";
+      html += '<a class="efmp-card efmp-card--link" href="mailto:' + esc(p.email) + '">' + inner + "</a>";
+    });
+    html += "</div></div>";
+    list.innerHTML = html;
+    announce(facultyDir.length + " faculty contacts shown.");
   }
 
   function renderMap() {
@@ -1025,7 +1128,7 @@
     else if (sub.kind === "sectional") renderSectional(sub.code);
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
-    else if (sub.kind === "people") renderPeople();
+    else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else if (sub.weeks && weekSel != null && weeksFor(sub)[weekSel]) renderRoster(weeksFor(sub)[weekSel]);
     else renderAgenda(rowsForSub(sub));
@@ -1480,8 +1583,17 @@
     seenRooms = {};
     if (data.legend) applyLegend(data.legend);
     if (data.staff) staff = parseStaff(data.staff);
+    facultyDir = data.facultyContacts ? parseFacultyDirectory(data.facultyContacts) : [];
     if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
     if (data.lessons) lessons = parseLessons(data.lessons);
+    // Enrich the faculty directory with lesson studio + chamber-coach status, joined
+    // by name (full name OR lastname|first-initial, to bridge nicknames across sheets).
+    (function () {
+      var roomByKey = {}, coachKeys = {};
+      lessons.forEach(function (g) { (g.people || []).forEach(function (pp) { if (pp.name && pp.room) nameKeys(pp.name).forEach(function (k) { if (!roomByKey[k]) roomByKey[k] = pp.room; }); }); });
+      parseChamberCoachNames(generalInfo).forEach(function (nm) { nameKeys(nm).forEach(function (k) { coachKeys[k] = true; }); });
+      facultyDir.forEach(function (p) { nameKeys(p.name).forEach(function (k) { if (!p.room && roomByKey[k]) p.room = roomByKey[k]; if (coachKeys[k]) p.isCoach = true; }); });
+    })();
     if (data.announcements) announcements = parseAnnouncements(data.announcements);
 
     // Info tabs (raw rows) + the section -> room table used for sectional modals.
@@ -1578,6 +1690,8 @@
     }
     var jobs = {};
     SOURCES.forEach(function (s) { jobs[s.key] = fetchTab(s); });
+    // Faculty emails: the Faculty-Portal workbook's FacultyContact tab (gid 0).
+    jobs.facultyContacts = loadCSV(FP_CSV + "0").then(function (r) { return r && r.length ? r : null; }, function () { return null; });
     _generalInfoP = jobs.generalInfo || null;
     var keys = Object.keys(jobs);
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
