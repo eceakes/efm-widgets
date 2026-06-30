@@ -1827,6 +1827,15 @@
     return { rows: rows, banner: bannerMsg, singleDay: true };
   }
 
+  // Roster "Release?" gate, three-state: "Yes" -> show in both portals; "Faculty Only"
+  // -> faculty portal ONLY (shown here, hidden in the student portal); anything else
+  // (No / blank) -> hidden everywhere.
+  function releaseState(v) {
+    var s = clean(v).toLowerCase();
+    if (/faculty/.test(s)) return "faculty";
+    if (/^y(es)?$/.test(s)) return "all";
+    return "none";
+  }
   function parseRosters(rows) {
     var t = tableObjects(rows), out = [];
     t.items.forEach(function (o) {
@@ -2110,14 +2119,14 @@
     // "Eastern Festival Orchestra" (renderNav); unreleased weeks simply don't appear.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
     calendarWeeks = rostersAll
-      .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
+      .filter(function (o) { return releaseState(o.release) !== "none"; })
       .map(function (o) { return { label: o.title, roster: o }; });
     // Unified per-ensemble week pills: EFO from the Faculty-Portal Rosters tab
     // (above); ESO/GSO from the shared Master Calendar Student-Rosters tab, where
     // each title "Week N (ESO|GSO)" names its ensemble in the parenthetical.
     ensWeeks = { EFO: calendarWeeks, ESO: [], GSO: [] };
     (data.studentRosters ? parseRosters(data.studentRosters) : [])
-      .filter(function (o) { return /^y(es)?$/i.test(clean(o.release)); })
+      .filter(function (o) { return releaseState(o.release) !== "none"; })
       .forEach(function (o) {
         var m = rosterMeta(o.title), code = clean(m.qualifier).toUpperCase();
         if ((code === "ESO" || code === "GSO") && m.week != null) ensWeeks[code].push({ label: "Week " + m.week, roster: o });
