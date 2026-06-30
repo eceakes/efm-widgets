@@ -134,8 +134,7 @@
     // showWhen appears only if that tab's Show/Hide cell says "Yes" (build()).
     { id: "programs", label: "Auditions & Classes", subs: [
       { label: "Placement Auditions", kind: "infoTab", source: "placement", showWhen: "placement" },
-      { label: "ESO Sectionals", kind: "sectional", code: "ESO" },
-      { label: "GSO Sectionals", kind: "sectional", code: "GSO" },
+      { label: "Sectionals", kind: "sectional", sectionals: true },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
       { label: "Chamber Music", kind: "chamber", chamber: true },
       { label: "Lessons", kind: "lessons" },
@@ -411,6 +410,7 @@
   var atData = null;        // Alexander Technique tab -> { people:[{name,location,details,contact,photo,calendly}], about } (renderAlexander)
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
+  var sectionalEns = "ESO";    // selected sectionals ensemble (3rd-level under the Sectionals pill)
   var chamberData = null;      // parsed Student-Chamber-Rosters: [{ key, label, time, ensembles:[{coach,location,piece,members}] }]
   var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
@@ -606,6 +606,17 @@
           var on = i === chamberGroup; b.className = on ? "efmp-active" : "";
           if (on) b.setAttribute("aria-current", "true");
           b.onclick = function () { chamberGroup = i; renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else if (activeSub && activeSub.sectionals) {
+        // Sectionals -> third-level ESO | GSO pills.
+        subnav2.hidden = false;
+        ["ESO", "GSO"].forEach(function (ens) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = ens;
+          var on = ens === sectionalEns; b.className = on ? "efmp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          b.onclick = function () { sectionalEns = ens; renderNav(); renderList(); };
           subnav2.appendChild(b);
         });
       } else {
@@ -1290,7 +1301,7 @@
     return out;
   }
 
-  // ---- Sectionals (Auditions & Classes -> ESO / GSO Sectionals) ----------
+  // ---- Sectionals (Auditions & Classes -> Sectionals, ESO | GSO subnav) ----------
   // Parse the Sectional Rehearsals tab into { eso, gso, perc, locations,
   // esoCoaches, gsoCoaches }. ESO/GSO/Percussion schedule lines live under
   // "Week One Sectionals:" / "All other weeks:"; the shared location table under
@@ -1545,7 +1556,7 @@
     if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
-    else if (sub.kind === "sectional") renderSectional(sub.code);
+    else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
     else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
