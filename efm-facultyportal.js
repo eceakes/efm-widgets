@@ -158,6 +158,7 @@
     // the Master Calendar Student-Rosters tab). With no week chosen the pill shows
     // the full ensemble schedule; a week shows that week's roster + services.
     { id: "calendar", label: "Calendar", subs: [
+      { label: "Today", kind: "today" },
       { label: "EFO", kind: "ensemble", code: "EFO", weeks: true },
       { label: "ECP", kind: "ensemble", code: "ECP" },
       { label: "REP", kind: "ensemble", code: "REP" },
@@ -1626,7 +1627,7 @@
     modalData = []; viewEvents = []; viewLabel = ""; viewFeedKey = "";
     var k = sub.kind;
     // Search + Add-to-Calendar belong to the agenda views (schedules + rooms).
-    var showControls = (k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday" || k === "allEvents");
+    var showControls = (k === "today" || k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday" || k === "allEvents");
     if (controls) controls.hidden = !showControls;
 
     if (k === "dining") renderDining();
@@ -1639,6 +1640,13 @@
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (k === "map") renderMap();
+    else if (k === "today") {
+      // Today's full festival schedule (all ensembles + events). todayRows handles the
+      // "nothing today -> show next scheduled day + banner" fallback, like the student portal.
+      viewLabel = "EFM Today";
+      var td = todayRows(null);
+      renderAgenda(td.rows, { singleDay: true, banner: td.banner, noun: "event", emptyMsg: "No events scheduled today." });
+    }
     else if (k === "ensemble") {
       // Eastern Festival Orchestra: a chosen week shows that week's roster +
       // services; with no week chosen it shows the full EFO schedule.
