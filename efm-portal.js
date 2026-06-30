@@ -1313,7 +1313,10 @@
       announce("Crew documents are not posted yet.");
       return;
     }
-    var html = '<div class="efmp-info">' +
+    // NOTE: use .efmp-crew (not .efmp-info) as the wrapper. The `.efmp-info a` color
+    // rule (ink) outranks `.efmp-roster__btn`'s white text, which would render the
+    // download button dark-blue-on-dark-blue. Outside .efmp-info the button stays white.
+    var html = '<div class="efmp-crew">' +
       '<div class="efmp-info__head" role="heading" aria-level="3">Crew Documents</div>' +
       '<div class="efmp-crew-list">';
     crewDocs.forEach(function (d) {

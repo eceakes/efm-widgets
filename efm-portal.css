@@ -114,7 +114,9 @@
 
   /* --- rosters tab: seating-roster PDF + that cycle's services --- */
   #efm-portal .efmp-roster { max-width: 760px; margin: 0 auto; }
-  /* Crew Documents: a stacked column of the roster-style download cards. */
+  /* Crew Documents: a stacked column of the roster-style download cards. Kept OUT of
+     .efmp-info so the .efmp-info a (ink) rule can't override the button's white text. */
+  #efm-portal .efmp-crew { max-width: 680px; margin: 0 auto; }
   #efm-portal .efmp-crew-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
   #efm-portal .efmp-roster__pdf {
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
