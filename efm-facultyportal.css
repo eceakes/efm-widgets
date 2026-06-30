@@ -249,6 +249,31 @@
   }
   #efm-faculty-portal .efmfp-info__meal span { color: #2b3042; font-size: 15px; }
 
+  /* Chamber Music (Student-Chamber-Rosters): a card per ensemble within a group. */
+  #efm-faculty-portal .efmfp-chm-time {
+    font-family: var(--efmfp-body-font); color: var(--efmfp-role); font-weight: 400;
+    font-size: 15px; letter-spacing: 0; margin-left: 8px; white-space: nowrap;
+  }
+  #efm-faculty-portal .efmfp-chm-legend { color: var(--efmfp-role); font-size: 13.5px; text-align: center; margin: 0 0 16px; }
+  #efm-faculty-portal .efmfp-chm-card {
+    border: 1px solid var(--efmfp-rule); border-radius: 14px;
+    padding: 16px 20px; margin: 0 auto 14px; background: #fff; max-width: 620px;
+  }
+  #efm-faculty-portal .efmfp-chm-piece {
+    font-family: var(--efmfp-name-font) !important; color: var(--efmfp-ink) !important; font-weight: 400 !important;
+    font-size: 15.5px !important; line-height: 1.3 !important; letter-spacing: .01em !important;
+    text-transform: none !important; margin: 0 0 5px;
+  }
+  #efm-faculty-portal .efmfp-chm-meta { color: var(--efmfp-role); font-size: 13.5px; margin: 0 0 9px; }
+  #efm-faculty-portal .efmfp-chm-members { list-style: none; margin: 0; padding: 0; }
+  #efm-faculty-portal .efmfp-chm-members li { color: #2b3042; font-size: 14.5px; line-height: 1.55; padding: 1px 0; }
+  #efm-faculty-portal .efmfp-chm-inst { color: var(--efmfp-role); font-size: 13px; }
+  #efm-faculty-portal .efmfp-chm-star {
+    background: #fcefc7; color: #5a4a12; font-weight: 600;
+    border-radius: 4px; padding: 0 5px;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+
   /* --- contact cards (faculty + fellows + subs) --- */
   #efm-faculty-portal .efmfp-contact { container-type: inline-size; container-name: efmfp; max-width: 920px; margin: 0 auto; }
   #efm-faculty-portal .efmfp-section { margin: 0 0 clamp(28px, 4vw, 44px); }

@@ -85,6 +85,10 @@
     { key: "alexander", tab: "Alexander Technique", gid: "1260076144" },
     // Student-Rosters tab: per-ensemble seating-roster PDFs, gated by a Release? cell.
     { key: "rosters", tab: "Student-Rosters", gid: "2066588541" },
+    // Student-Chamber-Rosters tab: chamber groups (A / B / ...) with rehearsal time,
+    // coach, room, piece, and members. A "*" before a member name marks a student in
+    // two groups (shown highlighted). Resolved by NAME if this gid moves on a rebuild.
+    { key: "studentChamber", tab: "Student-Chamber-Rosters", gid: "1100258504" },
     // Dedicated ESO/GSO tabs (lean layout: Date, Day, Time, Room, Room Name,
     // Conductor / Soloist, Event, Details, [PDF Link]). The big "Master Calendar"
     // tab leaves Details/PDF blank for ESO/GSO rows, so we join them in by NAME
@@ -133,6 +137,7 @@
       { label: "ESO Sectionals", kind: "sectional", code: "ESO" },
       { label: "GSO Sectionals", kind: "sectional", code: "GSO" },
       { label: "Studio Classes", kind: "infoTab", source: "studio" },
+      { label: "Chamber Music", kind: "chamber", chamber: true },
       { label: "Lessons", kind: "lessons" },
       { label: "Alexander Technique", kind: "alexander" },
       { label: "Concerto Competition", kind: "infoTab", source: "concerto", showWhen: "concerto" } ] },
@@ -406,6 +411,8 @@
   var atData = null;        // Alexander Technique tab -> { people:[{name,location,details,contact,photo,calendly}], about } (renderAlexander)
   var sectionalLocations = []; // [{section, room}] from the Sectional Rehearsals tab, piped into sectional event modals
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
+  var chamberData = null;      // parsed Student-Chamber-Rosters: [{ key, label, time, ensembles:[{coach,location,piece,members}] }]
+  var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var efoRows = [];            // Eastern Festival Orchestra agenda rows from the dedicated EFO tab (renderAgenda shape)
   var efoRostersAll = [];      // [{title, link, release}] from the Faculty-Portal "Rosters" tab (EFO roster weeks)
@@ -535,6 +542,17 @@
           var on = v.key === peopleView; b.className = on ? "efmp-active" : "";
           if (on) b.setAttribute("aria-current", "true");
           b.onclick = function () { peopleView = v.key; renderNav(); renderList(); };
+          subnav2.appendChild(b);
+        });
+      } else if (activeSub && activeSub.chamber && (chamberData || []).length) {
+        // Chamber Music -> third-level Group A | Group B | ... pills.
+        subnav2.hidden = false;
+        chamberData.forEach(function (g, i) {
+          var b = document.createElement("button");
+          b.type = "button"; b.textContent = g.label;
+          var on = i === chamberGroup; b.className = on ? "efmp-active" : "";
+          if (on) b.setAttribute("aria-current", "true");
+          b.onclick = function () { chamberGroup = i; renderNav(); renderList(); };
           subnav2.appendChild(b);
         });
       } else {
@@ -1291,6 +1309,122 @@
   // Render one ensemble's sectionals: rehearsal times + a merged
   // Section / Location / Coach table (shared locations + that ensemble's coaches).
   // Percussion + Harp have no listed coach, so they show the location only.
+  /* ---- Chamber Music (Master Calendar "Student-Chamber-Rosters" tab) ---- */
+  // Push one "Name, instrument" entry (instrument optional) onto the list. A leading
+  // "*" marks a student in two groups; it is stripped and recorded as a flag.
+  function addChamberMember(out, entry) {
+    entry = String(entry).trim();
+    if (!entry) return;
+    var star = entry.charAt(0) === "*";
+    if (star) entry = entry.slice(1).trim();
+    var idx = entry.indexOf(",");
+    var name = idx >= 0 ? entry.slice(0, idx).trim() : entry;
+    var instr = idx >= 0 ? entry.slice(idx + 1).trim() : "";
+    if (name) out.push({ name: name, instr: instr, star: star });
+  }
+  // Split a Members cell into entries. The cell is multi-line ("Name, instrument" per
+  // line), but staff sometimes cram several members onto one line; since each member
+  // ends in ", <lowercase instrument>" and the next member starts with a capital (or
+  // "*"), we can split a comma-bearing line on that boundary. A line with no comma is
+  // a single bare name (e.g. the Trombone Ensemble, listed without instruments).
+  function chamberMembers(cell) {
+    var out = [];
+    String(cell == null ? "" : cell).split(/\n/).forEach(function (ln) {
+      ln = clean(ln);
+      if (!ln) return;
+      if (ln.indexOf(",") === -1) { addChamberMember(out, ln); return; }
+      var re = /([^,]+?),\s*([a-z0-9 ]*?)(?=\s+[A-ZÀ-Ý*]|$)/g, m, last = 0, found = false;
+      while ((m = re.exec(ln))) {
+        found = true;
+        addChamberMember(out, m[0]);
+        last = re.lastIndex;
+        if (re.lastIndex === m.index) re.lastIndex++;   // zero-length-match guard
+      }
+      if (!found) { addChamberMember(out, ln); return; }
+      if (last < ln.length) addChamberMember(out, ln.slice(last));   // trailing remainder
+    });
+    return out;
+  }
+  // Label a group: "A" -> "Group A"; an already-named "Group X" passes through; an
+  // unlabeled / "NA" row is named by its piece (e.g. the Trombone Ensemble row).
+  function chamberGroupLabel(group, piece) {
+    if (/^[A-Za-z]$/.test(group)) return "Group " + group.toUpperCase();
+    if (/^group\b/i.test(group)) return group;
+    if (group && !/^na$/i.test(group)) return group;
+    return piece || "Other";
+  }
+  // Parse the "Student-Chamber-Rosters" tab (Group | Time | Coach | Location | Piece |
+  // Members) into ordered groups, each with its rehearsal time + chamber ensembles.
+  // Columns are matched by header name so the sheet can reorder them.
+  function parseChamber(rows) {
+    if (!rows || !rows.length) return [];
+    var gi = 0, ti = 1, ci = 2, li = 3, pi = 4, mi = 5, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = rows[h].map(function (c) { return clean(c).toLowerCase(); });
+      if (lc.indexOf("group") !== -1 && lc.indexOf("members") !== -1) {
+        gi = lc.indexOf("group"); ti = lc.indexOf("time"); ci = lc.indexOf("coach");
+        li = lc.indexOf("location"); pi = lc.indexOf("piece"); mi = lc.indexOf("members");
+        start = h + 1; break;
+      }
+    }
+    var order = [], byKey = {};
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var group = clean(row[gi]);
+      var coach = ci >= 0 ? clean(row[ci]) : "";
+      var location = li >= 0 ? clean(row[li]) : "";
+      var piece = pi >= 0 ? clean(row[pi]) : "";
+      var members = chamberMembers(mi >= 0 ? row[mi] : "");
+      // Skip blank separators and the empty padding rows (a group/time with no ensemble).
+      if (!coach && !piece && !members.length) continue;
+      var time = ti >= 0 ? clean(row[ti]) : "";
+      var key = (group || "_").toLowerCase();
+      var g = byKey[key];
+      if (!g) { g = byKey[key] = { key: key, label: chamberGroupLabel(group, piece), time: time, ensembles: [] }; order.push(g); }
+      if (!g.time && time) g.time = time;
+      g.ensembles.push({ coach: coach, location: location, piece: piece, members: members });
+    }
+    return order;
+  }
+  // Chamber Music pill: one group's ensembles (piece, coach, room, members), with the
+  // group's rehearsal time in the heading. Group A | Group B | ... is the 3rd-level nav.
+  function renderChamber() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var groups = chamberData || [];
+    if (!groups.length) {
+      list.innerHTML = '<div class="efmp-info"><p>Chamber music rosters will appear here once they are posted.</p></div>';
+      announce("Chamber music rosters are not posted yet.");
+      return;
+    }
+    if (chamberGroup >= groups.length) chamberGroup = 0;
+    var g = groups[chamberGroup];
+    var html = '<div class="efmp-info">' +
+      '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(g.label) +
+        (g.time ? ' <span class="efmp-chm-time">' + esc(g.time) + '</span>' : "") + '</div>' +
+      '<p class="efmp-chm-legend">Students whose names are <span class="efmp-chm-star">highlighted</span> are in two groups.</p>';
+    g.ensembles.forEach(function (e) {
+      html += '<div class="efmp-chm-card">';
+      if (e.piece) html += '<div class="efmp-chm-piece" role="heading" aria-level="4">' + esc(e.piece) + '</div>';
+      var meta = [];
+      if (e.coach) meta.push(esc(e.coach));
+      if (e.location) meta.push(esc(e.location));
+      if (meta.length) html += '<div class="efmp-chm-meta">' + meta.join(" &#183; ") + '</div>';
+      if (e.members.length) {
+        html += '<ul class="efmp-chm-members">';
+        e.members.forEach(function (m) {
+          html += '<li>' + (m.star ? '<span class="efmp-chm-star">' + esc(m.name) + '</span>' : esc(m.name)) +
+            (m.instr ? '<span class="efmp-chm-inst">, ' + esc(m.instr) + '</span>' : "") + '</li>';
+        });
+        html += '</ul>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    list.innerHTML = html;
+    announce(g.label + " chamber roster shown.");
+  }
+
   function renderSectional(ens) {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
@@ -1352,7 +1486,7 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "sectional") renderSectional(sub.code);
@@ -1362,6 +1496,7 @@
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else if (sub.kind === "lessons") renderLessons();
     else if (sub.kind === "alexander") renderAlexander();
+    else if (sub.kind === "chamber") renderChamber();
     else if (sub.weeks && weekSel != null && weeksFor(sub)[weekSel]) renderRoster(weeksFor(sub)[weekSel]);
     else renderAgenda(rowsForSub(sub));
     updateICSButton();
@@ -1924,6 +2059,8 @@
     atData = parseAlexander(data.alexander);
     sectionalLocations = data.sectionals ? parseSectionalLocations(data.sectionals) : [];
     sectionalData = parseSectionals(data.sectionals);
+    chamberData = parseChamber(data.studentChamber);
+    if (chamberGroup >= chamberData.length) chamberGroup = 0;
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
