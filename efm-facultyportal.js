@@ -315,6 +315,13 @@
     return "View PDF";
   }
   function todayKey() { var now = new Date(); if (now.getFullYear() !== YEAR) return null; return (now.getMonth() + 1) * 100 + now.getDate(); }
+  // Calendar listings show today + future only (past events dropped) so a schedule
+  // reads as "what's coming up", not a history. Outside the festival year todayKey()
+  // is null, so nothing is filtered. Undated rows (key === null) are dropped too.
+  function upcomingRows(rows) {
+    var tk = todayKey();
+    return tk === null ? rows : rows.filter(function (r) { return r.key !== null && r.key >= tk; });
+  }
 
   function startMinutes(time) {
     var s = clean(time);
@@ -1641,23 +1648,21 @@
         renderRoster(sub.code, ws[weekSel].roster);
       } else {
         viewLabel = sub.code === "OUT" ? "EFM Outreach" : "EFM " + sub.code;
-        renderAgenda(ensembles[sub.code] || [], {
+        // Today + future only, so the schedule shows what's coming up, not past services.
+        renderAgenda(upcomingRows(ensembles[sub.code] || []), {
           feedKey: FEED_VIEWS[sub.code] || "",
           noun: sub.code === "OUT" ? "concert" : "service",
-          emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled.",
+          emptyMsg: sub.code === "OUT" ? "No upcoming outreach concerts scheduled." : "No upcoming services scheduled.",
           prefaceHTML: personnelManagerHTML(sub.code)   // ESO/GSO Personnel Manager line; "" otherwise
         });
       }
     }
     else if (k === "allEvents") {
       viewLabel = "EFM Full Schedule";
-      // Upcoming only: keep events dated today or later. key is an MMDD integer and
-      // allRows is already sorted chronologically (date, then start time) in
-      // parseCalendar. todayKey() is null outside the festival year, in which case
-      // show the full ordered list rather than blank the tab.
-      var tk = todayKey();
-      var upcoming = (tk === null) ? allRows : allRows.filter(function (r) { return r.key !== null && r.key >= tk; });
-      renderAgenda(upcoming, { feedKey: "all", noun: "event", emptyMsg: "No upcoming events scheduled." });
+      // Upcoming only (today or later). allRows is already sorted chronologically
+      // (date, then start time) in parseCalendar; upcomingRows() no-ops outside the
+      // festival year so the full ordered list shows rather than blanking the tab.
+      renderAgenda(upcomingRows(allRows), { feedKey: "all", noun: "event", emptyMsg: "No upcoming events scheduled." });
     }
     else if (k === "roster") { viewLabel = sub.roster.title; renderRoster(sub.code, sub.roster); }
     else if (k === "roomsToday") {

@@ -498,17 +498,27 @@
     return '<div class="efmp-pm"><span class="efmp-pm__label">Personnel Manager:</span> ' + esc(name) + phoneHTML + "</div>";
   }
 
+  // Calendar listings show today + future only (past events are dropped) so the
+  // schedule reads as "what's coming up", not a history. Outside the festival year
+  // todayKey() is null, so nothing is filtered (the whole season shows). Undated rows
+  // (key === null) are also dropped, matching the All Concerts/All Events behavior.
+  function upcomingRows(rows) {
+    var tk = todayKey();
+    return tk === null ? rows : rows.filter(function (r) { return r.key !== null && r.key >= tk; });
+  }
+  var UPCOMING_EMPTY = "No upcoming events scheduled.";
+
   function rowsForSub(sub) {
     if (sub.kind === "today") return todayRows(sub.codes);
     if (sub.kind === "ensemble") {
       var pmPre = personnelManagerHTML(sub.code);   // ESO/GSO only; "" otherwise
-      if (sub.code === "EFO") return { rows: efoRows, banner: "", prefaceHTML: pmPre };   // EFO has its own tab, not master-calendar rows
-      return { rows: allRows.filter(function (r) { return r.ensTokens.indexOf(sub.code) !== -1; }), banner: "", prefaceHTML: pmPre };
+      if (sub.code === "EFO") return { rows: upcomingRows(efoRows), banner: "", prefaceHTML: pmPre, emptyMsg: UPCOMING_EMPTY };   // EFO has its own tab, not master-calendar rows
+      return { rows: upcomingRows(allRows.filter(function (r) { return r.ensTokens.indexOf(sub.code) !== -1; })), banner: "", prefaceHTML: pmPre, emptyMsg: UPCOMING_EMPTY };
     }
     if (sub.kind === "allEnsembles")
-      return { rows: allRows.filter(function (r) { return r.ensTokens.length > 0; }), banner: "" };
+      return { rows: upcomingRows(allRows.filter(function (r) { return r.ensTokens.length > 0; })), banner: "", emptyMsg: UPCOMING_EMPTY };
     if (sub.kind === "type")
-      return { rows: allRows.filter(function (r) { return r.type === sub.value; }), banner: "" };
+      return { rows: upcomingRows(allRows.filter(function (r) { return r.type === sub.value; })), banner: "", emptyMsg: UPCOMING_EMPTY };
     if (sub.kind === "room")
       return { rows: allRows.filter(function (r) { return r.roomTokens.indexOf(sub.code) !== -1; }), banner: "" };
     if (sub.kind === "roomsToday") {
@@ -698,7 +708,7 @@
       });
       shown++;
     });
-    finishList(html, shown, res.banner);
+    finishList(html, shown, res.banner, res.emptyMsg);
   }
 
   // General Information -> "Dining" pill: both the on-campus dining hall hours and
