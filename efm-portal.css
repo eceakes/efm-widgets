@@ -305,6 +305,14 @@
     font-family: var(--efmp-name-font); font-weight: 400; font-size: 14.5px; line-height: 1.4;
   }
   #efm-portal .efmp-kv span { color: #2b3042; font-size: 14.5px; line-height: 1.45; }
+  /* Personnel Manager line atop the ESO/GSO schedule (Student-Rosters PM block). */
+  #efm-portal .efmp-pm {
+    margin: 0 0 14px; padding: 9px 13px; background: var(--efmp-soft);
+    border: 1px solid var(--efmp-rule); border-radius: 10px;
+    color: #2b3042; font-size: 14px; line-height: 1.45;
+  }
+  #efm-portal .efmp-pm__label { font-family: var(--efmp-name-font); color: var(--efmp-ink); font-weight: 400; }
+  #efm-portal .efmp-pm__tel { color: var(--efmp-ink); white-space: nowrap; }
   /* Chamber Music (Student-Chamber-Rosters): a card per ensemble within a group. */
   #efm-portal .efmp-chm-time {
     font-family: var(--efmp-body-font); color: var(--efmp-role); font-weight: 400;

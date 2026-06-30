@@ -413,6 +413,7 @@
   var sectionalData = null;    // parsed Sectional Rehearsals: { eso, gso, perc, locations, esoCoaches, gsoCoaches }
   var chamberData = null;      // parsed Student-Chamber-Rosters: [{ key, label, time, ensembles:[{coach,location,piece,members}] }]
   var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
+  var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var efoRows = [];            // Eastern Festival Orchestra agenda rows from the dedicated EFO tab (renderAgenda shape)
   var efoRostersAll = [];      // [{title, link, release}] from the Faculty-Portal "Rosters" tab (EFO roster weeks)
@@ -456,11 +457,53 @@
     return { rows: rows, banner: bannerMsg, singleDay: true };
   }
 
+  // The Student-Rosters tab carries a second block (header "PM Name | Ensemble |
+  // Phone") below the roster-week rows: the ESO/GSO personnel managers. Parse it into
+  // { ESO:{name,phone}, GSO:{...} }. The header row is found by its Ensemble + Phone
+  // columns, so it never collides with the "Week/Title | Link | Release?" block above.
+  function parsePersonnelManagers(rows) {
+    var out = {};
+    if (!rows || !rows.length) return out;
+    var ni = -1, ei = -1, pi = -1, start = -1;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      if (lc.indexOf("ensemble") !== -1 && lc.indexOf("phone") !== -1) {
+        ei = lc.indexOf("ensemble"); pi = lc.indexOf("phone");
+        ni = lc.indexOf("pm name"); if (ni === -1) ni = lc.indexOf("name"); if (ni === -1) ni = 0;
+        start = h + 1; break;
+      }
+    }
+    if (start < 0) return out;
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var ens = clean(row[ei]).toUpperCase();
+      if (!ens) continue;
+      out[ens] = { name: clean(row[ni]), phone: clean(row[pi]) };
+    }
+    return out;
+  }
+  // The "Personnel Manager: Name, Phone" line shown atop an ESO/GSO schedule. Returns
+  // "" when there is no manager for that ensemble, or the name/phone are still sheet
+  // placeholders ("Placeholder Name", "###-###-####"), so nothing bogus reaches the page.
+  function personnelManagerHTML(code) {
+    var pm = personnelManagers[code];
+    if (!pm) return "";
+    var name = clean(pm.name);
+    if (!name || /placeholder/i.test(name)) return "";
+    var phone = clean(pm.phone);
+    var phoneOk = phone && /\d/.test(phone) && phone.indexOf("#") === -1;
+    var phoneHTML = phoneOk
+      ? ', <a class="efmp-pm__tel" href="tel:' + esc(phone.replace(/[^\d+]/g, "")) + '">' + esc(phone) + "</a>"
+      : "";
+    return '<div class="efmp-pm"><span class="efmp-pm__label">Personnel Manager:</span> ' + esc(name) + phoneHTML + "</div>";
+  }
+
   function rowsForSub(sub) {
     if (sub.kind === "today") return todayRows(sub.codes);
     if (sub.kind === "ensemble") {
-      if (sub.code === "EFO") return { rows: efoRows, banner: "" };   // EFO has its own tab, not master-calendar rows
-      return { rows: allRows.filter(function (r) { return r.ensTokens.indexOf(sub.code) !== -1; }), banner: "" };
+      var pmPre = personnelManagerHTML(sub.code);   // ESO/GSO only; "" otherwise
+      if (sub.code === "EFO") return { rows: efoRows, banner: "", prefaceHTML: pmPre };   // EFO has its own tab, not master-calendar rows
+      return { rows: allRows.filter(function (r) { return r.ensTokens.indexOf(sub.code) !== -1; }), banner: "", prefaceHTML: pmPre };
     }
     if (sub.kind === "allEnsembles")
       return { rows: allRows.filter(function (r) { return r.ensTokens.length > 0; }), banner: "" };
@@ -615,7 +658,9 @@
 
   function renderAgenda(res) {
     var q = searchBox.value.trim().toLowerCase();
-    var html = "", shown = 0, lastMonth = null, lastGroup = null;
+    // prefaceHTML (e.g. the ESO/GSO Personnel Manager line) sits above the rows and
+    // stays put through search filtering, since it is ensemble-level, not a row.
+    var html = res.prefaceHTML || "", shown = 0, lastMonth = null, lastGroup = null;
     res.rows.forEach(function (r) {
       if (q && r.haystack.indexOf(q) === -1) return;
       if (res.groupByRoom) {
@@ -1463,7 +1508,8 @@
     banner.hidden = true; banner.textContent = "";
     viewLabel = sub.title + " Services"; viewFeedKey = "";   // a single week is a subset, not the full live feed
     var link = safeUrl(sub.link);
-    list.innerHTML = '<div class="efmp-roster">' +
+    list.innerHTML = personnelManagerHTML(sub.code) +
+      '<div class="efmp-roster">' +
       '<div class="efmp-roster__pdf"><div>' +
         '<div class="efmp-roster__pdf-name">' + esc(sub.title) + ' Roster</div>' +
         '<div class="efmp-roster__pdf-meta">' + (link ? "PDF document" : "PDF not posted yet") + '</div>' +
@@ -2061,6 +2107,7 @@
     sectionalData = parseSectionals(data.sectionals);
     chamberData = parseChamber(data.studentChamber);
     if (chamberGroup >= chamberData.length) chamberGroup = 0;
+    personnelManagers = data.rosters ? parsePersonnelManagers(data.rosters) : {};
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is

@@ -415,6 +415,7 @@
   var sectionalEns = "ESO"; // selected sectionals ensemble (3rd-level under the Sectionals pill)
   var chamberData = null;   // parsed Student-Chamber-Rosters: [{ key, label, time, ensembles:[{coach,location,piece,members}] }]
   var chamberGroup = 0;     // selected chamber group index (3rd-level under the Chamber Music pill)
+  var personnelManagers = {}; // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var ticketData = null;    // parsed Friends-Family-Discounts: { head, blurb, codes:[{code,url,key,concert,day}], byKey }
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
   var fellowPeople = [];
@@ -620,8 +621,11 @@
       shown++;
     });
     if (opts.banner) { banner.textContent = opts.banner; banner.hidden = false; } else { banner.hidden = true; }
-    if (shown) { list.innerHTML = html; status.hidden = true; }
-    else { list.innerHTML = ""; status.textContent = q ? ("No " + noun + "s match your search.") : (opts.emptyMsg || "Nothing scheduled."); status.hidden = false; }
+    // prefaceHTML (e.g. the ESO/GSO Personnel Manager line) sits above the rows and
+    // stays visible even when no rows match, since it is ensemble-level, not a row.
+    var pre = opts.prefaceHTML || "";
+    if (shown) { list.innerHTML = pre + html; status.hidden = true; }
+    else { list.innerHTML = pre; status.textContent = q ? ("No " + noun + "s match your search.") : (opts.emptyMsg || "Nothing scheduled."); status.hidden = false; }
     viewFeedKey = opts.feedKey || "";
     var ann = shown + " " + noun + (shown === 1 ? "" : "s") + (q ? " match your search." : " shown.");
     if (opts.banner) ann = opts.banner + " " + ann;   // explain the "showing next day" jump to AT
@@ -1527,11 +1531,52 @@
     return rows;
   }
 
+  // The Student-Rosters tab carries a second block (header "PM Name | Ensemble |
+  // Phone") below the roster-week rows: the ESO/GSO personnel managers. Parse it into
+  // { ESO:{name,phone}, GSO:{...} }. The header is found by its Ensemble + Phone
+  // columns, so it never collides with the "Week/Title | Link | Release?" block above.
+  function parsePersonnelManagers(rows) {
+    var out = {};
+    if (!rows || !rows.length) return out;
+    var ni = -1, ei = -1, pi = -1, start = -1;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      if (lc.indexOf("ensemble") !== -1 && lc.indexOf("phone") !== -1) {
+        ei = lc.indexOf("ensemble"); pi = lc.indexOf("phone");
+        ni = lc.indexOf("pm name"); if (ni === -1) ni = lc.indexOf("name"); if (ni === -1) ni = 0;
+        start = h + 1; break;
+      }
+    }
+    if (start < 0) return out;
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var ens = clean(row[ei]).toUpperCase();
+      if (!ens) continue;
+      out[ens] = { name: clean(row[ni]), phone: clean(row[pi]) };
+    }
+    return out;
+  }
+  // The "Personnel Manager: Name, Phone" line shown atop an ESO/GSO schedule. Returns
+  // "" when there is no manager for that ensemble, or the name/phone are still sheet
+  // placeholders ("Placeholder Name", "###-###-####"), so nothing bogus reaches the page.
+  function personnelManagerHTML(code) {
+    var pm = personnelManagers[code];
+    if (!pm) return "";
+    var name = clean(pm.name);
+    if (!name || /placeholder/i.test(name)) return "";
+    var phone = clean(pm.phone);
+    var phoneOk = phone && /\d/.test(phone) && phone.indexOf("#") === -1;
+    var phoneHTML = phoneOk
+      ? ', <a class="efmfp-pm__tel" href="tel:' + esc(phone.replace(/[^\d+]/g, "")) + '">' + esc(phone) + "</a>"
+      : "";
+    return '<div class="efmfp-pm"><span class="efmfp-pm__label">Personnel Manager:</span> ' + esc(name) + phoneHTML + "</div>";
+  }
+
   function renderRoster(code, roster) {
     code = code || "EFO";
     banner.hidden = true; status.hidden = true;
     modalData = []; viewEvents = [];
-    var html = '<div class="efmfp-roster">';
+    var html = personnelManagerHTML(code) + '<div class="efmfp-roster">';
     // PDF block
     var link = safeUrl(roster.link);
     html += '<div class="efmfp-roster__pdf"><div><div class="efmfp-roster__pdf-name">' + esc(roster.title) + " Roster</div>";
@@ -1599,7 +1644,8 @@
         renderAgenda(ensembles[sub.code] || [], {
           feedKey: FEED_VIEWS[sub.code] || "",
           noun: sub.code === "OUT" ? "concert" : "service",
-          emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled."
+          emptyMsg: sub.code === "OUT" ? "No outreach concerts scheduled." : "No services scheduled.",
+          prefaceHTML: personnelManagerHTML(sub.code)   // ESO/GSO Personnel Manager line; "" otherwise
         });
       }
     }
@@ -2184,6 +2230,7 @@
     sectionalData = parseSectionals(infoTabs.sectionals);
     chamberData = parseChamber(data.studentChamber);
     if (chamberGroup >= chamberData.length) chamberGroup = 0;
+    personnelManagers = data.studentRosters ? parsePersonnelManagers(data.studentRosters) : {};
     NAV.forEach(function (t) {
       t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
     });

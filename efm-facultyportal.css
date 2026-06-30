@@ -249,6 +249,14 @@
   }
   #efm-faculty-portal .efmfp-info__meal span { color: #2b3042; font-size: 15px; }
 
+  /* Personnel Manager line atop the ESO/GSO schedule (Student-Rosters PM block). */
+  #efm-faculty-portal .efmfp-pm {
+    margin: 0 0 16px; padding: 10px 14px; background: var(--efmfp-soft);
+    border: 1px solid var(--efmfp-rule); border-radius: 10px;
+    color: #2b3042; font-size: 14.5px; line-height: 1.45;
+  }
+  #efm-faculty-portal .efmfp-pm__label { font-family: var(--efmfp-name-font); color: var(--efmfp-ink); font-weight: 400; }
+  #efm-faculty-portal .efmfp-pm__tel { color: var(--efmfp-ink); white-space: nowrap; }
   /* Chamber Music (Student-Chamber-Rosters): a card per ensemble within a group. */
   #efm-faculty-portal .efmfp-chm-time {
     font-family: var(--efmfp-body-font); color: var(--efmfp-role); font-weight: 400;
