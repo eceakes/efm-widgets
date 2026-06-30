@@ -68,6 +68,15 @@
   // the handbook is re-posted to a new URL.
   var HANDBOOK_URL = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/2026+Student+Handbook.pdf";
 
+  // Crew Documents: a standalone published workbook (NOT the Master Calendar) of crew
+  // document links. The "Stage Crew" tab is "Document Title | Link". Resolved by NAME
+  // (gid is the fast-path fallback) so a sheet rebuild that moves gids won't break it.
+  var CREW_PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vToWi1e-GYsLRHcYd1kayvshaKYnEvZzS9V2eF2qwb5vxaPlD5uILmreQ3ADvUQPzXvgXwTPjRCcMss";
+  var CREW_CSV = CREW_PUB + "/pub?output=csv&gid=";
+  var CREW_PUBHTML = CREW_PUB + "/pubhtml";
+  var CREW_TAB = "Stage Crew";
+  var CREW_GID = "447028267";
+
   // Tabs to fetch: key -> sheet tab name + known gid. calendar is required. gid is
   // tried first (fast path, keeps the directory round-trip off the critical path);
   // the name is the fallback when a sheet rebuild moves gids (resolved in run()).
@@ -120,7 +129,8 @@
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
       { label: "People", kind: "people" },
-      { label: "Student Handbook", kind: "handbook" } ] },
+      { label: "Student Handbook", kind: "handbook" },
+      { label: "Crew Documents", kind: "crew" } ] },
     { id: "calendar", label: "Calendar", subs: [
       { label: "Today", kind: "today", codes: ["ESO", "GSO"] },
       { label: "ESO Schedule", kind: "ensemble", code: "ESO", weeks: true },
@@ -414,6 +424,7 @@
   var chamberData = null;      // parsed Student-Chamber-Rosters: [{ key, label, time, ensembles:[{coach,location,piece,members}] }]
   var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
+  var crewDocs = [];           // [{ title, link }] from the Crew Documents (Stage Crew) tab
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var efoRows = [];            // Eastern Festival Orchestra agenda rows from the dedicated EFO tab (renderAgenda shape)
   var efoRostersAll = [];      // [{title, link, release}] from the Faculty-Portal "Rosters" tab (EFO roster weeks)
@@ -1271,6 +1282,53 @@
     announce("Student handbook shown.");
   }
 
+  // Parse the Crew Documents (Stage Crew) tab: "Document Title | Link" -> [{title,link}].
+  // Columns matched by header name (fall back to col 0/1); blank rows dropped.
+  function parseCrew(rows) {
+    if (!rows || !rows.length) return [];
+    var ti = 0, li = 1, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      var t = lc.indexOf("document title"); if (t === -1) t = lc.indexOf("title"); if (t === -1) t = lc.indexOf("document");
+      var l = lc.indexOf("link"); if (l === -1) l = lc.indexOf("url");
+      if (t !== -1 && l !== -1) { ti = t; li = l; start = h + 1; break; }
+    }
+    var out = [];
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var title = clean(row[ti]), link = safeUrl(row[li]);
+      if (!title && !link) continue;
+      out.push({ title: title, link: link });
+    }
+    return out;
+  }
+
+  // General Information -> "Crew Documents" pill: a list of crew document links (PDFs)
+  // from the Stage Crew tab, rendered as the same download cards the rosters use.
+  function renderCrew() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    if (!crewDocs.length) {
+      list.innerHTML = '<div class="efmp-info"><p>Crew documents will appear here once they are posted.</p></div>';
+      announce("Crew documents are not posted yet.");
+      return;
+    }
+    var html = '<div class="efmp-info">' +
+      '<div class="efmp-info__head" role="heading" aria-level="3">Crew Documents</div>' +
+      '<div class="efmp-crew-list">';
+    crewDocs.forEach(function (d) {
+      var isPdf = /\.pdf(\?|#|$)/i.test(d.link);
+      html += '<div class="efmp-roster__pdf"><div>' +
+          '<div class="efmp-roster__pdf-name">' + esc(d.title || "Document") + '</div>' +
+          '<div class="efmp-roster__pdf-meta">' + (d.link ? (isPdf ? "PDF document" : "Document") : "Not posted yet") + '</div></div>' +
+        (d.link ? '<a class="efmp-roster__btn" href="' + esc(d.link) + '" target="_blank" rel="noopener noreferrer">View / Download' + (isPdf ? " PDF" : "") + '</a>' : "") +
+        '</div>';
+    });
+    html += '</div></div>';
+    list.innerHTML = html;
+    announce(crewDocs.length + (crewDocs.length === 1 ? " crew document" : " crew documents") + " shown.");
+  }
+
   // ---- info tabs (Placement Auditions / Sectionals / Studio Classes / Concerto) --
   // These tabs are informational (a title, some schedule lines, and an
   // instrument -> location table), not event calendars. Render them generically:
@@ -1553,9 +1611,10 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
+    else if (sub.kind === "crew") renderCrew();
     else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
@@ -2077,8 +2136,8 @@
   // CSV endpoint ignores &sheet=NAME, so gid is the only per-tab selector, but
   // gids change on rebuild while names don't. pubhtml returns CORS for the
   // requesting origin, so this works from the live site.
-  function resolveTabGids() {
-    return fetch(PUBHTML, { cache: "no-store" }).then(function (r) {
+  function resolveTabGids(url) {
+    return fetch(url || PUBHTML, { cache: "no-store" }).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (html) {
@@ -2129,6 +2188,7 @@
     chamberData = parseChamber(data.studentChamber);
     if (chamberGroup >= chamberData.length) chamberGroup = 0;
     personnelManagers = data.rosters ? parsePersonnelManagers(data.rosters) : {};
+    crewDocs = parseCrew(data.crew);
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
@@ -2237,6 +2297,16 @@
     // Faculty headshots + section grouping from the public roster sheet (gviz, pub fallback).
     jobs.facultyRoster = loadCSV(ROSTER_CSV).then(function (r) { return r && r.length ? r : null; }, function () { return null; })
       .then(function (r) { return r || loadCSV(ROSTER_CSV_FALLBACK).then(function (r2) { return r2 && r2.length ? r2 : null; }, function () { return null; }); });
+    // Crew Documents (Stage Crew tab) from its own published workbook: known gid first,
+    // then resolve by name from that workbook's directory if the gid ever moves.
+    jobs.crew = loadCSV(CREW_CSV + CREW_GID).then(function (r) { return r && r.length ? r : null; }, function () { return null; })
+      .then(function (r) {
+        if (r) return r;
+        return resolveTabGids(CREW_PUBHTML).then(function (map) {
+          var gid = map[CREW_TAB];
+          return gid ? loadCSV(CREW_CSV + gid).then(function (r2) { return r2 && r2.length ? r2 : null; }, function () { return null; }) : null;
+        }, function () { return null; });
+      });
     _generalInfoP = jobs.generalInfo || null;
     var keys = Object.keys(jobs);
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
