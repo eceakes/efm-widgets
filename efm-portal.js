@@ -43,13 +43,17 @@
   // portal ensemble code -> feed ?view= key (only these views have a live feed)
   var FEED_VIEWS = { ESO: "eso", GSO: "gso", EFO: "efo", REP: "rep", ECP: "ecp" };
 
-  // Campus map assets sit next to this script in the repo. Derive the CDN base
-  // from this script's own URL, so the map always matches the deployed commit
-  // (no separate SHA to bump). Falls back to @main if loaded some other way.
+  // Campus map + headshot assets sit next to this script. Derive the base from the
+  // script's own URL so they load from wherever the script is hosted: on jsDelivr the
+  // @commit folder (assets track the pin); on Duda's file manager (used when a campus
+  // network blocks jsDelivr) the script's own directory. Only the last-resort fallback
+  // (no script src at all) points at jsDelivr @main.
   var CDN_BASE = (function () {
     var s = (document.currentScript && document.currentScript.src) || "";
-    var m = s.match(/^(.*\/efm-widgets@[^/]+\/)/);
-    return m ? m[1] : "https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@main/";
+    var m = s.match(/^(.*\/efm-widgets@[^/]+\/)/);   // jsDelivr @commit -> assets track the pinned commit
+    if (m) return m[1];
+    if (s) return s.replace(/[^/]*$/, "");            // else -> assets sit beside the script (e.g. Duda file manager)
+    return "https://cdn.jsdelivr.net/gh/eceakes/efm-widgets@main/";
   })();
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
