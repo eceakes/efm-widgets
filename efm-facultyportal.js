@@ -42,7 +42,8 @@
     rosters: { name: "Rosters", gid: "1681602909" },
     staff:   { name: "Staff", gid: "1949353186" },
     fellows: { name: "Orchestral-Fellows", gid: "752003554" },
-    tickets: { name: "Friends-Family-Discounts", gid: "1079241752" }
+    tickets: { name: "Friends-Family-Discounts", gid: "1079241752" },
+    students: { name: "StudentContact", gid: "1626068807" }
   };
 
   // The Master Calendar (same document that feeds the 2026 portal). EFO/ECP/REP are
@@ -138,6 +139,11 @@
   var SECTION_ORDER = ["Conductors", "Flute", "Oboe", "Clarinet", "Bassoon",
     "French Horn", "Trumpet", "Trombone", "Tuba", "Percussion & Timpani",
     "Harp", "Piano", "Violin", "Viola", "Cello", "Double Bass"];
+  // Student directory instrument order (Contacts -> Students). Orchestral seating
+  // order, with the non-orchestral programs (Conducting, Piano) placed sensibly.
+  var STUDENT_INSTRUMENT_ORDER = ["Conducting", "Flute", "Oboe", "Clarinet",
+    "Bassoon", "French Horn", "Trumpet", "Trombone", "Bass Trombone", "Tuba",
+    "Percussion", "Harp", "Piano", "Violin", "Viola", "Cello", "Double Bass"];
 
   /* ---- navigation model ------------------------------------------------ */
   // NAV[0] is the default tab on load. Tab order left -> right; mirrors the 2026
@@ -184,6 +190,7 @@
     { id: "contacts", label: "Contacts", subs: [
       { label: "Faculty", kind: "facultyCards" },
       { label: "Orchestral Fellows", kind: "fellowCards" },
+      { label: "Students", kind: "studentCards" },
       { label: "Staff", kind: "staffCards" } ] },
     { id: "map", label: "Campus Map", subs: [
       { label: "Map", kind: "map" } ] },
@@ -441,6 +448,7 @@
   var facultyPeople = [];  // [{name, instrument, title, phone, email, photo, section}]
   var fellowPeople = [];
   var staffPeople = [];
+  var studentPeople = [];  // [{name, last, instrument, role, phone, email, haystack}] from StudentContact (fellows removed)
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
   var announcements = [];  // {text,dateRaw,key,logic,type,audience} from the Master Calendar "Announcements" tab
@@ -1490,6 +1498,39 @@
     renderCards(staffPeople, { grouped: false, avatar: false, empty: "Staff directory will appear here once posted." });
   }
 
+  /* ---- students (grouped by instrument, searchable) -------------------- */
+  // Same card grid as the other Contacts pills, but grouped by instrument (not the
+  // roster section) and filtered live by the search box so faculty can find one
+  // student fast. studentPeople is pre-sorted by last name, so within each
+  // instrument group the cards stay alphabetical.
+  function renderStudents() {
+    list.innerHTML = ""; banner.hidden = true; status.hidden = true;
+    if (!studentPeople.length) { status.textContent = "Student contacts will appear here once posted."; status.hidden = false; announce(status.textContent); syncBox(); return; }
+    var q = clean(searchBox ? searchBox.value : "").toLowerCase();
+    var people = q ? studentPeople.filter(function (p) { return p.haystack.indexOf(q) !== -1; }) : studentPeople;
+    if (!people.length) { status.textContent = "No students match your search."; status.hidden = false; announce(status.textContent); syncBox(); return; }
+    var groups = {}, order = [];
+    people.forEach(function (p) { var g = p.instrument || "Other"; if (!groups[g]) { groups[g] = []; order.push(g); } groups[g].push(p); });
+    order.sort(function (a, b) {
+      var ia = STUDENT_INSTRUMENT_ORDER.indexOf(a), ib = STUDENT_INSTRUMENT_ORDER.indexOf(b);
+      if (ia === -1 && ib === -1) return a < b ? -1 : a > b ? 1 : 0;
+      if (ia === -1) return 1; if (ib === -1) return -1; return ia - ib;
+    });
+    var wrap = document.createElement("div"); wrap.className = "efmfp-contact";
+    var frag = document.createDocumentFragment();
+    order.forEach(function (g) {
+      var sec = document.createElement("div"); sec.className = "efmfp-section";
+      var h = document.createElement("div"); h.className = "efmfp-section__head"; h.setAttribute("role", "heading"); h.setAttribute("aria-level", "2"); h.textContent = g;
+      sec.appendChild(h);
+      var grid = document.createElement("div"); grid.className = "efmfp-grid";
+      groups[g].forEach(function (p) { grid.appendChild(contactCardEl(p, false)); });
+      sec.appendChild(grid); frag.appendChild(sec);
+    });
+    wrap.appendChild(frag); list.appendChild(wrap);
+    announce(people.length + (people.length === 1 ? " student" : " students") + (q ? " match your search." : " shown."));
+    syncBox();
+  }
+
   /* ---- rosters --------------------------------------------------------- */
   // Released roster-week pills for a weeks:true ensemble sub (EFO/ESO/GSO).
   function weeksFor(sub) {
@@ -1653,8 +1694,9 @@
     modalData = []; viewEvents = []; viewLabel = ""; viewFeedKey = "";
     var k = sub.kind;
     // Search + Add-to-Calendar belong to the agenda views (schedules + rooms).
-    var showControls = (k === "today" || k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday" || k === "allEvents");
+    var showControls = (k === "today" || k === "ensemble" || k === "roster" || k === "room" || k === "roomsToday" || k === "allEvents" || k === "studentCards");
     if (controls) controls.hidden = !showControls;
+    if (searchBox) searchBox.placeholder = (k === "studentCards") ? "Search students by name or instrument" : "Search this schedule...";
 
     if (k === "dining") renderDining();
     else if (k === "chamber") renderChamber();
@@ -1718,6 +1760,7 @@
     }
     else if (k === "facultyCards") renderCards(facultyPeople, { grouped: true, avatar: true, empty: "Faculty contacts will appear here once posted." });
     else if (k === "fellowCards") renderCards(fellowPeople, { grouped: false, avatar: true, empty: "Orchestral Fellow contacts will appear here once posted." });
+    else if (k === "studentCards") renderStudents();
     else if (k === "staffCards") renderStaffCards();
     updateICSButton();
     syncBox();
@@ -2072,6 +2115,78 @@
     return s;
   }
 
+  /* ---- students (Contacts -> Students) --------------------------------- */
+  // The StudentContact tab came from a CSV import that mangled accented names
+  // (UTF-8 bytes read as Latin-1, so "Suárez" -> "SuÃ¡rez"). Repair only strings
+  // that carry the tell-tale Ã/Â lead byte AND decode cleanly back to UTF-8; leave
+  // everything else (including already-correct accents) untouched.
+  function fixEncoding(s) {
+    s = String(s == null ? "" : s);
+    if (typeof TextDecoder === "undefined") return s;
+    if (!/[\u00C2-\u00C3][\u0080-\u00BF]/.test(s)) return s;
+    var bytes = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c > 0xFF) return s; bytes[i] = c; }
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch (e) { return s; }
+  }
+  // Title-case a name that arrived in ALL CAPS (a data-entry artifact, e.g. "JAY
+  // SRIRAM"); a normal mixed-case name (McKay, LaBore, hyphenated) is left as is.
+  function fixCaps(s) {
+    if (!/[A-Z]/.test(s) || /[a-z]/.test(s)) return s;
+    return s.toLowerCase().replace(/(^|[\s\-'’(])([a-z])/g, function (m, pre, ch) { return pre + ch.toUpperCase(); });
+  }
+  function fixName(s) { return fixCaps(fixEncoding(clean(s))); }
+
+  // A StudentContact row is a fellow when its Program says so ("String Fellows -
+  // Viola", "Piano Fellow", ...). Fellows have their own Contacts pill, so they are
+  // dropped here (build() also drops any whose email/name matches the Fellows tab).
+  function isFellowProgram(program) { return /\bfellows?\b/i.test(clean(program)); }
+  // Grouping instrument from the Program cell: "Orchestral Program - Violin" ->
+  // "Violin"; "Conducting Institute" -> "Conducting"; "Piano Academy" -> "Piano";
+  // "Special Invitation Viola" -> "Viola".
+  function studentInstrument(program) {
+    var s = clean(program);
+    var m = s.match(/orchestral program\s*-\s*(.+)$/i);
+    if (m) return clean(m[1]);
+    if (/conduct/i.test(s)) return "Conducting";
+    if (/piano/i.test(s)) return "Piano";
+    var si = s.match(/special invitation\s+(.+)$/i);
+    if (si) return clean(si[1]);
+    var sf = s.match(/string fellows?\s*-\s*(.+)$/i);
+    if (sf) return clean(sf[1]);
+    var f = s.match(/^(.+?)\s+fellow$/i);
+    if (f) return clean(f[1]);
+    return s || "Other";
+  }
+  // Parse StudentContact into contact cards: fellows removed, names de-mangled,
+  // sorted by last name (renderStudents groups by instrument, keeping this order
+  // within each group). fellowEmails/fellowKeys drop anyone also on the Fellows tab.
+  function parseStudents(rows, fellowEmails, fellowKeys) {
+    fellowEmails = fellowEmails || {}; fellowKeys = fellowKeys || {};
+    var t = tableObjects(rows), out = [];
+    t.items.forEach(function (o) {
+      var program = field(o, ["program", "instrument", "section"]);
+      if (isFellowProgram(program)) return;                     // drop fellows by program
+      var lastRaw = fixName(field(o, ["last name", "last", "surname"]));
+      var name = clean(fixName(field(o, ["first name", "first"])) + " " + lastRaw)
+        || fixName(field(o, ["full name", "name"]));
+      if (!name) return;
+      var email = field(o, ["email address", "email", "e-mail"]);
+      if (email && fellowEmails[clean(email).toLowerCase()]) return;              // also a fellow (by email)
+      if (nameKeys(name).some(function (k) { return fellowKeys[k]; })) return;    // or by name
+      out.push({
+        name: name,
+        last: normName(lastRaw) || normName(name).split(" ").pop() || normName(name),
+        instrument: studentInstrument(program),
+        role: /^orchestral program/i.test(clean(program)) ? "" : clean(program),
+        phone: field(o, ["phone number", "phone", "cell", "mobile", "telephone"]),
+        email: email,
+        haystack: (name + " " + studentInstrument(program) + " " + program + " " + email).toLowerCase()
+      });
+    });
+    out.sort(function (a, b) { return a.last < b.last ? -1 : a.last > b.last ? 1 : (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
+    return out;
+  }
+
   // Build a name -> {photo, section, order} map from a roster/photo sheet.
   // map keyed by full-name + first|last; lastMap by surname (only when that
   // surname is unambiguous, so a nickname like Rick/Richard still lands the right
@@ -2249,6 +2364,12 @@
     facultyPeople = data.faculty ? parseContacts(data.faculty, "faculty") : [];
     fellowPeople = data.fellows ? parseContacts(data.fellows, "fellows") : [];
     staffPeople = data.staff ? parseContacts(data.staff, "staff") : [];
+    // Students, with fellows removed. Beyond the Program-based "Fellow" check in
+    // parseStudents, drop anyone whose email or name matches the Fellows tab (the
+    // fellow "Wrenn Mokry" appears in StudentContact under a different first name).
+    var fellowEmails = {}, fellowKeys = {};
+    fellowPeople.forEach(function (f) { if (f.email) fellowEmails[clean(f.email).toLowerCase()] = true; nameKeys(f.name).forEach(function (k) { fellowKeys[k] = true; }); });
+    studentPeople = data.students ? parseStudents(data.students, fellowEmails, fellowKeys) : [];
     // photos (best-effort)
     if (data.facultyPhotos) attachPhotos(facultyPeople, photoMap(data.facultyPhotos));
     if (data.fellowPhotos) attachPhotos(fellowPeople, photoMap(data.fellowPhotos));
@@ -2376,6 +2497,7 @@
       faculty: job(FP_CSV, fpDirP, FP_TABS.faculty),
       fellows: job(FP_CSV, fpDirP, FP_TABS.fellows),
       staff: job(FP_CSV, fpDirP, FP_TABS.staff),
+      students: job(FP_CSV, fpDirP, FP_TABS.students),
       rosters: job(FP_CSV, fpDirP, FP_TABS.rosters),
       info: job(FP_CSV, fpDirP, FP_TABS.info),
       tickets: job(FP_CSV, fpDirP, FP_TABS.tickets),
