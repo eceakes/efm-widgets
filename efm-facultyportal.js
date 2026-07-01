@@ -1205,8 +1205,9 @@
   }
 
   // General Information -> "Tickets" pill: the "Ticketing Process" policy blurb
-  // followed by a Reserve link per concert. The sheet's Code column is internal
-  // (its trailing MMDD keys the link to a concert) and is NOT shown to faculty:
+  // followed by a Reserve link per upcoming concert (past ones are dropped). The
+  // sheet's Code column is internal (its trailing MMDD both keys the link to a
+  // concert and dates it for the upcoming filter) and is NOT shown to faculty:
   // there is no coupon step to book, so showing a code would be misleading. Links
   // that map to a concert in the calendar also show that concert's date + name.
   function renderTickets() {
@@ -1222,14 +1223,16 @@
     }
     var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">' + esc(t.head || "Ticketing Process") + "</div>";
     t.blurb.forEach(function (p) { html += "<p>" + esc(p) + "</p>"; });
-    if (t.codes.length) {
+    // Only concerts that have not happened yet: keep tickets dated today or later
+    // (key = MMDD from the code). Off-season (todayKey() null) shows the full list.
+    var tk = todayKey();
+    var upcoming = (tk == null) ? t.codes.slice()
+      : t.codes.filter(function (c) { return c.key != null && c.key >= tk; });
+    upcoming.sort(function (a, b) { return (a.key == null ? 99999 : a.key) - (b.key == null ? 99999 : b.key); });
+    if (upcoming.length) {
       html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Friends &amp; Family Tickets</div>';
       html += '<div class="efmfp-tickets">';
-      // chronological by concert date; codes with no parseable date sink to the end
-      var ordered = t.codes.slice().sort(function (a, b) {
-        return (a.key == null ? 99999 : a.key) - (b.key == null ? 99999 : b.key);
-      });
-      ordered.forEach(function (c) {
+      upcoming.forEach(function (c) {
         var when = c.key != null ? ((c.day ? c.day + ", " : "") + monthAbbr(c.key) + " " + (c.key % 100)) : "";
         html += '<div class="efmfp-ticket">' +
           '<div class="efmfp-ticket__info">' +
@@ -1240,6 +1243,8 @@
           "</div>";
       });
       html += "</div>";
+    } else if (t.codes.length) {
+      html += "<p>No upcoming concerts to reserve right now.</p>";
     }
     html += "</div>";
     list.innerHTML = html;
