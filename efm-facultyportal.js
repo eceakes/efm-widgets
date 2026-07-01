@@ -1205,7 +1205,9 @@
   }
 
   // General Information -> "Tickets" pill: the "Ticketing Process" policy blurb
-  // followed by the Friends & Family comp codes, each with a Reserve link. Codes
+  // followed by a Reserve link per concert. The sheet's Code column is internal
+  // (its trailing MMDD keys the link to a concert) and is NOT shown to faculty:
+  // there is no coupon step to book, so showing a code would be misleading. Links
   // that map to a concert in the calendar also show that concert's date + name.
   function renderTickets() {
     banner.hidden = true; status.hidden = true;
@@ -1221,7 +1223,7 @@
     var html = '<div class="efmfp-info efmfp-info--center"><div class="efmfp-info__head" role="heading" aria-level="3">' + esc(t.head || "Ticketing Process") + "</div>";
     t.blurb.forEach(function (p) { html += "<p>" + esc(p) + "</p>"; });
     if (t.codes.length) {
-      html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Friends &amp; Family Codes</div>';
+      html += '<div class="efmfp-info__sub" role="heading" aria-level="4">Friends &amp; Family Tickets</div>';
       html += '<div class="efmfp-tickets">';
       // chronological by concert date; codes with no parseable date sink to the end
       var ordered = t.codes.slice().sort(function (a, b) {
@@ -1233,7 +1235,6 @@
           '<div class="efmfp-ticket__info">' +
             (when ? '<div class="efmfp-ticket__when">' + esc(when) + "</div>" : "") +
             (c.concert ? '<div class="efmfp-ticket__name">' + esc(c.concert) + "</div>" : "") +
-            '<div class="efmfp-ticket__code">Code <b>' + esc(c.code) + "</b></div>" +
           "</div>" +
           (c.url ? '<a class="efmfp-roster__btn efmfp-ticket__btn" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer">Reserve<span class="efmfp__sr"> tickets for ' + esc(c.concert || ("the " + (when || "concert"))) + '</span></a>' : "") +
           "</div>";
@@ -1735,7 +1736,6 @@
       }
       if (d.ticket && d.ticket.url) {
         html += '<div class="efmfp-modal__ticket"><div class="efmfp-modal__ticket-head">Friends &amp; Family tickets</div>' +
-          (d.ticket.code ? '<div class="efmfp-modal__ticket-code">Code <b>' + esc(d.ticket.code) + "</b></div>" : "") +
           '<a class="efmfp-roster__btn efmfp-modal__ticket-btn" href="' + esc(d.ticket.url) + '" target="_blank" rel="noopener noreferrer">Reserve tickets</a></div>';
       }
       if (d.details) html += '<div class="efmfp-modal__details">' + esc(d.details) + "</div>";
