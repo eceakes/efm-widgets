@@ -223,6 +223,17 @@
     return "View PDF";
   }
 
+  // Noun for the row-level badge that advertises an attached PDF (concert -> Program,
+  // rehearsal -> Rehearsal order). Shown on the row itself so students see at a glance
+  // which events carry a document, instead of having to open every modal to find out.
+  // Mirrors pdfLabel's classification.
+  function docNoun(r) {
+    var hay = ((r.type || "") + " " + (r.event || "")).toLowerCase();
+    if (/concert|perform|recital/.test(hay)) return "Program";
+    if (/rehearsal|sectional/.test(hay)) return "Rehearsal order";
+    return "Document";
+  }
+
   // Parse a header-row table into objects keyed by header name.
   function tableObjects(rows) {
     if (!rows || !rows.length) return { headers: [], items: [] };
@@ -640,8 +651,12 @@
     }
   }
 
-  // Build one agenda row. opts: { big, small, title, when:[], chips:[{label,ens}], modal }
+  // Small document glyph for the row-level "has a PDF" badge (Material "description").
+  var DOC_ICON = '<svg class="efmp-chip__ic" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 16h8v2H8zm0-4h8v2H8zm6-10H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>';
+
+  // Build one agenda row. opts: { big, small, title, when:[], chips:[{label,ens}], doc, modal }
   // Passing a modal object makes the row a focusable button that opens the modal.
+  // `doc` (a noun like "Rehearsal order") renders a badge advertising an attached PDF.
   function agendaRowHTML(o) {
     var cls = "efmp-row", attrs = "";
     if (o.modal) {
@@ -657,11 +672,15 @@
     var chips = (o.chips || []).map(function (c) {
       return '<span class="efmp-chip' + (c.ens ? " efmp-chip--ens" : "") + '">' + esc(c.label) + "</span>";
     }).join("");
+    // Advertise an attached rehearsal order / program right on the row (the actual link
+    // lives in the modal the row opens); the icon is decorative, the noun carries meaning.
+    var doc = o.doc ? '<span class="efmp-chip efmp-chip--doc">' + DOC_ICON + esc(o.doc) + "</span>" : "";
+    var meta = chips + doc;
     return '<div class="' + cls + '"' + attrs + ">" +
       dateBlock +
       '<div class="efmp-row__info"><div class="efmp-row__title">' + esc(o.title || "(untitled)") + "</div>" +
         (when ? '<div class="efmp-row__when">' + when + "</div>" : "") + "</div>" +
-      (chips ? '<div class="efmp-row__meta">' + chips + "</div>" : "") +
+      (meta ? '<div class="efmp-row__meta">' + meta + "</div>" : "") +
       (o.modal ? '<span class="efmp-row__more" aria-hidden="true">…</span>' : "") +
     "</div>";
   }
@@ -725,6 +744,7 @@
         big: r.dayNum, small: r.day, title: r.event || "(untitled)",
         when: [r.time, r.loc, r.conductor],
         chips: [].concat(r.ensemble ? [{ label: r.ensemble, ens: true }] : [], r.type ? [{ label: r.type }] : []),
+        doc: r.pdf ? docNoun(r) : "",
         modal: {
           title: r.event || "Event",
           fields: [["Date", calDateLabel(r)], ["Time", r.time], ["Location", r.loc],
@@ -1923,27 +1943,31 @@
       var c = rows[j];
       if (!c.join("").trim()) continue;
       // Columns: Date, Day, Time, Room, Location, Ensemble, Conductor / Soloist, Type, Event, [Details]
-      var date = (c[0] || "").trim() || lastDate;
-      var day = (c[1] || "").trim() || ((c[0] || "").trim() ? "" : lastDay);
+      var date = clean(c[0]) || lastDate;
+      var day = clean(c[1]) || (clean(c[0]) ? "" : lastDay);
       lastDate = date; lastDay = day;
       var roomRaw = (c[3] || "").trim(), location = (c[4] || "").trim();
       var roomTokens = tokens(roomRaw);
       var roomFull = roomTokens.map(roomLabel).join(" / ");
       var loc = (location && location !== roomRaw) ? (roomFull ? roomFull + " - " + location : location) : roomFull;
-      var key = dateKey(date);
-      var ensVal = (c[5] || "").trim(), ensToks = tokens(ensVal);
+      var key = dateKey(date), time = clean(c[2]);
+      var ensVal = clean(c[5]), ensToks = tokens(ensVal);
       // The big Master Calendar tab leaves Details + PDF blank for ESO/GSO rows;
       // graft them in from the dedicated ESO/GSO tabs (joined by date+ensemble+clock).
-      var det = (c[9] || "").trim(), pdf = "";
-      var ek = ensToks.indexOf("ESO") !== -1 ? "ESO" : (ensToks.indexOf("GSO") !== -1 ? "GSO" : "");
-      if (ek) {
-        var hit = ensDetail[key + "|" + ek + "|" + clockKey((c[2] || "").trim())];
-        if (hit) { if (!det && hit.details) det = hit.details; if (hit.pdf) pdf = hit.pdf; }
-      }
+      // clean() (not just trim) both sides so a zero-width / bidi char Google Sheets
+      // injects into a date or time cell can't silently break the join and drop the
+      // rehearsal-order PDF. A combined "ESO/GSO" row tries both tabs so it still finds
+      // its order regardless of which tab carries it.
+      var det = clean(c[9]), pdf = "";
+      ["ESO", "GSO"].forEach(function (code) {
+        if (ensToks.indexOf(code) === -1) return;
+        var hit = ensDetail[key + "|" + code + "|" + clockKey(time)];
+        if (hit) { if (!det && hit.details) det = hit.details; if (!pdf && hit.pdf) pdf = hit.pdf; }
+      });
       var entry = {
         seq: seq++, date: date, day: day, key: key,
         dayNum: key !== null ? String(key % 100) : "",
-        time: (c[2] || "").trim(), startMin: startMinutes((c[2] || "").trim()), loc: loc,
+        time: time, startMin: startMinutes(time), loc: loc,
         roomTokens: roomTokens,
         ensemble: ensVal, ensTokens: ensToks,
         conductor: (c[6] || "").trim(),

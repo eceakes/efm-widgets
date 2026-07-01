@@ -319,6 +319,15 @@
     if (/rehearsal|sectional/.test(hay)) return "View Rehearsal Order";
     return "View PDF";
   }
+  // Noun for the row-level badge that advertises an attached PDF (concert -> Program,
+  // rehearsal -> Rehearsal order), so a document is discoverable on the row instead of
+  // only inside the modal it opens. Mirrors pdfLabel's classification.
+  function docNoun(r) {
+    var hay = ((r.type || "") + " " + (r.event || "")).toLowerCase();
+    if (/concert|perform|recital/.test(hay)) return "Program";
+    if (/rehearsal|sectional/.test(hay)) return "Rehearsal order";
+    return "Document";
+  }
   function todayKey() { var now = new Date(); if (now.getFullYear() !== YEAR) return null; return (now.getMonth() + 1) * 100 + now.getDate(); }
   // Calendar listings show today + future only (past events dropped) so a schedule
   // reads as "what's coming up", not a history. Outside the festival year todayKey()
@@ -552,6 +561,8 @@
   }
 
   /* ---- agenda (calendar + roster services) ----------------------------- */
+  // Small document glyph for the row-level "has a PDF" badge (Material "description").
+  var DOC_ICON = '<svg class="efmfp-chip__ic" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 16h8v2H8zm0-4h8v2H8zm6-10H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>';
   function agendaRowHTML(o) {
     var cls = "efmfp-row", attrs = "";
     if (o.modal) {
@@ -565,10 +576,14 @@
     var chips = (o.chips || []).map(function (c) {
       return '<span class="efmfp-chip' + (c.ens ? " efmfp-chip--ens" : "") + (c.ticket ? " efmfp-chip--ticket" : "") + '">' + esc(c.label) + "</span>";
     }).join("");
+    // Advertise an attached rehearsal order / program right on the row (the actual link
+    // lives in the modal the row opens); the icon is decorative, the noun carries meaning.
+    var doc = o.doc ? '<span class="efmfp-chip efmfp-chip--doc">' + DOC_ICON + esc(o.doc) + "</span>" : "";
+    var meta = chips + doc;
     return '<div class="' + cls + '"' + attrs + ">" + dateBlock +
       '<div class="efmfp-row__info"><div class="efmfp-row__title">' + esc(o.title || "(untitled)") + "</div>" +
         (when ? '<div class="efmfp-row__when">' + when + "</div>" : "") + "</div>" +
-      (chips ? '<div class="efmfp-row__meta">' + chips + "</div>" : "") +
+      (meta ? '<div class="efmfp-row__meta">' + meta + "</div>" : "") +
       (o.modal ? '<span class="efmfp-row__more" aria-hidden="true">&#8230;</span>' : "") + "</div>";
   }
 
@@ -623,6 +638,7 @@
         big: r.key !== null ? String(r.key % 100) : "", small: r.day || monthAbbr(r.key),
         title: r.event || "(untitled)", when: [r.time, r.loc, r.conductor],
         chips: rowChips(r),
+        doc: r.pdf ? docNoun(r) : "",
         modal: {
           title: r.event || "Event",
           fields: [["Date", (r.day ? r.day + ", " : "") + r.date], ["Time", r.time], ["Location", r.loc],
@@ -1869,11 +1885,13 @@
       // The Master Calendar tab leaves Details + PDF blank for ESO/GSO rows;
       // graft them in from the dedicated ESO/GSO tabs (date+ensemble+clock join).
       var det = clean(c[9]), pdf = "";
-      var ek = ensToks.indexOf("ESO") !== -1 ? "ESO" : (ensToks.indexOf("GSO") !== -1 ? "GSO" : "");
-      if (ek) {
-        var hit = ensDetail[key + "|" + ek + "|" + clockKey(clean(c[2]))];
-        if (hit) { if (!det && hit.details) det = hit.details; if (hit.pdf) pdf = hit.pdf; }
-      }
+      // A combined "ESO/GSO" row tries both tabs so it still finds its order regardless
+      // of which tab carries it (date + time are already clean()'d above).
+      ["ESO", "GSO"].forEach(function (code) {
+        if (ensToks.indexOf(code) === -1) return;
+        var hit = ensDetail[key + "|" + code + "|" + clockKey(clean(c[2]))];
+        if (hit) { if (!det && hit.details) det = hit.details; if (!pdf && hit.pdf) pdf = hit.pdf; }
+      });
       var entry = {
         seq: seq++, date: date, day: day, key: key,
         time: clean(c[2]), startMin: startMinutes(clean(c[2])), loc: loc,

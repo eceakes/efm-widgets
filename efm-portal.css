@@ -198,6 +198,14 @@
     border-radius: 999px; padding: 6px 10px 5px; white-space: nowrap;
   }
   #efm-portal .efmp-chip--ens { background: var(--efmp-ink); color: #fff; }
+  /* "Rehearsal order" / "Program" badge: outlined so it reads as an actionable item
+     (the row it sits on opens the modal with the actual PDF link), distinct from the
+     soft/ens metadata chips. */
+  #efm-portal .efmp-chip--doc {
+    background: #fff; color: var(--efmp-ink); border: 1px solid var(--efmp-ink);
+    padding: 5px 9px 4px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  #efm-portal .efmp-chip__ic { flex: 0 0 auto; display: block; }
 
   #efm-portal .efmp__note { color: var(--efmp-role); font-size: 12.5px; text-align: center; margin: 22px 0 0; }
 

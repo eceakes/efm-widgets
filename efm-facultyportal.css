@@ -217,6 +217,14 @@
   }
   #efm-faculty-portal .efmfp-chip--ens { background: var(--efmfp-ink); color: #fff; }
   #efm-faculty-portal .efmfp-chip--ticket { background: #fbe7bd; color: #7a5410; }
+  /* "Rehearsal order" / "Program" badge: outlined so it reads as an actionable item
+     (the row it sits on opens the modal with the actual PDF link), distinct from the
+     soft/ens/ticket metadata chips. */
+  #efm-faculty-portal .efmfp-chip--doc {
+    background: #fff; color: var(--efmfp-ink); border: 1px solid var(--efmfp-ink);
+    padding: 5px 9px 4px; display: inline-flex; align-items: center; gap: 5px;
+  }
+  #efm-faculty-portal .efmfp-chip__ic { flex: 0 0 auto; display: block; }
   #efm-faculty-portal .efmfp-row__more { flex: 0 0 auto; color: var(--efmfp-role); font-size: 18px; line-height: 1; align-self: center; }
   #efm-faculty-portal .efmfp__note { color: var(--efmfp-role); font-size: 12.5px; text-align: center; margin: 22px 0 0; }
 
