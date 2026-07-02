@@ -2297,7 +2297,7 @@
 
   // Kick off all source-tab fetches and resolve to the { key: rows } data object.
   // Touches no DOM, so it can run before DOMContentLoaded. (#2)
-  function startFetches() {
+  function startFetchesDirect() {
     // Lazy directory: only fetch the published-tab directory if a known gid misses
     // (a sheet rebuild moved it), which never happens normally, so that ~1.2s fetch
     // stays off the wire entirely on a normal load. (#1)
@@ -2343,6 +2343,82 @@
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
       var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
       return data;
+    });
+  }
+
+  // ---- distilled blob (fast path) ---------------------------------------
+  // The student distiller (efm-portal-distiller.gs) publishes every source tab as
+  // one base64 blob in a Google Sheet; we read it in ONE gviz request on
+  // docs.google.com (the host proven to load on the campus wifi that blocks
+  // jsDelivr) instead of the ~20-tab fan-out in startFetchesDirect. Blob-first,
+  // with an automatic fall back to the direct per-tab path if the blob is
+  // unreachable or missing its required calendar, so this is safe and reversible.
+  // Set BLOB_ENABLED = false to force the direct-sheets path.
+  var STUDENT_BLOB_ID = "18grCFjsLSdDJV560XSQh06MwnbJh1h0sPYaw00ocXsA";
+  var BLOB_TAB = "blob";
+  var BLOB_ENABLED = true;
+
+  function b64ToUtf8(b64) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length), i;
+    for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (window.TextDecoder) return new window.TextDecoder("utf-8").decode(bytes);
+    return decodeURIComponent(escape(bin));
+  }
+
+  // gviz CSV -> our own parseCSV (single column) -> drop the sentinel row ->
+  // concat the base64 chunks -> decode UTF-8 -> JSON.
+  function readDistilledBlob() {
+    var url = "https://docs.google.com/spreadsheets/d/" + STUDENT_BLOB_ID +
+              "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(BLOB_TAB);
+    return fetch(url, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (csv) {
+      var cells = parseCSV(csv).map(function (row) { return row[0]; })
+        .filter(function (c) { return c && c.indexOf("EFM-STUDENT-BLOB") !== 0; });
+      return JSON.parse(b64ToUtf8(cells.join("")));
+    });
+  }
+
+  // Map the blob's { workbooks: { <wb>: { <tab>: rows } } } into the same
+  // { key: rows } object build() consumes, so nothing downstream changes.
+  function blobToData(blob) {
+    var w = (blob && blob.workbooks) || {};
+    var mc = w.masterCalendar || {}, fp = w.facultyPortal || {},
+        fr = w.facultyRoster || {}, cw = w.crew || {};
+    return {
+      calendar: mc["Master Calendar"] || null,
+      legend: mc["Legend"] || null,
+      announcements: mc["Announcements"] || null,
+      generalInfo: mc["General Information"] || null,
+      lessons: mc["Faculty Lesson Locations"] || null,
+      staff: mc["Staff List"] || null,
+      placement: mc["Placement Auditions"] || null,
+      sectionals: mc["Sectional Rehearsals"] || null,
+      studio: mc["Faculty Studio Classes"] || null,
+      concerto: mc["Concerto Competition"] || null,
+      alexander: mc["Alexander Technique"] || null,
+      rosters: mc["Student-Rosters"] || null,
+      studentChamber: mc["Student-Chamber-Rosters"] || null,
+      esoDetails: mc["ESO"] || null,
+      gsoDetails: mc["GSO"] || null,
+      efo: mc["EFO"] || null,
+      facultyContacts: fp["FacultyContact"] || null,
+      efoRostersRaw: fp["Rosters"] || null,
+      facultyRoster: fr["EFM 2026 Faculty"] || null,
+      crew: cw["Stage Crew"] || null
+    };
+  }
+
+  // Blob-first, with a live fallback to the direct per-tab fetch path.
+  function startFetches() {
+    if (!BLOB_ENABLED) return startFetchesDirect();
+    return readDistilledBlob().then(function (blob) {
+      var data = blobToData(blob);
+      if (data.calendar && data.calendar.length) return data;   // required tab present
+      throw new Error("blob missing calendar");
+    }).catch(function () {
+      return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
     });
   }
 

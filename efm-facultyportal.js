@@ -2477,7 +2477,7 @@
     try { ls.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
   }
 
-  function startFetches() {
+  function startFetchesDirect() {
     // Lazy directory: each tab fetches by its known gid first; the ~1.2s published
     // -tab directory is only fetched if a gid actually misses (a sheet rebuild moved
     // it), which never happens in practice. So two slow fetches stay off the critical
@@ -2530,6 +2530,88 @@
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
       var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
       return data;
+    });
+  }
+
+  // ---- distilled blob (fast path) ---------------------------------------
+  // The faculty distiller (efm-facultyportal-distiller.gs) publishes every source
+  // tab as one base64 blob in its OWN (separate-URL) Google Sheet; we read it in ONE
+  // gviz request on docs.google.com instead of the ~27-tab fan-out in
+  // startFetchesDirect. Blob-first, with an automatic fall back to the direct path
+  // if the blob is unreachable or missing its core calendar, so this is safe and
+  // reversible. Set BLOB_ENABLED = false to force the direct-sheets path.
+  var FACULTY_BLOB_ID = "1ZDXeVsSVIQYEC4FtzVs8jcUjalhkZHrQAYGjTKbTJGo";
+  var BLOB_TAB = "blob";
+  var BLOB_ENABLED = true;
+
+  function b64ToUtf8(b64) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length), i;
+    for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (window.TextDecoder) return new window.TextDecoder("utf-8").decode(bytes);
+    return decodeURIComponent(escape(bin));
+  }
+
+  // gviz CSV -> our own parseCSV (single column) -> drop the sentinel row ->
+  // concat the base64 chunks -> decode UTF-8 -> JSON.
+  function readDistilledBlob() {
+    var url = "https://docs.google.com/spreadsheets/d/" + FACULTY_BLOB_ID +
+              "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(BLOB_TAB);
+    return fetch(url, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (csv) {
+      var cells = parseCSV(csv).map(function (row) { return row[0]; })
+        .filter(function (c) { return c && c.indexOf("EFM-FACULTY-BLOB") !== 0; });
+      return JSON.parse(b64ToUtf8(cells.join("")));
+    });
+  }
+
+  // Map the blob's { workbooks: { <wb>: { <tab>: rows } } } into the same
+  // { key: rows } object build() consumes, so nothing downstream changes.
+  function blobToData(blob) {
+    var w = (blob && blob.workbooks) || {};
+    var mc = w.masterCalendar || {}, fp = w.facultyPortal || {},
+        fr = w.facultyRoster || {}, fw = w.fellows || {};
+    return {
+      faculty: fp["FacultyContact"] || null,
+      fellows: fp["Orchestral-Fellows"] || null,
+      staff: fp["Staff"] || null,
+      students: fp["StudentContact"] || null,
+      rosters: fp["Rosters"] || null,
+      info: fp["General-Information"] || null,
+      tickets: fp["Friends-Family-Discounts"] || null,
+      EFO: mc["EFO"] || null,
+      ECP: mc["ECP"] || null,
+      REP: mc["REP"] || null,
+      OUT: mc["Outreach Concerts"] || null,
+      ESO: mc["ESO"] || null,
+      GSO: mc["GSO"] || null,
+      studentRosters: mc["Student-Rosters"] || null,
+      studentChamber: mc["Student-Chamber-Rosters"] || null,
+      generalInfo: mc["General Information"] || null,
+      announcements: mc["Announcements"] || null,
+      master: mc["Master Calendar"] || null,
+      legend: mc["Legend"] || null,
+      placement: mc["Placement Auditions"] || null,
+      sectionals: mc["Sectional Rehearsals"] || null,
+      studio: mc["Faculty Studio Classes"] || null,
+      concerto: mc["Concerto Competition"] || null,
+      lessons: mc["Faculty Lesson Locations"] || null,
+      alexander: mc["Alexander Technique"] || null,
+      facultyPhotos: fr["EFM 2026 Faculty"] || null,
+      fellowPhotos: fw["Fellows"] || null
+    };
+  }
+
+  // Blob-first, with a live fallback to the direct per-tab fetch path.
+  function startFetches() {
+    if (!BLOB_ENABLED) return startFetchesDirect();
+    return readDistilledBlob().then(function (blob) {
+      var data = blobToData(blob);
+      if (data.master && data.master.length) return data;   // core calendar present
+      throw new Error("blob missing master calendar");
+    }).catch(function () {
+      return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
     });
   }
 
