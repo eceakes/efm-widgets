@@ -26,6 +26,7 @@
 
   var TABS = [{key:"concerts",label:"Concert Programs"},{key:"masterclasses",label:"Masterclasses"},{key:"programbook",label:"Program Book"}];
   var DEFAULT_TAB = "concerts";
+  var DESC_MAX_LINES = 6;   /* a description longer than N lines is clamped on the card with a "Read more" toggle */
 
   /* Program Book tab — an interactive flipbook embed with a downloadable PDF
      (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
@@ -229,7 +230,20 @@
     var body=document.createElement("div"); body.className="efmpr-group__body";
     body.innerHTML='<div class="efmpr-group__title" role="heading" aria-level="4">'+escapeHtml(g.title||"Program")+'</div>'+
       (g.date?'<div class="efmpr-group__date">'+escapeHtml(fmtDate(g.date))+'</div>':'');
-    if(g.desc){ var d=document.createElement("div"); d.className="efmpr-group__desc"; d.innerHTML=mdToHtml(g.desc); body.appendChild(d); }
+    if(g.desc){
+      var d=document.createElement("div"); d.className="efmpr-group__desc efmpr-group__desc--clamp";
+      d.id="efmpr-desc-"+(g.anchorSlug||slug(g.title)||"x"); d.style.webkitLineClamp=String(DESC_MAX_LINES);
+      d.innerHTML=mdToHtml(g.desc); body.appendChild(d);
+      /* "Read more" toggle: hidden until clampPass() (run from sync) finds the text is
+         actually clipped AT THIS WIDTH, so it never shows on a description that fits. */
+      var mb=document.createElement("button"); mb.type="button"; mb.className="efmpr-group__more"; mb.hidden=true;
+      mb.textContent="Read more"; mb.setAttribute("aria-expanded","false"); mb.setAttribute("aria-controls",d.id);
+      mb.setAttribute("aria-label","Read more of the description for "+(plain(g.title)||"this program"));
+      mb.addEventListener("click",function(){ var expand=d.classList.contains("efmpr-group__desc--clamp");
+        if(expand) d.classList.remove("efmpr-group__desc--clamp"); else d.classList.add("efmpr-group__desc--clamp");
+        mb.setAttribute("aria-expanded",expand?"true":"false"); mb.textContent=expand?"Show less":"Read more"; sync(); });
+      body.appendChild(mb);
+    }
     var wrap=document.createElement("div"); wrap.className="efmpr-group__items"; var n=0;
     g.items.forEach(function(it){ var el=renderItem(it, g.title); if(el){ wrap.appendChild(el); n++; } });
     if(!n){ var none=document.createElement("p"); none.className="efmpr-group__none"; none.textContent="Program coming soon."; wrap.appendChild(none); }
@@ -355,7 +369,15 @@
     if((el.scrollHeight>el.clientHeight+2 && hide) || (el.style && /px\s*$/.test(el.style.height||""))){
       el.style.setProperty("height","auto","important"); el.style.setProperty("max-height","none","important"); el.style.setProperty("min-height","0","important"); } }catch(e){} }
     try{ var f=window.frameElement; if(f){ var h=Math.ceil(host.getBoundingClientRect().height)+8; if(parseInt(f.style.height,10)!==h){ f.style.height=h+"px"; f.style.minHeight=h+"px"; } } }catch(e){} }
-  var _wired=false; function sync(){ defuse(); autoHeight(); }
+  /* Show each description's "Read more" toggle only when the text is really clipped
+     at the current width (measured, so it is correct on wide and narrow cards alike).
+     Left alone once the visitor has expanded it (aria-expanded="true"). */
+  function clampPass(){ if(!host) return;
+    Array.prototype.forEach.call(host.querySelectorAll(".efmpr-group__more"),function(mb){
+      if(mb.getAttribute("aria-expanded")==="true") return;
+      var d=mb.previousElementSibling; if(!d) return;
+      mb.hidden = !(d.scrollHeight - d.clientHeight > 2); }); }
+  var _wired=false; function sync(){ defuse(); clampPass(); autoHeight(); }
   function wire(){ if(_wired) return; _wired=true; window.addEventListener("resize",sync);
     if(window.ResizeObserver){ try{ new ResizeObserver(sync).observe(host); }catch(e){} }
     document.addEventListener("click",function(){ closeAllCalMenus(); });

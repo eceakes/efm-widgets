@@ -79,6 +79,16 @@
 #efm-programs .efmpr-group__desc{ color:#3a4054; font-size:15px; line-height:1.55; margin:12px 0 0; }
 #efm-programs .efmpr-group__desc p{ margin:0 0 8px; } #efm-programs .efmpr-group__desc p:last-child{ margin-bottom:0; }
 #efm-programs .efmpr-group__desc a{ color:var(--efmpr-ink); text-decoration:underline; }
+/* clamp a long description to N lines (the line count is set inline by the JS, from DESC_MAX_LINES) */
+#efm-programs .efmpr-group__desc--clamp{ display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
+/* "Read more" / "Show less" text toggle — expands the description in place */
+#efm-programs .efmpr-group__more{
+  display:inline-block; appearance:none; -webkit-appearance:none; background:none; border:0; margin:8px 0 0; padding:0;
+  cursor:pointer; font-family:var(--efmpr-name-font); font-size:14px; color:var(--efmpr-ink)!important;
+  text-decoration:underline; text-underline-offset:2px; transition:color .15s ease;
+}
+#efm-programs .efmpr-group__more:hover{ color:var(--efmpr-hover)!important; }
+#efm-programs .efmpr-group__more[hidden]{ display:none; }   /* id-specificity display above would otherwise defeat the hidden attribute */
 #efm-programs .efmpr-group__none{ color:var(--efmpr-role); font-size:14px; margin:14px 0 0; font-style:italic; }
 #efm-programs .efmpr-group__items{ display:flex; flex-direction:column; gap:10px; margin-top:16px; }
 
@@ -137,7 +147,7 @@
 #efm-programs .efmpr-cta__btn--ghost:hover{ background:var(--efmpr-ink); color:#fff!important; }
 
 /* focus-visible for the remaining interactive controls */
-#efm-programs .efmpr-book__btn:focus-visible, #efm-programs .efmpr-cta__btn:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:3px; }
+#efm-programs .efmpr-book__btn:focus-visible, #efm-programs .efmpr-cta__btn:focus-visible, #efm-programs .efmpr-group__more:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:3px; }
 #efm-programs .efmpr-book__fallback a:focus-visible, #efm-programs .efmpr-group__desc a:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:2px; }
 #efm-programs .efmpr-book__frame:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:2px; }
 
