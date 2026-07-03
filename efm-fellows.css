@@ -1,0 +1,201 @@
+/* ============================================================================
+   EFM 2026 FELLOWS + CONDUCTING SCHOLARS  —  tabbed bio/headshot directory
+   Same look as the public Faculty page (efm-faculty.css), re-scoped to the
+   #efm-fellows host + efmfl prefix so it can never collide with the Faculty
+   Roster widget. Paired with efm-fellows.js.
+   ============================================================================ */
+#efm-fellows.efmfl{
+  /* ---- tweak these ---- */
+  --efmfl-ink:#0E178E;           /* names + section headings (the festival brand blue) */
+  --efmfl-role:#5b6473;          /* instrument / title line (muted slate) */
+  --efmfl-rule:#e4e6ef;          /* divider under each section heading */
+  --efmfl-hover:#6C82FA;         /* link hover (periwinkle accent) */
+  --efmfl-avatar:clamp(109px,11.7vw,146px);  /* headshot diameter (fluid) — 30% larger */
+  --efmfl-avatar-radius:50%;     /* 50% = circle (Aspen look). Use 14px for a rounded square. */
+  --efmfl-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmfl-role-font:"arbeit-regular-italic","arbeit-regular","Source Sans Pro",Georgia,serif;
+  --efmfl-head-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  /* (To make the section headings match the big "EFM FACULTY" title instead,
+     set --efmfl-head-font to: "PPPangaia-Medium", Georgia, serif;) */
+  max-width:1080px;
+  margin:0 auto;
+  padding:6px 16px 40px;
+  box-sizing:border-box;
+  font-family:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+#efm-fellows.efmfl *{ box-sizing:border-box; }
+#efm-fellows .efmfl__status{
+  text-align:center; color:var(--efmfl-role); font-size:16px; padding:30px 0;
+}
+#efm-fellows .efmfl__status[hidden]{ display:none; }
+/* ---- tabs (2026 Faculty / 2026 Guest Artists) — mirrors the Events widget ---- */
+#efm-fellows .efmfl__tabs{
+  display:flex; flex-wrap:wrap; justify-content:center;
+  gap:clamp(18px,4vw,40px);
+  border-bottom:2px solid var(--efmfl-rule);
+  margin:0 0 26px;
+}
+#efm-fellows .efmfl-tab{
+  appearance:none; -webkit-appearance:none; background:transparent; border:0; cursor:pointer;
+  font-family:var(--efmfl-head-font)!important; color:var(--efmfl-role)!important;
+  font-size:18px; font-size:clamp(16px,1vw + 13px,21px); font-weight:400; letter-spacing:.005em; line-height:1.2;
+  padding:14px 2px 13px; margin-bottom:-2px; border-bottom:3px solid transparent;
+  transition:color .18s ease, border-color .18s ease; white-space:nowrap;
+}
+#efm-fellows .efmfl-tab:hover{ color:var(--efmfl-hover)!important; }
+#efm-fellows .efmfl-tab[aria-selected="true"]{ color:var(--efmfl-ink)!important; border-bottom-color:var(--efmfl-ink); }
+#efm-fellows .efmfl-tab:focus-visible{ outline:2px solid var(--efmfl-hover); outline-offset:3px; border-radius:3px; }
+#efm-fellows .efmfl__panel[hidden]{ display:none; }
+/* The grid measures itself against THIS element's width (the widget's own width),
+   so it reflows correctly in Duda's desktop / tablet / mobile views — it responds
+   to the column it sits in, not just the raw viewport. */
+#efm-fellows .efmfl__sections{ container-type:inline-size; container-name:efmfl; }
+#efm-fellows .efmfl-section{ margin:0 0 clamp(34px,4vw,50px); }
+#efm-fellows .efmfl-section:last-child{ margin-bottom:0; }
+/* Headings are role=heading <div>s (not <h2>) + !important, because the site's
+   global heading theme lives in a high-priority stylesheet that would otherwise
+   recolor them gold/serif. Same reason for the !important guards on names below. */
+#efm-fellows .efmfl-section__head{
+  font-family:var(--efmfl-head-font)!important;
+  color:var(--efmfl-ink)!important;
+  font-size:23px!important;                              /* fallback for old browsers */
+  font-size:clamp(20px,1.2cqi + 16px,24px)!important;
+  font-weight:400!important;
+  line-height:1.2!important;
+  letter-spacing:.005em!important;
+  text-transform:none!important;
+  margin:0 0 22px!important;
+  padding:0 0 11px!important;
+  border-bottom:2px solid var(--efmfl-rule);
+}
+#efm-fellows .efmfl-grid{
+  display:grid;
+  grid-template-columns:1fr;                 /* one column by default (narrow widget) */
+  column-gap:clamp(22px,4cqi,48px);
+  row-gap:clamp(24px,3.2cqi,36px);
+}
+/* two columns once the widget itself is wide enough (Aspen-style). 600px (not
+   760) so tablet-portrait — where the widget is ~620px after page padding — still
+   gets two columns; phones stay single-column. */
+@container efmfl (min-width:600px){
+  #efm-fellows .efmfl-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+/* fallback for the rare browser without container queries */
+@supports not (container-type:inline-size){
+  @media (min-width:600px){
+    #efm-fellows .efmfl-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+}
+/* Hard floor: on phones / narrow windows (viewport ≤600px) force a single column,
+   even if the widget's container is held wider by a page template min-width
+   (Duda's desktop template pins dmInner to 768px, so the container can't shrink
+   below ~624px on a narrowed desktop window — this keeps that case 1-column). */
+@media (max-width:600px){
+  #efm-fellows .efmfl-grid{ grid-template-columns:1fr!important; }
+}
+#efm-fellows .efmfl-person{
+  display:flex;
+  align-items:center;
+  gap:clamp(14px,2cqi,20px);
+  min-width:0;
+}
+#efm-fellows .efmfl-person__avatar{
+  flex:0 0 auto;
+  width:var(--efmfl-avatar);
+  height:var(--efmfl-avatar);
+  border-radius:var(--efmfl-avatar-radius);
+  overflow:hidden;
+  background:#eef0f7;
+  display:block;
+  text-decoration:none;
+}
+#efm-fellows .efmfl-person__avatar img{
+  width:100%; height:100%;
+  object-fit:cover;
+  object-position:center 18%;   /* bias toward faces in portrait headshots */
+  display:block;
+  border-radius:inherit;
+  transition:transform .35s ease;
+}
+#efm-fellows a.efmfl-person__avatar:hover img{ transform:scale(1.05); }
+#efm-fellows .efmfl-person__initials{
+  width:100%; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--efmfl-name-font);
+  color:var(--efmfl-ink);
+  font-size:39px;                                       /* fallback for old browsers */
+  font-size:clamp(31px,3.9cqi,42px);
+  background:#e7eaf6;
+}
+#efm-fellows .efmfl-person__body{ min-width:0; }
+#efm-fellows .efmfl-person__name{
+  display:inline-block;
+  font-family:var(--efmfl-name-font)!important;
+  color:var(--efmfl-ink)!important;
+  font-size:19px;                                       /* fallback for old browsers */
+  font-size:clamp(17px,0.8cqi + 14px,20px);
+  font-weight:400;
+  line-height:1.22;
+  margin:0 0 4px;
+}
+#efm-fellows a.efmfl-person__name{ text-decoration:none!important; }
+#efm-fellows a.efmfl-person__name:hover{ color:var(--efmfl-hover)!important; text-decoration:underline!important; }
+#efm-fellows .efmfl-person__role{
+  font-family:var(--efmfl-role-font);
+  color:var(--efmfl-role)!important;
+  font-size:15px;                                       /* fallback for old browsers */
+  font-size:clamp(14px,0.6cqi + 11px,15.5px);
+  font-style:italic!important;
+  line-height:1.35;
+  margin:0;
+}
+#efm-fellows [data-efmfl-bio]{ cursor:pointer; }
+/* ---- bio popup ---- */
+#efm-fellows .efmfl-modal[hidden]{ display:none; }
+#efm-fellows .efmfl-modal{
+  position:fixed; inset:0; z-index:2147483000;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+#efm-fellows .efmfl-modal__backdrop{ position:absolute; inset:0; background:rgba(9,12,38,.55); }
+#efm-fellows .efmfl-modal__panel{
+  position:relative; z-index:1; background:#fff; width:100%; max-width:560px; max-height:86vh;
+  overflow:auto; border-radius:14px; padding:30px 32px 32px;
+  box-shadow:0 24px 70px rgba(9,12,38,.38); text-align:left;
+}
+#efm-fellows .efmfl-modal__close{
+  position:absolute; top:10px; right:14px; border:0; background:transparent;
+  font-size:28px; line-height:1; cursor:pointer; color:#9aa0b4; padding:4px;
+}
+#efm-fellows .efmfl-modal__close:hover{ color:var(--efmfl-ink); }
+#efm-fellows .efmfl-modal__head{ display:flex; gap:18px; align-items:center; margin:0 0 18px; }
+#efm-fellows .efmfl-modal__avatar{
+  flex:0 0 auto; width:86px; height:86px; border-radius:50%; overflow:hidden; background:#eef0f7;
+}
+#efm-fellows .efmfl-modal__avatar img{ width:100%; height:100%; object-fit:cover; object-position:center 18%; display:block; }
+#efm-fellows .efmfl-modal__name{
+  font-family:var(--efmfl-name-font); color:var(--efmfl-ink)!important; font-size:23px; line-height:1.15;
+}
+#efm-fellows .efmfl-modal__role{
+  font-family:var(--efmfl-role-font); color:var(--efmfl-role)!important; font-style:italic; font-size:15px; margin-top:3px;
+}
+#efm-fellows .efmfl-modal__bio{ color:#2b3042; font-size:16px; line-height:1.62; }
+#efm-fellows .efmfl-modal__bio p{ margin:0 0 14px; }
+#efm-fellows .efmfl-modal__bio p:last-child{ margin-bottom:0; }
+#efm-fellows .efmfl-modal__bio ul{ margin:0 0 14px; padding-left:20px; }
+#efm-fellows .efmfl-modal__bio a{ color:var(--efmfl-ink); text-decoration:underline; }
+#efm-fellows .efmfl-modal__bio a:hover{ color:var(--efmfl-hover); }
+#efm-fellows .efmfl-modal__label{
+  font-family:var(--efmfl-name-font); color:var(--efmfl-ink)!important;
+  font-size:11px; letter-spacing:.09em; text-transform:uppercase; margin:18px 0 6px;
+}
+#efm-fellows .efmfl-modal__affil-item{ color:#2b3042; font-size:15px; line-height:1.5; }
+#efm-fellows .efmfl-modal__weblink{ color:var(--efmfl-ink)!important; font-size:15px; text-decoration:underline; word-break:break-word; }
+#efm-fellows .efmfl-modal__weblink:hover{ color:var(--efmfl-hover)!important; }
+#efm-fellows .efmfl-modal__link{
+  display:inline-block; margin-top:18px; font-family:var(--efmfl-name-font);
+  color:var(--efmfl-ink)!important; text-decoration:none;
+}
+#efm-fellows .efmfl-modal__link:hover{ color:var(--efmfl-hover)!important; text-decoration:underline; }
+#efm-fellows .efmfl-title{ font-family:"PPPangaia-Medium",Georgia,serif; color:var(--efmfl-ink); font-size:38px; font-size:clamp(28px,3cqi + 18px,46px); font-weight:400; line-height:1.08; letter-spacing:.005em; margin:0 0 22px; text-align:center; }
+#efm-fellows .efmfl-title[hidden]{ display:none; }
