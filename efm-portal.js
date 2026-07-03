@@ -424,6 +424,7 @@
   var seenRooms = {};
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
+  var religiousTransport = null;  // { url } for the Religious Service Transportation sign-up form (General Information tab; its URL lives in col B, which the generalInfo flattening drops)
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the "Faculty Lesson Locations" tab
   var staff = [];          // [{ dept, people:[{name,title,contact,office}] }] from the "Staff List" tab
   var facultyDir = [];     // [{name, last, instrument, email}] from the Faculty-Portal FacultyContact tab
@@ -774,7 +775,14 @@
     for (var di = 0; di < hall.length; di++) { if (/^(student|building) access hours/i.test(hall[di]) || /^chamber music coaches/i.test(hall[di]) || /^off[\s-]*campus dining/i.test(hall[di])) { hall = hall.slice(0, di); break; } }
     // Off-campus dining block: from its heading to the end of the tab.
     var off = [];
-    for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
+    for (var oi = 0; oi < all.length; oi++) {
+      if (/^off[\s-]*campus dining/i.test(all[oi])) {
+        var oend = all.length;   // stop before the next section (e.g. Religious Service Transportation) so it doesn't bleed into Dining
+        for (var oe = oi + 1; oe < all.length; oe++) { if (giIsHeading(all[oe])) { oend = oe; break; } }
+        off = all.slice(oi, oend);
+        break;
+      }
+    }
     if (!hall.length && !off.length) html += "<p>Dining hours will appear here once posted.</p>";
     function renderLine(l) {
       // A line is a heading if it's ALL CAPS, a short label, or the dining title
@@ -884,7 +892,8 @@
   // a new section (maintenance, mail, ...) never bleeds into a neighboring pill.
   var GI_HEADINGS = [
     /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
-    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i
+    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i,
+    /^religious service/i
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
@@ -924,14 +933,47 @@
     return html;
   }
 
+  // The "Religious Service Transportation" section at the bottom of the General
+  // Information tab: a heading row, then a "<year> Link:" row whose SECOND column
+  // holds a Google Form URL (ride sign-up). generalInfo keeps only column A, so the
+  // URL is read here from the raw rows. Returns { url } or null when none is posted.
+  function parseReligiousTransport(rows) {
+    if (!rows || !rows.length) return null;
+    var start = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (/^religious service/i.test(clean((rows[i] || [])[0]))) { start = i; break; }
+    }
+    if (start < 0) return null;
+    for (var r = start + 1; r < rows.length; r++) {
+      var row = rows[r] || [];
+      if (giIsHeading(clean(row[0]))) break;                  // reached the next section without a link
+      var link = safeUrl(row[1]) || safeUrl(row[0]);          // URL is normally in col B; tolerate col A
+      if (link) return { url: link };
+    }
+    return null;
+  }
+
+  // Around Campus -> the Religious Service Transportation sign-up CTA. Rendered as a
+  // GHOST pill: a filled button inside .efmp-info would be darkened by the .efmp-info a
+  // (ink) rule, but a ghost button wants ink text anyway, so it stays readable with no
+  // CSS change (the same .efmp-info a footgun that makes renderCrew escape .efmp-info).
+  function religiousTransportInner() {
+    if (!religiousTransport || !religiousTransport.url) return "";
+    return '<div class="efmp-info__head" role="heading" aria-level="3">Religious Service Transportation</div>' +
+      "<p>Need a ride to religious services during the festival? Sign up using the form below.</p>" +
+      '<a class="efmp-modal__cal efmp-modal__cal--ghost" href="' + esc(religiousTransport.url) + '" ' +
+        'target="_blank" rel="noopener noreferrer">Open the transportation sign-up form</a>';
+  }
+
   // General Information -> "Around Campus" pill: building access hours + maintenance
-  // + mail, stacked in one panel (each its own sub-section, in sheet order).
+  // + mail + religious service transportation, stacked (each its own sub-section).
   function renderAroundCampus() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     var inner = buildingAccessInner() +
       giSectionInner(/^(urgent )?maintenance/i, "Maintenance") +
-      giSectionInner(/^mail\b/i, "Mail");
+      giSectionInner(/^mail\b/i, "Mail") +
+      religiousTransportInner();
     if (!inner) { finishList("", 0, "", "Campus information will appear here once posted."); return; }
     list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
     announce("Around campus information shown.");
@@ -2193,7 +2235,10 @@
     if (data.legend) applyLegend(data.legend);
     if (data.staff) staff = parseStaff(data.staff);
     facultyDir = data.facultyContacts ? parseFacultyDirectory(data.facultyContacts) : [];
-    if (data.generalInfo) generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
+    if (data.generalInfo) {
+      generalInfo = data.generalInfo.map(function (r) { return (r[0] || "").trim(); });
+      religiousTransport = parseReligiousTransport(data.generalInfo);
+    }
     if (data.lessons) lessons = parseLessons(data.lessons);
     // Enrich the faculty directory with lesson studio + chamber-coach status, joined
     // by name (full name OR lastname|first-initial, to bridge nicknames across sheets).
@@ -2521,6 +2566,7 @@
       _generalInfoP.then(function (rows) {
         if (built || !rows) return;
         generalInfo = rows.map(function (r) { return (r[0] || "").trim(); });
+        religiousTransport = parseReligiousTransport(rows);
         var top = currentTop(), sub = top.subs[subSel[top.id]] || top.subs[0];
         if (sub && sub.kind === "dining") renderDining();
       });
