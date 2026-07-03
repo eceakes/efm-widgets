@@ -93,6 +93,15 @@
   text-decoration:none!important; padding:10px 18px; border-radius:999px; transition:background .18s ease;
 }
 #efm-events .efme-card__btn:hover{ background:var(--efme-hover); }
+/* clamp a long card description to N lines (the line count is set inline by the JS, from DESC_MAX_LINES) */
+#efm-events .efme-card__desc--clamp{ display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
+/* "Read more" text button — shown on a card when its description is truncated; opens the event modal */
+#efm-events .efme-card__more{
+  align-self:flex-start; appearance:none; -webkit-appearance:none; background:none; border:0; margin:0; padding:0;
+  cursor:pointer; font-family:var(--efme-name-font); font-size:14px; color:var(--efme-ink)!important;
+  text-decoration:underline; text-underline-offset:2px; transition:color .15s ease;
+}
+#efm-events .efme-card__more:hover{ color:var(--efme-hover)!important; }
 
 /* ====================== CALENDAR ====================== */
 #efm-events .efme-cal__head{ display:flex; align-items:center; justify-content:center; gap:18px; margin:0 0 16px; }
@@ -180,7 +189,7 @@
 #efm-events .efme-cal__opt:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
 
 /* focus-visible for the remaining interactive controls */
-#efm-events .efme-modal__close:focus-visible, #efm-events .efme-cal__nav:focus-visible, #efm-events .efme-modal__btn:focus-visible, #efm-events .efme-modal__more:focus-visible, #efm-events .efme-card__btn:focus-visible, #efm-events .efme-cal__ev:focus-visible, #efm-events .efme-cal__more:focus-visible, #efm-events .efme-agenda-row:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
+#efm-events .efme-modal__close:focus-visible, #efm-events .efme-cal__nav:focus-visible, #efm-events .efme-modal__btn:focus-visible, #efm-events .efme-modal__more:focus-visible, #efm-events .efme-card__btn:focus-visible, #efm-events .efme-card__more:focus-visible, #efm-events .efme-cal__ev:focus-visible, #efm-events .efme-cal__more:focus-visible, #efm-events .efme-agenda-row:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
 #efm-events .efme-modal__desc a:focus-visible, #efm-events .efme-card__desc a:focus-visible{ outline:2px solid var(--efme-hover); outline-offset:2px; }
 /* tablist wrapper participates in the tab bar's flex layout */
 #efm-events .efme__tablist{ display:contents; }

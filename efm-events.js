@@ -21,6 +21,7 @@
   var HIDE_PAST    = true;                  /* Upcoming list hides events that already ended */
   var WEEK_START   = 0;                     /* 0 = Sunday, 1 = Monday */
   var MAX_EV_PER_DAY = 3;                   /* calendar chips before "+N more" */
+  var DESC_MAX_LINES = 6;                    /* card shows up to N description lines; 7+ gets a "Read more" (opens the full modal) */
 
   /* Built-in events (used only if the sheet can't load, so the page is never blank). */
   var FALLBACK_DATA = [
@@ -196,6 +197,16 @@
       if(lines.every(function(l){ return /^\s*[-*]\s+/.test(l); })) return "<ul>"+lines.map(function(l){ return "<li>"+mdInline(l.replace(/^\s*[-*]\s+/,""))+"</li>"; }).join("")+"</ul>";
       return "<p>"+lines.map(mdInline).join("<br>")+"</p>"; }).join(""); }
 
+  /* ---- "Read more": the card shows up to DESC_MAX_LINES lines of the (formatted)
+     description; a longer one is clamped and gets a "Read more" that opens the full
+     modal. Line count is estimated from hard breaks (<br>/newlines) plus the wrapping
+     of long lines, so it holds without measuring the (possibly hidden) card. ---- */
+  var DESC_WRAP_CHARS = 40;   /* approx characters per rendered card line (wrap estimate) */
+  function estDescLines(s){ s=String(s==null?"":s).replace(/<br\s*\/?>/gi,"\n").replace(/\r\n?/g,"\n");
+    s=s.replace(/\[([^\]]+)\]\([^)\s]+\)/g,"$1").replace(/(\*\*|__|\*|_)(?=\S)([\s\S]*?\S)\1/g,"$2");
+    var lines=0; s.split("\n").forEach(function(seg){ seg=seg.replace(/\s+/g," ").trim();
+      lines += seg? Math.ceil(seg.length/DESC_WRAP_CHARS) : 1; }); return lines; }
+
   /* ---- CSV parser (RFC-4180-ish) ---- */
   function parseCSV(text){
     var rows=[],row=[],f="",q=false,i,c; text=String(text).replace(/\r\n/g,"\n").replace(/\r/g,"\n");
@@ -348,14 +359,21 @@
       var where=e.address? '<div class="efme-card__where">'+htmlBreaks(e.address)+'</div>' : '';
       var url=ticketUrl(e.link);
       var btn=url? '<a class="efme-card__btn" href="'+escapeHtml(url)+'" target="_blank" rel="noopener noreferrer" aria-label="'+escapeHtml((plain(e.button)||"Tickets")+" for "+plain(e.title))+' (opens in a new tab)">'+escapeHtml(plain(e.button)||"Tickets")+'</a>' : '';
+      /* A description longer than DESC_MAX_LINES lines is clamped on the card and
+         gets a "Read more" (opens the full modal); shorter ones render in full. */
+      var clip=estDescLines(e.desc)>DESC_MAX_LINES;
+      var descAttr=clip? ' class="efme-card__desc efme-card__desc--clamp" style="-webkit-line-clamp:'+DESC_MAX_LINES+'"' : ' class="efme-card__desc"';
+      var more=clip? '<button type="button" class="efme-card__more" aria-label="'+escapeHtml("Read more about "+plain(e.title))+'">Read more</button>' : '';
       card.innerHTML = media +
         '<div class="efme-card__body">'+
           '<div class="efme-card__title" role="heading" aria-level="3">'+escapeHtml(e.title)+'</div>'+
           '<div class="efme-card__when">'+when+'</div>'+
-          '<div class="efme-card__desc">'+mdToHtml(e.desc)+'</div>'+
+          '<div'+descAttr+'>'+mdToHtml(e.desc)+'</div>'+
+          more +
           where +
           '<div class="efme-card__spacer"></div>'+ btn +
         '</div>';
+      if(clip){ var mb=card.querySelector(".efme-card__more"); if(mb) mb.addEventListener("click",function(){ openModal(e); }); }
       wrap.appendChild(card);
     });
     if(!list.length){ wrap.innerHTML='<p style="color:var(--efme-role)">'+escapeHtml(emptyMsg)+'</p>'; }
