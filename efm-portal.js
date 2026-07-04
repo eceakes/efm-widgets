@@ -508,6 +508,7 @@
       if (r.key !== useKey) return false;
       if (codes === null) return true;
       if (r.ensTokens.length === 0) return true;
+      if (r.type === "Concert / Performance") return true;   // concerts always show on Today: folks attend even if not playing in them
       return r.ensTokens.some(function (t) { return codes.indexOf(t) !== -1; });
     });
     return { rows: rows, banner: bannerMsg, singleDay: true };
