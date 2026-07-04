@@ -443,7 +443,8 @@
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var crewDocs = [];           // [{ title, link }] from the Crew Documents (Stage Crew) tab
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
-  var programList = [];        // [{ key, date, title, url }] concerts with a published program, from the Event Grid (via the blob)
+  var programList = [];        // [{ key, date, clock, title, url }] concerts with a published program, from the Event Grid (via the blob)
+  var programByDateTime = {};  // "dateKey|clock" -> concert ProgramURL, joined onto calendar rows by date + start time
   var efoRows = [];            // Eastern Festival Orchestra agenda rows from the dedicated EFO tab (renderAgenda shape)
   var efoRostersAll = [];      // [{title, link, release}] from the Faculty-Portal "Rosters" tab (EFO roster weeks)
   var efoAnchors = {};         // EFO concert N -> dateKey, from the numbered "EFO N" rows (roster service windows)
@@ -764,23 +765,32 @@
         det = (det ? det + "\n\n" : "") + "Sectional locations:\n" +
           sectionalLocations.map(function (s) { return s.section + ": " + s.room; }).join("\n");
       }
+      // Concert PROGRAM link, joined by DATE + START TIME from the Event Grid (via the
+      // blob). Since no two concerts run at once, date+clock uniquely identifies the
+      // concert, so its program surfaces on the row + in the modal. A row's own PDF (a
+      // rehearsal order) wins; rehearsal/sectional rows never take a program.
+      var rpdf = r.pdf, risProg = false;
+      if (!rpdf && r.key !== null && !/rehearsal|sectional/i.test((r.type || "") + " " + (r.event || ""))) {
+        var _pu = programByDateTime[r.key + "|" + clockKey(r.time)];
+        if (_pu) { rpdf = _pu; risProg = true; }
+      }
       var ev = {
         title: r.event || "(untitled)", dateStr: r.date, timeStr: r.time, location: r.loc,
         description: [r.ensemble && ("Ensemble: " + r.ensemble),
           r.conductor && ("Conductor / Soloist: " + r.conductor),
-          r.type && ("Type: " + r.type), det, r.pdf && ("PDF: " + r.pdf)].filter(Boolean).join("\n")
+          r.type && ("Type: " + r.type), det, rpdf && ((risProg ? "Program: " : "PDF: ") + rpdf)].filter(Boolean).join("\n")
       };
       viewEvents.push(ev);
       html += agendaRowHTML({
         big: r.dayNum, small: r.day, title: r.event || "(untitled)",
         when: [r.time, r.loc, r.conductor],
         chips: [].concat(r.ensemble ? [{ label: r.ensemble, ens: true }] : [], r.type ? [{ label: r.type }] : []),
-        doc: r.pdf ? docNoun(r) : "",
+        doc: rpdf ? (risProg ? "Program" : docNoun(r)) : "",
         modal: {
           title: r.event || "Event",
           fields: [["Date", calDateLabel(r)], ["Time", r.time], ["Location", r.loc],
             ["Ensemble", r.ensemble], ["Conductor / Soloist", r.conductor], ["Type", r.type]],
-          details: det, pdf: r.pdf, pdfLabel: pdfLabel(r), ics: ev
+          details: det, pdf: rpdf, pdfLabel: risProg ? "View Program" : pdfLabel(r), ics: ev
         }
       });
       shown++;
@@ -2039,26 +2049,26 @@
     return out;
   }
 
-  // Concert PROGRAM list for the "Concert Programs" pill. The distilled blob carries
-  // a lean eventGrid tab (StartDate, Title, ProgramURL only, from the same Event Grid
-  // the public /programs page reads). Build a date-sorted list of
-  // { key, date, title, url } for concerts that have a published program PDF. This is
-  // a standalone list, NOT joined onto calendar rows: the internal Master Calendar and
-  // the public Event Grid name concerts differently and share no reliable key, so a
-  // per-row join mis-places programs; the Event Grid is the clean, canonical source.
+  // Concert PROGRAM list from the distilled blob's lean eventGrid tab (StartDate,
+  // Title, Time, ProgramURL, from the same Event Grid the public /programs page
+  // reads). Feeds two things: the standalone "Concert Programs" pill (this sorted
+  // list), and the per-concert "View Program" link (build() indexes it by date+time
+  // and renderAgenda joins it onto the matching concert row; since no two concerts
+  // run at once, date+start-time pins each program to exactly its concert).
   function parseProgramList(rows) {
     var out = [];
     if (!rows || !rows.length) return out;
     var header = rows[0].map(function (h) { return clean(h).toLowerCase(); });
     var di = header.indexOf("startdate"); if (di === -1) di = header.indexOf("date");
     var ti = header.indexOf("title");
+    var tmi = header.indexOf("time");
     var pi = header.indexOf("programurl"); if (pi === -1) pi = header.indexOf("program url");
     if (di === -1 || pi === -1) return out;
     for (var r = 1; r < rows.length; r++) {
       var row = rows[r] || [];
       var url = safeUrl(row[pi]); if (!url) continue;
       var dstr = clean(row[di]);
-      out.push({ key: dateKey(dstr), date: dstr, title: clean(ti !== -1 ? row[ti] : ""), url: url });
+      out.push({ key: dateKey(dstr), date: dstr, clock: clockKey(tmi !== -1 ? row[tmi] : ""), title: clean(ti !== -1 ? row[ti] : ""), url: url });
     }
     out.sort(function (a, b) { return (a.key === null ? 9999 : a.key) - (b.key === null ? 9999 : b.key); });
     return out;
@@ -2389,6 +2399,8 @@
     parseEnsembleDetails(data.gsoDetails, "GSO", ensDetail);
     parseCalendar(data.calendar);
     programList = parseProgramList(data.programLinks);   // Concert Programs pill (from the Event Grid, via the blob)
+    programByDateTime = {};   // date+time index of the same programs, for the per-concert "View Program" link (renderAgenda)
+    programList.forEach(function (p) { if (p.key !== null && p.clock) programByDateTime[p.key + "|" + p.clock] = p.url; });
     efoRows = parseEFO(data.efo);
     efoAnchors = buildEfoAnchors();
     ensAnchors = { ESO: buildEnsAnchors("ESO"), GSO: buildEnsAnchors("GSO") };
