@@ -175,7 +175,8 @@
       { label: "ESO", kind: "ensemble", code: "ESO", weeks: true },
       { label: "GSO", kind: "ensemble", code: "GSO", weeks: true },
       { label: "Outreach", kind: "ensemble", code: "OUT" },
-      { label: "All Events", kind: "allEvents" } ] },
+      { label: "All Events", kind: "allEvents" },
+      { label: "Concert Programs", kind: "programs" } ] },
     // One grouped tab; the class + assignment pages are sub-tab pills. A pill
     // carrying showWhen appears only if that tab's Show/Hide cell reads "Yes"
     // (build()) — e.g. Placement Auditions hides when its sheet cell reads "No".
@@ -456,6 +457,7 @@
   var atData = null;       // Alexander Technique tab -> { people:[{name,location,details,contact,phone,website,photo,calendly}], about } (renderAlexander)
   var allRows = [];        // every Master Calendar row (Room Schedule tab)
   var ensDetail = {};      // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
+  var programList = [];    // [{ key, date, title, url }] concerts with a published program, from the Event Grid (via the blob)
   var seenRooms = {};      // room codes actually used (-> which per-room pills to build)
   var infoTabs = {};       // source key -> raw rows for Classes & Assignments (placement/sectionals/studio/concerto)
 
@@ -682,6 +684,59 @@
     for (var i = 0; i < (r ? r.length : 0); i++) { var c = clean(r[i]); if (/^https?:\/\//i.test(c)) return safeUrl(c); }
     return "";
   }
+  // Concert PROGRAM list for the "Concert Programs" pill (Calendar). The distilled
+  // blob carries a lean eventGrid tab (StartDate, Title, ProgramURL only, from the
+  // same Event Grid the public /programs page reads). Build a date-sorted list of
+  // { key, date, title, url } for concerts that have a published program PDF. It is a
+  // standalone list, NOT joined onto calendar rows: the internal Master Calendar and
+  // the public Event Grid name concerts differently and share no reliable key.
+  function parseProgramList(rows) {
+    var out = [];
+    if (!rows || !rows.length) return out;
+    var header = rows[0].map(function (h) { return clean(h).toLowerCase(); });
+    var di = header.indexOf("startdate"); if (di === -1) di = header.indexOf("date");
+    var ti = header.indexOf("title");
+    var pi = header.indexOf("programurl"); if (pi === -1) pi = header.indexOf("program url");
+    if (di === -1 || pi === -1) return out;
+    for (var r = 1; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var url = safeUrl(row[pi]); if (!url) continue;
+      var dstr = clean(row[di]);
+      out.push({ key: dateKey(dstr), date: dstr, title: clean(ti !== -1 ? row[ti] : ""), url: url });
+    }
+    out.sort(function (a, b) { return (a.key === null ? 9999 : a.key) - (b.key === null ? 9999 : b.key); });
+    return out;
+  }
+
+  // Calendar -> "Concert Programs" pill: an upcoming-only, date-sorted list of the
+  // concerts that have a published program, each a "View Program" PDF link (reusing
+  // the roster-style download card, button-safe here). Off-season (todayKey() null)
+  // shows the full list.
+  function renderPrograms() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var tk = todayKey();
+    var items = (tk === null) ? programList.slice() : programList.filter(function (p) { return p.key !== null && p.key >= tk; });
+    if (!items.length) {
+      var msg = programList.length ? "No upcoming concert programs." : "Concert programs will appear here once they are posted.";
+      list.innerHTML = '<div class="efmfp-info"><p>' + msg + '</p></div>';
+      announce(msg);
+      return;
+    }
+    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">Concert Programs</div>';
+    items.forEach(function (p) {
+      var when = p.key !== null ? (monthAbbr(p.key) + " " + (p.key % 100)) : p.date;
+      html += '<div class="efmfp-roster__pdf"><div>' +
+          '<div class="efmfp-roster__pdf-name">' + esc(p.title || "Concert") + '</div>' +
+          '<div class="efmfp-roster__pdf-meta">' + esc(when) + '</div></div>' +
+        '<a class="efmfp-roster__btn" href="' + esc(p.url) + '" target="_blank" rel="noopener noreferrer">View Program</a>' +
+        '</div>';
+    });
+    html += '</div>';
+    list.innerHTML = html;
+    announce(items.length + (items.length === 1 ? " concert program" : " concert programs") + " shown.");
+  }
+
   // The roster-style "awesome download button", reused for Library Documents.
   function docButtonHTML(title, url) {
     var isPdf = /\.pdf(\?|#|$)/i.test(url);
@@ -751,9 +806,17 @@
     // followed by the off-campus block, skipping the access hours + roster.
     var dl = all.slice();
     for (var ci = 0; ci < dl.length; ci++) { if (/^(student|building) access hours/i.test(dl[ci]) || /^chamber music coaches/i.test(dl[ci]) || /^off[\s-]*campus dining/i.test(dl[ci])) { dl = dl.slice(0, ci); break; } }
-    // Off-campus dining block: from its heading to the end of the tab.
+    // Off-campus dining block: from its heading to the next section heading (so a
+    // later section like Religious Service Transportation doesn't bleed into Dining).
     var off = [];
-    for (var oi = 0; oi < all.length; oi++) { if (/^off[\s-]*campus dining/i.test(all[oi])) { off = all.slice(oi); break; } }
+    for (var oi = 0; oi < all.length; oi++) {
+      if (/^off[\s-]*campus dining/i.test(all[oi])) {
+        var oend = all.length;
+        for (var oe = oi + 1; oe < all.length; oe++) { if (giIsHeading(all[oe])) { oend = oe; break; } }
+        off = all.slice(oi, oend);
+        break;
+      }
+    }
     var diningHead = "Dining";
     for (var di = 0; di < dl.length; di++) { if (/^dining\b/i.test(dl[di])) { diningHead = dl[di]; dl.splice(di, 1); break; } }
     html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(diningHead) + "</div>";
@@ -1150,7 +1213,8 @@
   // heading in this list, so a new section never bleeds into a neighboring pill.
   var GI_HEADINGS = [
     /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
-    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i
+    /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i,
+    /^religious service/i
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
@@ -1705,6 +1769,7 @@
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "aroundCampus") renderAroundCampus();
     else if (k === "tickets") renderTickets();
+    else if (k === "programs") renderPrograms();
     else if (k === "infoTab") renderInfoTab(sub);
     else if (k === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (k === "map") renderMap();
@@ -2413,6 +2478,7 @@
     });
     // full master calendar -> Room Schedule (today + per-room pills)
     parseCalendar(data.master);
+    programList = parseProgramList(data.programLinks);   // Concert Programs pill (from the Event Grid, via the blob)
     appendRoomTabs();
 
     // Friends & Family ticket codes (Faculty-Portal "Friends-Family-Discounts"
@@ -2571,7 +2637,7 @@
   function blobToData(blob) {
     var w = (blob && blob.workbooks) || {};
     var mc = w.masterCalendar || {}, fp = w.facultyPortal || {},
-        fr = w.facultyRoster || {}, fw = w.fellows || {};
+        fr = w.facultyRoster || {}, fw = w.fellows || {}, eg = w.eventGrid || {};
     return {
       faculty: fp["FacultyContact"] || null,
       fellows: fp["Orchestral-Fellows"] || null,
@@ -2599,7 +2665,8 @@
       lessons: mc["Faculty Lesson Locations"] || null,
       alexander: mc["Alexander Technique"] || null,
       facultyPhotos: fr["EFM 2026 Faculty"] || null,
-      fellowPhotos: fw["Fellows"] || null
+      fellowPhotos: fw["Fellows"] || null,
+      programLinks: eg["EventGridToWebsite"] || null
     };
   }
 

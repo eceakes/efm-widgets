@@ -140,7 +140,8 @@
       { label: "ESO Schedule", kind: "ensemble", code: "ESO", weeks: true },
       { label: "GSO Schedule", kind: "ensemble", code: "GSO", weeks: true },
       { label: "EFO Schedule", kind: "ensemble", code: "EFO", weeks: true },
-      { label: "All Concerts", kind: "type", value: "Concert / Performance" } ] },
+      { label: "All Concerts", kind: "type", value: "Concert / Performance" },
+      { label: "Concert Programs", kind: "programs" } ] },
     // ESO/GSO Schedule carry weeks:true: when selected, the released seating-roster
     // weeks from the Student-Rosters sheet appear as a third-level subnav (renderNav),
     // and choosing one shows that week's roster (PDF + that cycle's services).
@@ -442,6 +443,7 @@
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var crewDocs = [];           // [{ title, link }] from the Crew Documents (Stage Crew) tab
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
+  var programList = [];        // [{ key, date, title, url }] concerts with a published program, from the Event Grid (via the blob)
   var efoRows = [];            // Eastern Festival Orchestra agenda rows from the dedicated EFO tab (renderAgenda shape)
   var efoRostersAll = [];      // [{title, link, release}] from the Faculty-Portal "Rosters" tab (EFO roster weeks)
   var efoAnchors = {};         // EFO concert N -> dateKey, from the numbered "EFO N" rows (roster service windows)
@@ -1398,6 +1400,40 @@
     announce(crewDocs.length + (crewDocs.length === 1 ? " crew document" : " crew documents") + " shown.");
   }
 
+  // Calendar -> "Concert Programs" pill: a standalone, date-sorted list of the
+  // concerts that have a published program (from the Event Grid, via the blob),
+  // each a "View Program" PDF link. Uses the same button-safe .efmp-crew card
+  // pattern as the Crew Documents pill (keeps the links out of the .efmp-info a
+  // ink rule). This is the reliable alternative to per-calendar-row joining.
+  function renderPrograms() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    // Upcoming only: drop programs whose date has passed (off-season todayKey() is
+    // null, so the whole list shows), matching the portal's other calendar views.
+    var tk = todayKey();
+    var items = (tk === null) ? programList.slice() : programList.filter(function (p) { return p.key !== null && p.key >= tk; });
+    if (!items.length) {
+      var msg = programList.length ? "No upcoming concert programs." : "Concert programs will appear here once they are posted.";
+      list.innerHTML = '<div class="efmp-info"><p>' + msg + '</p></div>';
+      announce(msg);
+      return;
+    }
+    var html = '<div class="efmp-crew">' +
+      '<div class="efmp-info__head" role="heading" aria-level="3">Concert Programs</div>' +
+      '<div class="efmp-crew-list">';
+    items.forEach(function (p) {
+      var when = p.key !== null ? (monthAbbr(p.key) + " " + (p.key % 100)) : p.date;
+      html += '<div class="efmp-roster__pdf"><div>' +
+          '<div class="efmp-roster__pdf-name">' + esc(p.title || "Concert") + '</div>' +
+          '<div class="efmp-roster__pdf-meta">' + esc(when) + '</div></div>' +
+        '<a class="efmp-roster__btn" href="' + esc(p.url) + '" target="_blank" rel="noopener noreferrer">View Program</a>' +
+        '</div>';
+    });
+    html += '</div></div>';
+    list.innerHTML = html;
+    announce(programList.length + (programList.length === 1 ? " concert program" : " concert programs") + " shown.");
+  }
+
   // ---- info tabs (Placement Auditions / Sectionals / Studio Classes / Concerto) --
   // These tabs are informational (a title, some schedule lines, and an
   // instrument -> location table), not event calendars. Render them generically:
@@ -1680,10 +1716,11 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "crew") renderCrew();
+    else if (sub.kind === "programs") renderPrograms();
     else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
@@ -1970,6 +2007,31 @@
       out.push(entry);
     }
     out.sort(function (a, b) { var ka = a.key === null ? 9999 : a.key, kb = b.key === null ? 9999 : b.key; return ka - kb || a.startMin - b.startMin || a.seq - b.seq; });
+    return out;
+  }
+
+  // Concert PROGRAM list for the "Concert Programs" pill. The distilled blob carries
+  // a lean eventGrid tab (StartDate, Title, ProgramURL only, from the same Event Grid
+  // the public /programs page reads). Build a date-sorted list of
+  // { key, date, title, url } for concerts that have a published program PDF. This is
+  // a standalone list, NOT joined onto calendar rows: the internal Master Calendar and
+  // the public Event Grid name concerts differently and share no reliable key, so a
+  // per-row join mis-places programs; the Event Grid is the clean, canonical source.
+  function parseProgramList(rows) {
+    var out = [];
+    if (!rows || !rows.length) return out;
+    var header = rows[0].map(function (h) { return clean(h).toLowerCase(); });
+    var di = header.indexOf("startdate"); if (di === -1) di = header.indexOf("date");
+    var ti = header.indexOf("title");
+    var pi = header.indexOf("programurl"); if (pi === -1) pi = header.indexOf("program url");
+    if (di === -1 || pi === -1) return out;
+    for (var r = 1; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var url = safeUrl(row[pi]); if (!url) continue;
+      var dstr = clean(row[di]);
+      out.push({ key: dateKey(dstr), date: dstr, title: clean(ti !== -1 ? row[ti] : ""), url: url });
+    }
+    out.sort(function (a, b) { return (a.key === null ? 9999 : a.key) - (b.key === null ? 9999 : b.key); });
     return out;
   }
 
@@ -2296,6 +2358,7 @@
     parseEnsembleDetails(data.esoDetails, "ESO", ensDetail);
     parseEnsembleDetails(data.gsoDetails, "GSO", ensDetail);
     parseCalendar(data.calendar);
+    programList = parseProgramList(data.programLinks);   // Concert Programs pill (from the Event Grid, via the blob)
     efoRows = parseEFO(data.efo);
     efoAnchors = buildEfoAnchors();
     ensAnchors = { ESO: buildEnsAnchors("ESO"), GSO: buildEnsAnchors("GSO") };
@@ -2430,7 +2493,7 @@
   function blobToData(blob) {
     var w = (blob && blob.workbooks) || {};
     var mc = w.masterCalendar || {}, fp = w.facultyPortal || {},
-        fr = w.facultyRoster || {}, cw = w.crew || {};
+        fr = w.facultyRoster || {}, cw = w.crew || {}, eg = w.eventGrid || {};
     return {
       calendar: mc["Master Calendar"] || null,
       legend: mc["Legend"] || null,
@@ -2451,7 +2514,8 @@
       facultyContacts: fp["FacultyContact"] || null,
       efoRostersRaw: fp["Rosters"] || null,
       facultyRoster: fr["EFM 2026 Faculty"] || null,
-      crew: cw["Stage Crew"] || null
+      crew: cw["Stage Crew"] || null,
+      programLinks: eg["EventGridToWebsite"] || null
     };
   }
 
