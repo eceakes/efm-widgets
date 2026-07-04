@@ -458,6 +458,33 @@
   var peopleView = "faculty";   // People tab third-level view: "faculty" | "staff"
   var PEOPLE_VIEWS = [{ label: "Faculty", key: "faculty" }, { label: "Staff", key: "staff" }];
 
+  // ---- remember the last-viewed screen across a page refresh -------------
+  // Persist the current tab / sub-pill / third-level selection to sessionStorage
+  // (per browser tab; survives a refresh, resets on a brand-new visit), then
+  // restore it ONCE on the first build so a refresh returns the user to where they
+  // were instead of the default tab. Restoring only once means SWR/auto-refresh
+  // rebuilds never yank the user off their current view.
+  var NAV_KEY = "efmp-nav-v1";
+  var _navRestored = false;
+  function _ss() { try { return window.sessionStorage; } catch (e) { return null; } }
+  function saveNav() {
+    var ss = _ss(); if (!ss) return;
+    try { ss.setItem(NAV_KEY, JSON.stringify({ t: topSel, s: subSel, w: weekSel, p: peopleView, c: chamberGroup, se: sectionalEns })); } catch (e) {}
+  }
+  function restoreNav() {
+    var ss = _ss(); if (!ss) return;
+    var st; try { st = JSON.parse(ss.getItem(NAV_KEY) || "null"); } catch (e) { st = null; }
+    if (!st) return;
+    if (st.t && NAV.some(function (n) { return n.id === st.t; })) topSel = st.t;
+    if (st.s && typeof st.s === "object") {
+      NAV.forEach(function (n) { var i = st.s[n.id]; if (typeof i === "number" && i >= 0 && i < n.subs.length) subSel[n.id] = i; });
+    }
+    if (st.w === null || typeof st.w === "number") weekSel = st.w;
+    if (st.p === "faculty" || st.p === "staff") peopleView = st.p;
+    if (typeof st.c === "number" && st.c >= 0) chamberGroup = st.c;
+    if (st.se === "ESO" || st.se === "GSO") sectionalEns = st.se;
+  }
+
   var root, topnav, subnav, subnav2, list, status, banner, searchBox, controls, ticker, modal, icsBtn, srLive, lastFocus;
 
   function currentTop() {
@@ -1710,6 +1737,7 @@
   }
 
   function renderList() {
+    saveNav();   // remember the current screen so a refresh returns here
     var top = currentTop();
     var sub = top.subs[subSel[top.id]] || top.subs[0];
     modalData = [];
@@ -2350,6 +2378,7 @@
       t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
     });
     NAV = NAV.filter(function (t) { return t.subs.length; });
+    if (!_navRestored) { _navRestored = true; restoreNav(); }   // restore last-viewed screen on first load
     NAV.forEach(function (t) { if (subSel[t.id] >= t.subs.length) subSel[t.id] = 0; });
 
     // ESO/GSO Details + program PDFs come from their dedicated tabs; build the
@@ -2369,13 +2398,31 @@
     renderList();
   }
 
+  var OFFICE_EMAIL = "info@easternfestivalofmusic.org";
+  // Load failure -> a real error card with a working Retry button + a contact,
+  // instead of a dead-end message. Retry re-runs the same blob-first load.
   function fail(err) {
-    if (status) {
-      status.textContent = "Could not load the schedule right now. Please refresh the page, or contact the EFM office.";
-      status.hidden = false;
-      announce(status.textContent);
-    }
     console.error("EFM schedule load failed:", err);
+    if (status) status.hidden = true;
+    if (!list) return;
+    list.innerHTML =
+      '<div class="efmp-loadfail" role="alert" style="max-width:520px;margin:28px auto;padding:24px;background:#fff;border:1px solid #e3e3e3;border-radius:12px;text-align:center;color:#222;">' +
+        '<div role="heading" aria-level="2" style="font-size:1.2em;font-weight:700;margin:0 0 8px;color:#222;">We could not load the schedule</div>' +
+        '<p style="margin:0 0 18px;color:#444;line-height:1.4;">This is usually a brief network hiccup. Please try again.</p>' +
+        '<button type="button" class="efmp-loadfail__retry" style="font:inherit;font-weight:600;padding:11px 22px;border:0;border-radius:8px;background:#0e178e;color:#fff;cursor:pointer;">Try again</button>' +
+        '<p style="margin:18px 0 0;font-size:.9em;color:#555;">Still not loading? Email <a href="mailto:' + OFFICE_EMAIL + '" style="color:#0e178e;">' + OFFICE_EMAIL + '</a></p>' +
+      '</div>';
+    var btn = list.querySelector(".efmp-loadfail__retry");
+    if (btn) btn.addEventListener("click", retryLoad);
+  }
+  function retryLoad() {
+    if (list) list.innerHTML = "";
+    if (status) { status.textContent = "Loading the schedule…"; status.hidden = false; announce("Reloading the schedule…"); }
+    startFetches().then(function (data) {
+      if (!data || SOURCES.some(function (s) { return s.required && !data[s.key]; })) { fail(new Error("required tab unavailable")); return; }
+      writeCache(data);
+      build(data);
+    }, function (e) { fail(e); });
   }
 
   // Load every source tab in parallel. Each tab fetches by its known gid FIRST
@@ -2531,12 +2578,73 @@
     });
   }
 
+  // ---- live auto-refresh ------------------------------------------------
+  // While the tab is visible, re-read the blob every couple of minutes and, only
+  // if it actually changed, re-render in place. Also re-checks the instant the tab
+  // regains focus, so a portal left open picks up sheet edits (which rebuild the
+  // blob within ~1 min) with no manual reload. Blob-only (no direct-fetch fan-out
+  // on a poll), skips while a modal is open, and reuses the idempotent build().
+  var lastDataStr = null;
+  var _autoRefreshOn = false;
+  function refresh() {
+    if (!BLOB_ENABLED || !built || document.hidden) return;
+    if (modal && !modal.hidden) return;   // don't yank the UI out from under an open dialog
+    readDistilledBlob().then(function (blob) {
+      var data = blobToData(blob);
+      if (!data.calendar || !data.calendar.length) return;   // guard a bad/partial read
+      var s; try { s = JSON.stringify(data); } catch (e) { return; }
+      if (s === lastDataStr) return;   // unchanged -> do nothing
+      lastDataStr = s;
+      writeCache(data);
+      build(data);
+      announce("Schedule updated.");
+    }).catch(function () {});   // a failed poll just leaves the current view up
+  }
+  function startAutoRefresh() {
+    if (_autoRefreshOn || !BLOB_ENABLED) return;
+    _autoRefreshOn = true;
+    setInterval(refresh, 120000);   // every 2 minutes, visible tabs only
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+  }
+
   // ---- boot --------------------------------------------------------------
   // Wrapped so block/script order never matters, and so the script no-ops on
   // any page that doesn't contain the widget.
+  // ---- Add to Home Screen (mobile) --------------------------------------
+  // The widget lives in the page body, so it injects the home-screen tags into
+  // <head> at boot (idempotently). Duda already sets a tiny favicon + the
+  // (deprecated) apple-mobile-web-app-capable, but NO apple-touch-icon and only
+  // the long generic site title, so pinning the portal today gives a page
+  // -screenshot icon and a bad label. We add a short title, theme color,
+  // mobile-web-app-capable, and a small manifest; set APP_ICON_URL to a hosted
+  // 180x180 PNG for a crisp iOS/Android home-screen icon.
+  var APP_TITLE = "EFM Schedule";
+  var APP_ICON_URL = "";   // paste a hosted 180x180 PNG url here for the home-screen icon
+  var APP_THEME = "#0e178e";
+  function addHomeScreenTags() {
+    var head = document.head; if (!head) return;
+    function meta(name, content) {
+      if (head.querySelector('meta[name="' + name + '"]')) return;
+      var m = document.createElement("meta"); m.setAttribute("name", name); m.setAttribute("content", content); head.appendChild(m);
+    }
+    meta("apple-mobile-web-app-title", APP_TITLE);
+    meta("application-name", APP_TITLE);
+    meta("mobile-web-app-capable", "yes");
+    if (!head.querySelector('meta[name="theme-color"]')) meta("theme-color", APP_THEME);
+    if (APP_ICON_URL && !head.querySelector('link[rel~="apple-touch-icon"]')) {
+      var ic = document.createElement("link"); ic.setAttribute("rel", "apple-touch-icon"); ic.setAttribute("sizes", "180x180"); ic.setAttribute("href", APP_ICON_URL); head.appendChild(ic);
+    }
+    if (!head.querySelector('link[rel="manifest"]')) {
+      var mf = { name: "EFM Schedule", short_name: APP_TITLE, start_url: location.pathname, display: "standalone", background_color: "#ffffff", theme_color: APP_THEME, icons: APP_ICON_URL ? [{ src: APP_ICON_URL, sizes: "180x180", type: "image/png" }] : [] };
+      var ml = document.createElement("link"); ml.setAttribute("rel", "manifest");
+      ml.setAttribute("href", "data:application/manifest+json," + encodeURIComponent(JSON.stringify(mf))); head.appendChild(ml);
+    }
+  }
+
   function boot() {
     root = document.getElementById("efm-portal");
     if (!root) return;
+    addHomeScreenTags();
     topnav = document.getElementById("efmp-topnav");
     subnav = document.getElementById("efmp-subnav");
     // Third-level nav (roster weeks under ESO/GSO Schedule), injected so the pasted
@@ -2641,6 +2749,8 @@
       writeCache(data);
       if (!built || freshStr === null || freshStr !== cacheStr) build(data);   // first paint, or the data changed
       cacheStr = freshStr;
+      lastDataStr = freshStr;
+      startAutoRefresh();
     }).catch(function (e) { if (!built) fail(e); });
   }
   // (#2) Kick the data fetch off the moment this script runs (the host div sits just
