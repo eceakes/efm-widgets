@@ -306,6 +306,8 @@
   #efm-portal .efmp-info__head + .efmp-info__dept { margin-top: 10px; }
   #efm-portal .efmp-info p { color: #2b3042; font-size: 14.5px; line-height: 1.5; margin: 0 0 5px; }
   #efm-portal .efmp-info a { color: var(--efmp-ink); }
+  /* Ghost download button for an info-tab "link row" (e.g. a PDF announcement). */
+  #efm-portal .efmp-info__link { margin: 8px 0 12px; }
   /* key/value rows for the info tabs (Placement Auditions, Sectionals, etc.) */
   #efm-portal .efmp-kv {
     display: flex; gap: 14px; align-items: baseline;

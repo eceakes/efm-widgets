@@ -1406,7 +1406,16 @@
       }).filter(Boolean);
       if (!a && !rest.length) return;                              // blank / marker-only row
       if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
-      if (rest.length) {                                           // label + value -> key/value row
+      if (rest.length === 1 && /^https?:\/\//i.test(rest[0]) && safeUrl(rest[0])) {
+        // A "link row": a label plus a single URL (e.g. a PDF announcement). Render a
+        // ghost download button, not a raw un-clickable URL, so it matches the student
+        // portal. A generic label ("Link"/"PDF"/...) becomes a smart default; any other
+        // first-column label is kept as the button text, so staff set the wording.
+        var lu = safeUrl(rest[0]), lpdf = /\.pdf(\?|#|$)/i.test(lu);
+        var ltxt = /^(link|url|pdf|download|file|document)s?$/i.test(a) ? (lpdf ? "Download PDF" : "Open link") : a;
+        html += '<a class="efmfp-modal__cal efmfp-modal__cal--ghost efmfp-info__link" href="' + esc(lu) +
+          '" target="_blank" rel="noopener noreferrer">' + esc(ltxt) + "</a>";
+      } else if (rest.length) {                                    // label + value -> key/value row
         html += '<div class="efmfp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
       } else if (first) {                                          // first cell = the tab title
         html += '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(a) + "</div>";

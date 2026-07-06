@@ -1557,7 +1557,17 @@
       var rest = r.map(function (c, ci) { return (ci === 0 || drop[ci]) ? "" : (c || "").trim(); }).filter(Boolean);
       if (!a && !rest.length) return;                            // blank (or a dropped-cell) row
       if (!a) { html += "<p>" + rest.map(esc).join(" &#183; ") + "</p>"; return; }
-      if (rest.length) {                                         // label + value -> key/value row
+      if (rest.length === 1 && /^https?:\/\//i.test(rest[0]) && safeUrl(rest[0])) {
+        // A "link row": a label plus a single URL (e.g. a PDF announcement). Render a
+        // ghost download button, not a raw un-clickable URL. Ghost is ink-on-white, so
+        // the .efmp-info a (ink) rule leaves it readable inside .efmp-info. A generic
+        // label ("Link"/"PDF"/...) becomes a smart default; any other first-column label
+        // is kept as the button text, so staff can set the wording from the sheet.
+        var lu = safeUrl(rest[0]), lpdf = /\.pdf(\?|#|$)/i.test(lu);
+        var ltxt = /^(link|url|pdf|download|file|document)s?$/i.test(a) ? (lpdf ? "Download PDF" : "Open link") : a;
+        html += '<a class="efmp-modal__cal efmp-modal__cal--ghost efmp-info__link" href="' + esc(lu) +
+          '" target="_blank" rel="noopener noreferrer">' + esc(ltxt) + "</a>";
+      } else if (rest.length) {                                  // label + value -> key/value row
         html += '<div class="efmp-kv"><b>' + esc(a) + "</b><span>" + rest.map(esc).join(" &#183; ") + "</span></div>";
       } else if (first) {                                        // first cell = the tab title
         html += '<div class="efmp-info__head" role="heading" aria-level="3">' + esc(a) + "</div>";

@@ -512,6 +512,8 @@
   #efm-faculty-portal .efmfp-modal__cal--ghost { background: #fff; color: var(--efmfp-ink); }
   #efm-faculty-portal .efmfp-modal__cal--ghost:hover { background: var(--efmfp-soft); color: var(--efmfp-ink); border-color: var(--efmfp-hover); }
   #efm-faculty-portal .efmfp-cal__opt .efmfp-modal__cal { margin: 0 8px 4px 0; }
+  /* Ghost download button for an info-tab "link row" (e.g. a PDF announcement). */
+  #efm-faculty-portal .efmfp-info__link { margin: 8px 0 12px; }
   #efm-faculty-portal .efmfp-cal__what {
     background: var(--efmfp-soft); border: 1px solid var(--efmfp-rule);
     border-radius: 12px; padding: 12px 14px; margin: 0 0 16px;
