@@ -114,6 +114,14 @@
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
+  // Student Handbook: the "Student Handbook" row in the General Information "Festival
+  // Documents For Print" list opens this FlippingBook flipbook in a modal (matching the
+  // student portal), with the PDF as the accessible fallback inside it. Blank
+  // HANDBOOK_EMBED_URL to keep the plain PDF download button. FlippingBook sends no
+  // X-Frame-Options and no frame-ancestors, so it embeds cleanly.
+  var HANDBOOK_URL = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/2026+Student+Handbook.pdf";
+  var HANDBOOK_EMBED_URL = "https://online.flippingbook.com/view/282721846/";
+
   // Alexander Technique instructor headshots bundled in the repo (served via the same
   // CDN base as the campus map, so they track the deployed commit). Keyed by
   // "lastname|first-initial"; a sheet Headshot/Photo URL overrides this, and a missing
@@ -776,10 +784,17 @@
   // The roster-style "awesome download button", reused for Library Documents.
   function docButtonHTML(title, url) {
     var isPdf = /\.pdf(\?|#|$)/i.test(url);
+    // The Student Handbook opens as an interactive flipbook in a modal (with the PDF as
+    // the accessible fallback inside it) instead of linking straight to the file.
+    var isHandbook = HANDBOOK_EMBED_URL && /\bstudent handbook\b/i.test(title || "");
+    var meta = isHandbook ? "Interactive flipbook" : (isPdf ? "PDF document" : "Document");
+    var action = isHandbook
+      ? '<button type="button" class="efmfp-roster__btn" data-handbook-open>Open flipbook</button>'
+      : '<a class="efmfp-roster__btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">View / Download' + (isPdf ? " PDF" : "") + "</a>";
     return '<div class="efmfp-roster__pdf"><div>' +
         '<div class="efmfp-roster__pdf-name">' + esc(title || "Document") + "</div>" +
-        '<div class="efmfp-roster__pdf-meta">' + (isPdf ? "PDF document" : "Document") + "</div></div>" +
-        '<a class="efmfp-roster__btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">View / Download' + (isPdf ? " PDF" : "") + "</a></div>";
+        '<div class="efmfp-roster__pdf-meta">' + meta + "</div></div>" +
+        action + "</div>";
   }
   // Parse the Faculty-Portal "General-Information" tab into ordered blocks. A
   // heading line that follows a blank row (or is first) is a major section head;
@@ -1955,7 +1970,22 @@
       });
     } });
   }
-  function closeModal() { modal.hidden = true; document.body.classList.remove("efmfp-modal-open"); setBgInert(false); if (lastFocus && lastFocus.focus) lastFocus.focus(); }
+  // Open the Student Handbook flipbook in the shared modal (wide "--flip" variant).
+  // Falls back to opening the PDF in a new tab if no flipbook URL is configured.
+  function openHandbookModal() {
+    var flip = HANDBOOK_EMBED_URL, pdf = HANDBOOK_URL;
+    if (!flip) { if (pdf) window.open(pdf, "_blank", "noopener"); return; }
+    modal.classList.add("efmfp-modal--flip");
+    var body =
+      '<div class="efmfp-flip">' +
+        '<iframe class="efmfp-flip__frame" title="2026 Student Handbook (interactive flipbook)" allowfullscreen scrolling="no" src="' + esc(flip) + '"></iframe>' +
+        '<p class="efmfp-flip__fallback">Trouble viewing it here? <a href="' + esc(flip) + '" target="_blank" rel="noopener noreferrer">Open in a new tab.</a>' +
+          (pdf ? ' Or <a href="' + esc(pdf) + '" target="_blank" rel="noopener noreferrer">download the PDF</a>.' : '') +
+        '</p>' +
+      '</div>';
+    openModal({ title: "2026 Student Handbook", html: body });
+  }
+  function closeModal() { modal.hidden = true; modal.classList.remove("efmfp-modal--flip"); document.body.classList.remove("efmfp-modal-open"); setBgInert(false); if (lastFocus && lastFocus.focus) lastFocus.focus(); }
   function trapKey(e) {
     if (e.key === "Escape") { closeModal(); return; }
     if (e.key !== "Tab") return;
@@ -2871,6 +2901,7 @@
     modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
     modal.addEventListener("keydown", trapKey);
 
+    list.addEventListener("click", function (e) { var b = e.target.closest ? e.target.closest("[data-handbook-open]") : null; if (b) { e.preventDefault(); openHandbookModal(); } });
     list.addEventListener("click", function (e) { var r = e.target.closest ? e.target.closest("[data-mi]") : null; if (r) openModal(modalData[+r.getAttribute("data-mi")]); });
     list.addEventListener("keydown", function (e) { if (e.key !== "Enter" && e.key !== " ") return; var r = e.target.closest ? e.target.closest("[data-mi]") : null; if (r) { e.preventDefault(); openModal(modalData[+r.getAttribute("data-mi")]); } });
 

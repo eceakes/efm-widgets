@@ -71,6 +71,11 @@
   // it is an absolute URL rather than one derived from CDN_BASE. Update here if
   // the handbook is re-posted to a new URL.
   var HANDBOOK_URL = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/2026+Student+Handbook.pdf";
+  // The same handbook as an interactive FlippingBook flipbook, opened in a modal from
+  // the Student Handbook pill. The PDF stays as the screen-reader-accessible fallback;
+  // blank this to fall back to a plain PDF button. FlippingBook sends no X-Frame-Options
+  // and no frame-ancestors, so it embeds cleanly (same as the Concert Programs book).
+  var HANDBOOK_EMBED_URL = "https://online.flippingbook.com/view/282721846/";
 
   // Crew Documents: a standalone published workbook (NOT the Master Calendar) of crew
   // document links. The "Stage Crew" tab is "Document Title | Link". Resolved by NAME
@@ -81,6 +86,15 @@
   var CREW_TAB = "Stage Crew";
   var CREW_GID = "447028267";
 
+  // "Weekly Schedules" tab (in the Master Calendar workbook): "Week label | PDF link".
+  // Surfaced as the prominent Weekly Schedule pill under General Information. It is
+  // fetched INDEPENDENTLY of the distilled blob (see withWeekly), so it works the
+  // instant the embed ships, even before the distiller is redeployed to include it in
+  // the blob; once the blob carries it, that standalone fetch is skipped. Resolved by
+  // NAME (gid is the fast-path fallback) so a sheet rebuild that moves gids won't break it.
+  var WEEKLY_TAB = "Weekly Schedules";
+  var WEEKLY_GID = "968959946";
+
   // Tabs to fetch: key -> sheet tab name + known gid. calendar is required. gid is
   // tried first (fast path, keeps the directory round-trip off the critical path);
   // the name is the fallback when a sheet rebuild moves gids (resolved in run()).
@@ -89,6 +103,9 @@
     { key: "legend", tab: TAB_LEGEND, gid: "578774100" },
     { key: "announcements", tab: "Announcements", gid: "1387308195" },
     { key: "generalInfo", tab: "General Information", gid: "1031874194" },
+    // Weekly Schedules: current week's schedule PDF(s). Fetched independently of the
+    // blob (withWeekly); this entry supplies it on the direct-fetch fallback path too.
+    { key: "weekly", tab: "Weekly Schedules", gid: "968959946" },
     { key: "lessons", tab: "Faculty Lesson Locations", gid: "1473494961" },
     { key: "staff", tab: "Staff List", gid: "945898419" },
     { key: "placement", tab: "Placement Auditions", gid: "1024060038" },
@@ -130,6 +147,7 @@
   // the SWR cache->fresh double-build never duplicates appended room tabs.
   var NAV_TEMPLATE = [
     { id: "info", label: "General Information", subs: [
+      { label: "Weekly Schedule", kind: "weekly" },
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
       { label: "People", kind: "people" },
@@ -442,6 +460,7 @@
   var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var crewDocs = [];           // [{ title, link }] from the Crew Documents (Stage Crew) tab
+  var weeklySchedules = [];    // [{ title, link }] from the Master Calendar "Weekly Schedules" tab (Weekly Schedule pill)
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var programList = [];        // [{ key, date, clock, title, url }] concerts with a published program, from the Event Grid (via the blob)
   var programByDateTime = {};  // "dateKey|clock" -> concert ProgramURL, joined onto calendar rows by date + start time
@@ -1378,14 +1397,113 @@
   function renderHandbook() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
-    list.innerHTML =
+    var pdf = HANDBOOK_URL, flip = HANDBOOK_EMBED_URL;
+    var html =
       '<div class="efmp-handbook">' +
         '<p class="efmp-handbook__lead">The <b>2026 Student Handbook</b> is your guide to the festival &#8212; ' +
-          'policies, daily life, contacts, and everything you need to know for your time at Eastern.</p>' +
-        '<a class="efmp-modal__cal efmp-handbook__open" href="' + esc(HANDBOOK_URL) + '" target="_blank" rel="noopener noreferrer">Open the Student Handbook (PDF)</a>' +
-        '<p class="efmp-handbook__hint">Opens in a new tab. You can read it online or download it to your phone.</p>' +
-      '</div>';
+          'policies, daily life, contacts, and everything you need to know for your time at Eastern.</p>';
+    if (flip) html +=
+        // Opens the interactive flipbook in a modal; the PDF stays as the accessible fallback.
+        '<button type="button" class="efmp-modal__cal efmp-handbook__open" data-handbook-open>Open the Student Handbook</button>' +
+        '<p class="efmp-handbook__hint">' + (pdf
+          ? 'Opens an interactive flipbook. Prefer a file? <a href="' + esc(pdf) + '" target="_blank" rel="noopener noreferrer">Download the PDF</a>.'
+          : 'Opens an interactive flipbook you can read online.') + '</p>';
+    else if (pdf) html +=
+        '<a class="efmp-modal__cal efmp-handbook__open" href="' + esc(pdf) + '" target="_blank" rel="noopener noreferrer">Open the Student Handbook (PDF)</a>' +
+        '<p class="efmp-handbook__hint">Opens in a new tab. You can read it online or download it to your phone.</p>';
+    html += '</div>';
+    list.innerHTML = html;
+    var btn = list.querySelector("[data-handbook-open]");
+    if (btn) btn.addEventListener("click", openHandbookModal);
     announce("Student handbook shown.");
+  }
+
+  // Open the Student Handbook flipbook in the shared modal (wide "--flip" variant).
+  // Falls back to opening the PDF in a new tab if no flipbook URL is configured.
+  function openHandbookModal() {
+    var flip = HANDBOOK_EMBED_URL, pdf = HANDBOOK_URL;
+    if (!flip) { if (pdf) window.open(pdf, "_blank", "noopener"); return; }
+    modal.classList.add("efmp-modal--flip");
+    var body =
+      '<div class="efmp-flip">' +
+        '<iframe class="efmp-flip__frame" title="2026 Student Handbook (interactive flipbook)" allowfullscreen scrolling="no" src="' + esc(flip) + '"></iframe>' +
+        '<p class="efmp-flip__fallback">Trouble viewing it here? <a href="' + esc(flip) + '" target="_blank" rel="noopener noreferrer">Open in a new tab.</a>' +
+          (pdf ? ' Or <a href="' + esc(pdf) + '" target="_blank" rel="noopener noreferrer">download the PDF</a>.' : '') +
+        '</p>' +
+      '</div>';
+    openModal({ title: "2026 Student Handbook", html: body });
+  }
+
+  // Parse the "Weekly Schedules" tab into [{title, link}]. Shape is "Week label | PDF
+  // link" (same as the Crew Documents tab). A header row is OPTIONAL: if the first row's
+  // cells are literal headers ("week"/"title"/"label" + "link"/"url") it is skipped;
+  // otherwise every non-blank row is data. Columns fall back to col 0 (label) / col 1
+  // (link). A data row like "Week 2 | https://...pdf" never trips the header test (its
+  // cells aren't bare header tokens), so a header-less sheet parses correctly.
+  function parseWeekly(rows) {
+    if (!rows || !rows.length) return [];
+    var ti = 0, li = 1, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      var t = lc.indexOf("week"); if (t === -1) t = lc.indexOf("title"); if (t === -1) t = lc.indexOf("week label"); if (t === -1) t = lc.indexOf("label");
+      var l = lc.indexOf("link"); if (l === -1) l = lc.indexOf("url"); if (l === -1) l = lc.indexOf("pdf");
+      if (t !== -1 && l !== -1) { ti = t; li = l; start = h + 1; break; }
+    }
+    var out = [];
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r] || [];
+      var title = clean(row[ti]), link = safeUrl(row[li]);
+      if (!title && !link) continue;
+      out.push({ title: title, link: link });
+    }
+    return out;
+  }
+
+  // General Information -> "Weekly Schedule" pill (the section's first/default pill, so
+  // it is the prominent landing view). The current week (the LAST/bottom-most row, since
+  // each new week is appended at the end of the sheet) shows as a big hero download; any
+  // earlier weeks list below as the same PDF cards the Crew Documents pill uses. Kept OUT
+  // of .efmp-info so the .efmp-info a (ink) rule can't darken the white hero button text.
+  function renderWeekly() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var weeks = weeklySchedules.filter(function (w) { return w.title || w.link; });
+    if (!weeks.length) {
+      list.innerHTML = '<div class="efmp-weekly">' +
+        '<div class="efmp-info__head" role="heading" aria-level="3">Weekly Schedule</div>' +
+        '<p class="efmp-weekly__empty">This week&#8217;s schedule will be posted here as soon as it is ready. Check back before the week begins.</p>' +
+        '</div>';
+      announce("The weekly schedule is not posted yet.");
+      return;
+    }
+    var current = weeks[weeks.length - 1];             // newest row = current week
+    var earlier = weeks.slice(0, weeks.length - 1);
+    var isPdf = /\.pdf(\?|#|$)/i.test(current.link);
+    var html = '<div class="efmp-weekly">' +
+      '<div class="efmp-weekly__hero">' +
+        '<div class="efmp-weekly__eyebrow" role="heading" aria-level="3">This Week&#8217;s Schedule</div>' +
+        '<div class="efmp-weekly__title">' + esc(current.title || "Weekly Schedule") + '</div>' +
+        (current.link
+          ? '<a class="efmp-modal__cal efmp-weekly__open" href="' + esc(current.link) + '" target="_blank" rel="noopener noreferrer">Open ' + esc(current.title || "the schedule") + (isPdf ? " (PDF)" : "") + '</a>' +
+            '<p class="efmp-weekly__hint">Opens in a new tab. Save it to your phone so you always have this week&#8217;s plan.</p>'
+          : '<p class="efmp-weekly__hint">The link for this week will appear here shortly.</p>') +
+      '</div>';
+    if (earlier.length) {
+      html += '<div class="efmp-info__head efmp-weekly__earlier-head" role="heading" aria-level="3">Earlier Weeks</div>' +
+        '<div class="efmp-crew-list">';
+      earlier.slice().reverse().forEach(function (w) {   // most recent earlier week first
+        var p = /\.pdf(\?|#|$)/i.test(w.link);
+        html += '<div class="efmp-roster__pdf"><div>' +
+            '<div class="efmp-roster__pdf-name">' + esc(w.title || "Weekly Schedule") + '</div>' +
+            '<div class="efmp-roster__pdf-meta">' + (w.link ? (p ? "PDF document" : "Document") : "Not posted yet") + '</div></div>' +
+          (w.link ? '<a class="efmp-roster__btn" href="' + esc(w.link) + '" target="_blank" rel="noopener noreferrer">View / Download' + (p ? " PDF" : "") + '</a>' : "") +
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    list.innerHTML = html;
+    announce("Weekly schedule shown: " + (current.title || "this week") + ".");
   }
 
   // Parse the Crew Documents (Stage Crew) tab: "Document Title | Link" -> [{title,link}].
@@ -1765,9 +1883,10 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
+    else if (sub.kind === "weekly") renderWeekly();
     else if (sub.kind === "crew") renderCrew();
     else if (sub.kind === "programs") renderPrograms();
     else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
@@ -1954,6 +2073,7 @@
   }
   function closeModal() {
     modal.hidden = true;
+    modal.classList.remove("efmp-modal--flip");   // drop the wide flipbook variant if it was on
     document.body.classList.remove("efmp-modal-open");
     setBgInert(false);   // restore the background before returning focus to it
     if (lastFocus && lastFocus.focus) lastFocus.focus();
@@ -2376,6 +2496,7 @@
     if (chamberGroup >= chamberData.length) chamberGroup = 0;
     personnelManagers = data.rosters ? parsePersonnelManagers(data.rosters) : {};
     crewDocs = parseCrew(data.crew);
+    weeklySchedules = parseWeekly(data.weekly);
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
@@ -2569,6 +2690,7 @@
       legend: mc["Legend"] || null,
       announcements: mc["Announcements"] || null,
       generalInfo: mc["General Information"] || null,
+      weekly: mc["Weekly Schedules"] || null,
       lessons: mc["Faculty Lesson Locations"] || null,
       staff: mc["Staff List"] || null,
       placement: mc["Placement Auditions"] || null,
@@ -2589,16 +2711,46 @@
     };
   }
 
-  // Blob-first, with a live fallback to the direct per-tab fetch path.
+  // Fetch just the "Weekly Schedules" tab (Master Calendar): known gid first (fast
+  // path), then resolve by NAME if that gid ever moves on a rebuild. All on
+  // docs.google.com (the campus-safe host). Returns rows, or null on any failure.
+  function fetchWeeklyTab() {
+    return loadCSV(CSV + "&gid=" + WEEKLY_GID).then(function (r) { return r && r.length ? r : null; }, function () { return null; })
+      .then(function (r) {
+        if (r) return r;
+        return resolveTabGids().then(function (map) {
+          var gid = map[WEEKLY_TAB];
+          return (gid && gid !== WEEKLY_GID) ? loadCSV(CSV + "&gid=" + gid).then(function (r2) { return r2 && r2.length ? r2 : null; }, function () { return null; }) : null;
+        }, function () { return null; });
+      });
+  }
+  // Ensure data.weekly is populated. If the blob (or the direct-fetch path) already
+  // carried "Weekly Schedules", use it; otherwise fetch it standalone and attach it.
+  // This keeps the Weekly Schedule pill working the moment the embed ships, before the
+  // distiller is redeployed to emit that tab, and costs nothing once it does (the blob
+  // supplies it and this extra fetch is skipped). Always resolves (never rejects).
+  function withWeekly(data) {
+    if (!data) return Promise.resolve(data);
+    if (data.weekly && data.weekly.length) return Promise.resolve(data);
+    return fetchWeeklyTab().then(function (rows) { data.weekly = rows; return data; }, function () { return data; });
+  }
+
+  // Blob-first, with a live fallback to the direct per-tab fetch path. Either way,
+  // withWeekly backfills the Weekly Schedules tab if it wasn't in the source data.
   function startFetches() {
-    if (!BLOB_ENABLED) return startFetchesDirect();
-    return readDistilledBlob().then(function (blob) {
-      var data = blobToData(blob);
-      if (data.calendar && data.calendar.length) return data;   // required tab present
-      throw new Error("blob missing calendar");
-    }).catch(function () {
-      return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
-    });
+    var base;
+    if (!BLOB_ENABLED) {
+      base = startFetchesDirect();
+    } else {
+      base = readDistilledBlob().then(function (blob) {
+        var data = blobToData(blob);
+        if (data.calendar && data.calendar.length) return data;   // required tab present
+        throw new Error("blob missing calendar");
+      }).catch(function () {
+        return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
+      });
+    }
+    return base.then(withWeekly);
   }
 
   // ---- live auto-refresh ------------------------------------------------
@@ -2615,12 +2767,14 @@
     readDistilledBlob().then(function (blob) {
       var data = blobToData(blob);
       if (!data.calendar || !data.calendar.length) return;   // guard a bad/partial read
-      var s; try { s = JSON.stringify(data); } catch (e) { return; }
-      if (s === lastDataStr) return;   // unchanged -> do nothing
-      lastDataStr = s;
-      writeCache(data);
-      build(data);
-      announce("Schedule updated.");
+      return withWeekly(data).then(function (d) {             // backfill Weekly Schedules if the blob lacks it
+        var s; try { s = JSON.stringify(d); } catch (e) { return; }
+        if (s === lastDataStr) return;   // unchanged -> do nothing
+        lastDataStr = s;
+        writeCache(d);
+        build(d);
+        announce("Schedule updated.");
+      });
     }).catch(function () {});   // a failed poll just leaves the current view up
   }
   function startAutoRefresh() {

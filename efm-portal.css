@@ -112,6 +112,28 @@
   #efm-portal .efmp-handbook__open { font-size: 14px; padding: 11px 20px; }
   #efm-portal .efmp-handbook__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.5; margin: 14px 0 0; }
 
+  /* --- weekly schedule tab (the prominent first pill under General Information) ---
+     Kept OUT of .efmp-info so the .efmp-info a (ink) rule can't darken the white hero
+     button; the hero is a soft-tinted card so it reads as the headline of the page. */
+  #efm-portal .efmp-weekly { max-width: 680px; margin: 0 auto; }
+  #efm-portal .efmp-weekly__hero {
+    background: var(--efmp-soft); border: 1px solid var(--efmp-rule); border-radius: 16px;
+    padding: 28px 24px; text-align: center;
+  }
+  #efm-portal .efmp-weekly__eyebrow {
+    color: var(--efmp-role) !important; font-family: var(--efmp-name-font) !important; font-weight: 400 !important;
+    font-size: 13px !important; line-height: 1.2 !important; letter-spacing: .08em; text-transform: uppercase;
+    margin: 0 0 8px !important;
+  }
+  #efm-portal .efmp-weekly__title {
+    font-family: var(--efmp-name-font); color: var(--efmp-ink); font-size: 24px; line-height: 1.15; margin-bottom: 20px;
+  }
+  #efm-portal .efmp-weekly__open { font-size: 15px; padding: 13px 26px; }
+  #efm-portal .efmp-weekly__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.5; margin: 16px 0 0; }
+  #efm-portal .efmp-weekly__empty { color: var(--efmp-role); font-size: 14px; line-height: 1.6; margin: 8px 0 0; }
+  #efm-portal .efmp-weekly__earlier-head { text-align: left; }
+  #efm-portal .efmp-weekly .efmp-crew-list { margin-top: 12px; }
+
   /* --- rosters tab: seating-roster PDF + that cycle's services --- */
   #efm-portal .efmp-roster { max-width: 760px; margin: 0 auto; }
   /* Crew Documents: a stacked column of the roster-style download cards. Kept OUT of
@@ -520,6 +542,16 @@
   }
   #efm-portal .efmp-cal__hint { color: var(--efmp-role); font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
   body.efmp-modal-open { overflow: hidden; }
+
+  /* --- flipbook modal (Student Handbook): a wide variant of the shared modal --- */
+  #efm-portal .efmp-modal--flip .efmp-modal__box { max-width: min(1040px, 96vw); }
+  #efm-portal .efmp-flip__frame {
+    display: block; width: 100%; height: 72vh; min-height: 420px;
+    border: 1px solid var(--efmp-rule); border-radius: 10px; background: var(--efmp-soft);
+  }
+  #efm-portal .efmp-flip__frame:focus-visible { outline: 2px solid var(--efmp-hover); outline-offset: 2px; }
+  #efm-portal .efmp-flip__fallback { color: var(--efmp-role); font-size: 13px; text-align: center; margin: 12px 0 0; }
+  #efm-portal .efmp-flip__fallback a { color: var(--efmp-ink); }
 
   /* ===== Phone (<=600px): app-style tile-grid layout ===== */
   /* Comes after the 480/720 tweaks above so it wins where they overlap. */
