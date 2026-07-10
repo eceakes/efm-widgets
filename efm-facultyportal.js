@@ -114,6 +114,26 @@
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
+  // ---- build identity (drives cache invalidation) ------------------------
+  // The deployed code already identifies itself: Duda's file manager refuses to
+  // overwrite, so every upload lands at a NEW suffixed filename
+  // (efm-facultyportal-0a7522f5.js), and jsDelivr pins an immutable @sha. Either
+  // way the script's own URL is a build id, for free. readCache() refuses any
+  // envelope stamped with a different build, so a code deploy purges the cache
+  // automatically and old code can never hand a stale shape to new code.
+  // Read at PARSE time: document.currentScript is null once boot() runs.
+  var BUILD_ID = (function () {
+    var s = (document.currentScript && document.currentScript.src) || "";
+    var m = s.match(/efm-widgets@([^/]+)\//);        // jsDelivr @sha (or @main)
+    if (m) return m[1];
+    m = s.match(/([^/]+?)\.js(?:[?#].*)?$/);         // Duda file manager: the suffixed filename
+    if (m) return m[1];
+    return "inline";                                 // self-contained paste, no script src
+  })();
+  // Bump BY HAND only when the cached DATA SHAPE changes without a new filename
+  // (local testing, or re-pointing a loader at an older file).
+  var SCHEMA_VERSION = 2;
+
   // Student Handbook: the "Student Handbook" row in the General Information "Festival
   // Documents For Print" list opens this FlippingBook flipbook in a modal (matching the
   // student portal), with the PDF as the accessible fallback inside it. Blank
@@ -320,7 +340,13 @@
     if (n) { var mo = parseInt(n[1], 10), d = parseInt(n[2], 10); if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return mo * 100 + d; }
     return null;
   }
-  function monthAbbr(key) { return key !== null ? MONTH_NAMES[Math.floor(key / 100) - 1].slice(0, 3) : ""; }
+  // Range-guarded: parseTickets() derives `key` from the trailing 4 digits of a
+  // staff-typed discount code, so a code like "EFMFF2026" yields month 20 and the
+  // unguarded MONTH_NAMES[19].slice() threw a TypeError inside build().
+  function monthAbbr(key) {
+    var i = (key === null || key === undefined) ? -1 : Math.floor(key / 100) - 1;
+    return (i >= 0 && i < MONTH_NAMES.length) ? MONTH_NAMES[i].slice(0, 3) : "";
+  }
   function tokens(s) { return clean(s).split("/").map(function (t) { return t.trim(); }).filter(Boolean); }
   function roomLabel(code) { return ROOM_NAMES[code] || code; }
   // First H:MM clock token, meridiem-agnostic: joins the lean ESO/GSO tabs (times
@@ -472,6 +498,13 @@
 
   var modalData = [], viewEvents = [], viewLabel = "", viewFeedKey = "";
   var built = false;        // true once the full build() has run (gates the early first-paint)
+  // `built` is set at the TOP of build() because renderList() reads it to decide
+  // between the loading state and the real view. So it cannot tell us whether a
+  // build actually FINISHED. `painted` is set at the BOTTOM of build(): it is the
+  // flag error recovery gates on, so a throw part-way through a render still
+  // reaches fail() and shows the retry card instead of stranding "Loading...".
+  var painted = false;      // true once build() has run to completion
+  var _loading = false;     // a load is in flight; blocks stacked retries
   var _generalInfoP = null; // in-flight General Information fetch, for the early Dining paint
   var topSel = NAV[0].id, subSel = {};
   NAV.forEach(function (t) { subSel[t.id] = 0; });
@@ -634,13 +667,18 @@
 
   function serviceType(event) {
     if (/dress/i.test(event)) return { label: "Dress Rehearsal", ens: false };
+    // Sectionals must be caught before the "Performance" default: the dedicated
+    // ESO/GSO tabs carry no Type column, and their Event text reads "ESO
+    // sectionals" (the word "rehearsal" lives only in the Details cell, which we
+    // never see here), so a plain /rehearsal/ test misses them.
+    if (/sectional/i.test(event)) return { label: "Sectional", ens: false };
     if (/rehearsal/i.test(event)) return { label: "Rehearsal", ens: false };
     return { label: "Performance", ens: true };
   }
 
   // Chips for one agenda row. Master Calendar rows (Room Schedule) carry an
   // ensemble + type, so show those; EFO/ECP/Outreach service rows don't, so fall
-  // back to the dress/rehearsal/performance heuristic.
+  // back to the dress/sectional/rehearsal/performance heuristic.
   function rowChips(r) {
     var c;
     if (r.ensemble !== undefined || r.type !== undefined) {
@@ -2470,8 +2508,35 @@
   }
 
   /* ---- load ------------------------------------------------------------ */
+  // Every network read is time-bounded. A STALLED request (flaky campus wifi, a
+  // captive portal, a phone that slept mid-load) neither resolves nor rejects, and
+  // an unbounded fetch would then leave the portal on "Loading the faculty portal..."
+  // forever: startFetches() falls back to the direct sheets from a .catch, which a
+  // hang never reaches, and boot's error handler never runs either. A timeout turns
+  // that silent hang into an ordinary rejection, so the fallback and the retry card
+  // both work. AbortController where it exists; on browsers without it the request
+  // keeps running in the background, harmlessly, and we simply stop waiting on it.
+  var FETCH_TIMEOUT_MS = 10000;   // a single CSV tab (a few KB) or the published-tab directory
+  var BLOB_TIMEOUT_MS = 15000;    // the distilled blob is ~440KB, so allow more room
+  function fetchT(url, ms) {
+    var opts = { cache: "no-store" }, ctl = null, timer = null;
+    try {
+      if (window.AbortController) { ctl = new window.AbortController(); opts.signal = ctl.signal; }
+    } catch (e) { ctl = null; }
+    var timed = new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        if (ctl) { try { ctl.abort(); } catch (e2) {} }
+        reject(new Error("timeout after " + (ms || FETCH_TIMEOUT_MS) + "ms: " + url));
+      }, ms || FETCH_TIMEOUT_MS);
+    });
+    function clear() { if (timer) { clearTimeout(timer); timer = null; } }
+    return Promise.race([fetch(url, opts), timed]).then(
+      function (r) { clear(); return r; },
+      function (e) { clear(); throw e; }
+    );
+  }
   function loadCSV(url) {
-    return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }).then(parseCSV);
+    return fetchT(url).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }).then(parseCSV);
   }
   function loadFirst(urls) {
     return new Promise(function (resolve) {
@@ -2483,7 +2548,7 @@
   }
   // Published-tab directory: name -> gid (so a rebuild that changes gids still works).
   function resolveDir(pubhtmlUrl) {
-    return fetch(pubhtmlUrl, { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (html) {
+    return fetchT(pubhtmlUrl).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (html) {
       var map = {};
       html.split("items.push(").forEach(function (chunk) {
         var n = chunk.match(/name:\s*"([^"]+)"/), g = chunk.match(/gid:\s*"(\d+)"/);
@@ -2596,6 +2661,7 @@
 
     renderNav();
     renderList();
+    painted = true;   // a full render completed; only now is error recovery unnecessary
   }
 
   var OFFICE_EMAIL = "info@easternfestivalofmusic.org";
@@ -2616,32 +2682,52 @@
     if (btn) btn.addEventListener("click", retryLoad);
   }
   function retryLoad() {
+    if (_loading) return;   // a retry is already in flight (button mashing, or a refocus)
+    _loading = true;
     if (list) list.innerHTML = "";
     if (status) { status.textContent = "Loading the faculty portal…"; status.hidden = false; announce("Reloading the faculty portal…"); }
+    // .then(onFulfilled).catch(...) rather than .then(onFulfilled, onRejected): the
+    // two-argument form cannot catch a throw from its OWN success handler, so a
+    // build() crash here would erase the retry card and strand the user on
+    // "Loading the faculty portal..." with no way back.
     startFetches().then(function (data) {
-      if (!data || !data.master) { fail(new Error("core calendar unavailable")); return; }
-      if (data.EFO) writeCache(data);
-      build(data);
-    }, function (e) { fail(e); });
+      _loading = false;
+      if (!data || !data.master || !data.master.length) throw new Error("core calendar unavailable");
+      try { lastDataStr = JSON.stringify(data); } catch (e) { lastDataStr = null; }
+      build(data);                        // build BEFORE caching, so a payload that
+      if (data.EFO) writeCache(data);     // crashes the renderer is never persisted
+      startAutoRefresh();   // a recovered load should keep polling like a normal one
+    }).catch(function (e) { _loading = false; fail(e); });
   }
 
   // ---- SWR cache: instant repeat loads ----------------------------------
   // Paint the last-seen data immediately from localStorage, then revalidate in the
   // background and re-render only if the fresh fetch differs. (#4)
+  // ONE fixed key, with the version stamped INSIDE the envelope. Keying by build id
+  // instead (efmfp-cache-<build>) would strand a ~300KB orphan per deploy, and this
+  // origin's ~5MB localStorage is shared with the student portal and Duda's own data.
+  // A fixed key overwrites itself.
   var CACHE_KEY = "efmfp-cache-v1", CACHE_MAX_AGE = 2 * 24 * 60 * 60 * 1000;   // paint cache up to 2 days old; always revalidate
   function _ls() { try { return window.localStorage; } catch (e) { return null; } }
+  function dropCache() { var ls = _ls(); if (!ls) return; try { ls.removeItem(CACHE_KEY); } catch (e) {} }
   function readCache() {
     var ls = _ls(); if (!ls) return null;
     try {
       var o = JSON.parse(ls.getItem(CACHE_KEY) || "null");
       if (!o || !o.d) return null;
-      if (typeof o.t === "number" && (Date.now() - o.t) > CACHE_MAX_AGE) return null;
+      // A cache written by a different build of this widget may not match what the
+      // current code expects. Drop it rather than hand it to build().
+      if (o.v !== SCHEMA_VERSION || o.b !== BUILD_ID) { dropCache(); return null; }
+      // Fail CLOSED on a missing/corrupt timestamp: the old `typeof o.t === "number" &&`
+      // form skipped the TTL entirely for such an entry, serving it forever and removing
+      // the only automatic escape from a bad cache.
+      if (typeof o.t !== "number" || (Date.now() - o.t) > CACHE_MAX_AGE) { dropCache(); return null; }
       return o.d;
     } catch (e) { return null; }
   }
   function writeCache(data) {
     var ls = _ls(); if (!ls) return;
-    try { ls.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+    try { ls.setItem(CACHE_KEY, JSON.stringify({ v: SCHEMA_VERSION, b: BUILD_ID, t: Date.now(), d: data })); } catch (e) {}
   }
 
   function startFetchesDirect() {
@@ -2696,6 +2782,12 @@
     var keys = Object.keys(jobs);
     return Promise.all(keys.map(function (k) { return jobs[k]; })).then(function (results) {
       var data = {}; keys.forEach(function (k, i) { data[k] = results[i]; });
+      // loadFirst() resolves null rather than rejecting (it walks a url list), so a
+      // total outage would otherwise resolve an all-null data object and paint an
+      // EMPTY portal that reads like "the office has not posted anything yet". Treat
+      // a missing core calendar as the failure it is, so boot's .catch shows the
+      // retry card instead.
+      if (!data.master || !data.master.length) throw new Error("core calendar unavailable");
       return data;
     });
   }
@@ -2723,7 +2815,7 @@
   function readDistilledBlob() {
     var url = "https://docs.google.com/spreadsheets/d/" + FACULTY_BLOB_ID +
               "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(BLOB_TAB);
-    return fetch(url, { cache: "no-store" }).then(function (r) {
+    return fetchT(url, BLOB_TIMEOUT_MS).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (csv) {
@@ -2792,16 +2884,16 @@
   var lastDataStr = null;
   var _autoRefreshOn = false;
   function refresh() {
-    if (!BLOB_ENABLED || !built || document.hidden) return;
+    if (!BLOB_ENABLED || !painted || document.hidden) return;
     if (modal && !modal.hidden) return;   // don't yank the UI out from under an open dialog
     readDistilledBlob().then(function (blob) {
       var data = blobToData(blob);
       if (!data.master || !data.master.length) return;   // guard a bad/partial read
       var s; try { s = JSON.stringify(data); } catch (e) { return; }
       if (s === lastDataStr) return;   // unchanged -> do nothing
-      lastDataStr = s;
-      writeCache(data);
+      lastDataStr = s;   // don't re-attempt this exact payload on every 2-minute poll
       build(data);
+      writeCache(data);   // only persist a payload the renderer actually accepted
       announce("Portal updated.");
     }).catch(function () {});   // a failed poll just leaves the current view up
   }
@@ -2906,7 +2998,7 @@
     list.addEventListener("keydown", function (e) { if (e.key !== "Enter" && e.key !== " ") return; var r = e.target.closest ? e.target.closest("[data-mi]") : null; if (r) { e.preventDefault(); openModal(modalData[+r.getAttribute("data-mi")]); } });
 
     wireBox();
-    searchBox.addEventListener("input", renderList);   // wired once (build() no longer re-adds it)
+    if (searchBox) searchBox.addEventListener("input", renderList);   // wired once; guarded so an embed missing #efmfp-search cannot abort boot
     renderNav();
     if (!_dataPromise) _dataPromise = startFetches();   // host appeared after the script ran
     // SWR: paint the last-cached data instantly, then revalidate. With no usable
@@ -2915,8 +3007,20 @@
     var cached = readCache();
     if (cached && cached.EFO) {
       try { cacheStr = JSON.stringify(cached); } catch (e) { cacheStr = null; }
-      build(cached);
-    } else if (_generalInfoP) {
+      // The cached paint runs BEFORE the .catch below is registered, so a throw here
+      // used to abort boot() outright: no retry card, no fresh fetch, and the poisoned
+      // cache re-threw on every reload until its 2-day TTL expired. Contain it, drop
+      // the bad cache, and let the fresh fetch below paint normally.
+      try {
+        build(cached);
+      } catch (e) {
+        if (window.console) console.error("EFM faculty portal: cached paint failed, dropping cache", e);
+        built = false; painted = false; _navRestored = false; cacheStr = null;
+        dropCache();
+        if (list) list.innerHTML = "";
+      }
+    }
+    if (!built && _generalInfoP) {
       _generalInfoP.then(function (rows) {
         if (built || !rows) return;
         diningLines = rows.map(function (r) { return clean(r[0]); });
@@ -2924,14 +3028,27 @@
         if (sub && sub.kind === "dining") renderDining();
       });
     }
+    // A first load that dies while the tab is backgrounded (a phone that sleeps, a
+    // network handoff) left the portal on "Loading..." forever: startAutoRefresh only
+    // runs after a successful build, and refresh() bails when nothing has painted.
+    // Retry the initial load the moment the tab comes back.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && !painted && !_loading) retryLoad();
+    });
+    _loading = true;
     _dataPromise.then(function (data) {
+      _loading = false;
+      if (!data || !data.master || !data.master.length) { if (!painted) fail(new Error("core calendar unavailable")); return; }
       var freshStr; try { freshStr = JSON.stringify(data); } catch (e) { freshStr = null; }
-      if (data.EFO) writeCache(data);   // don't cache a load where the core calendar fetch failed
       if (!built || freshStr === null || freshStr !== cacheStr) build(data);   // first paint, or the data changed
+      // Cache only AFTER build() proved it can consume this payload, and only when the
+      // core calendar actually loaded. Caching first would persist a payload that
+      // crashes the renderer, re-crashing on every load until the 2-day TTL expired.
+      if (data.EFO) writeCache(data);
       cacheStr = freshStr;
       lastDataStr = freshStr;
       startAutoRefresh();
-    }).catch(function (e) { if (!built) fail(e); });
+    }).catch(function (e) { _loading = false; if (!painted) fail(e); });
   }
   // (#2) Kick the data fetch off the moment this script runs: the host div is parsed
   // just above this <script>, so it is already in the DOM. This overlaps the ~20
