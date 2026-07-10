@@ -58,6 +58,26 @@
   var MAP_IMAGE_URL = CDN_BASE + "efm-campus-map.jpg";
   var MAP_PDF_URL = CDN_BASE + "efm-campus-map.pdf";
 
+  // ---- build identity (drives cache invalidation) ------------------------
+  // The deployed code already identifies itself: Duda's file manager refuses to
+  // overwrite, so every upload lands at a NEW suffixed filename
+  // (efm-portal-04abb355.js), and jsDelivr pins an immutable @sha. Either way the
+  // script's own URL is a build id, for free. readCache() refuses any envelope
+  // stamped with a different build, so a code deploy purges the cache automatically
+  // and old code can never hand a stale shape to new code.
+  // Read at PARSE time: document.currentScript is null once boot() runs.
+  var BUILD_ID = (function () {
+    var s = (document.currentScript && document.currentScript.src) || "";
+    var m = s.match(/efm-widgets@([^/]+)\//);        // jsDelivr @sha (or @main)
+    if (m) return m[1];
+    m = s.match(/([^/]+?)\.js(?:[?#].*)?$/);         // Duda file manager: the suffixed filename
+    if (m) return m[1];
+    return "inline";                                 // self-contained paste, no script src
+  })();
+  // Bump BY HAND only when the cached DATA SHAPE changes without a new filename
+  // (local testing, or re-pointing a loader at an older file).
+  var SCHEMA_VERSION = 2;
+
   // Alexander Technique instructor headshots are bundled in the repo (served via the
   // same CDN base as the campus map, so they track the deployed commit). Keyed by
   // "lastname|first-initial" so a name typo in the sheet still matches; a Photo column
@@ -158,6 +178,7 @@
       { label: "ESO Schedule", kind: "ensemble", code: "ESO", weeks: true },
       { label: "GSO Schedule", kind: "ensemble", code: "GSO", weeks: true },
       { label: "EFO Schedule", kind: "ensemble", code: "EFO", weeks: true },
+      { label: "All Events", kind: "allEvents" },
       { label: "All Concerts", kind: "type", value: "Concert / Performance" },
       { label: "Concert Programs", kind: "programs" } ] },
     // ESO/GSO Schedule carry weeks:true: when selected, the released seating-roster
@@ -289,7 +310,13 @@
     if (now.getFullYear() !== YEAR) return null;  // outside festival year
     return (now.getMonth() + 1) * 100 + now.getDate();
   }
-  function monthAbbr(key) { return key !== null ? MONTH_NAMES[Math.floor(key / 100) - 1].slice(0, 3) : ""; }
+  // Range-guarded: `key` is derived from sheet-typed MMDD-ish values, so an out-of-range
+  // month (e.g. a trailing "2026") made the unguarded MONTH_NAMES[19].slice() throw
+  // a TypeError inside build().
+  function monthAbbr(key) {
+    var i = (key === null || key === undefined) ? -1 : Math.floor(key / 100) - 1;
+    return (i >= 0 && i < MONTH_NAMES.length) ? MONTH_NAMES[i].slice(0, 3) : "";
+  }
   function roomLabel(code) { return ROOM_NAMES[code] || code; }
 
   // Start time in minutes since midnight, for chronological sorting.
@@ -440,6 +467,12 @@
   // ---- state --------------------------------------------------------------
   var allRows = [];
   var built = false;       // true once the full build() has run (gates the early first-paint)
+  // `built` is set at the TOP of build(), so it cannot tell us whether a build actually
+  // FINISHED. `painted` is set at the BOTTOM: it is the flag error recovery gates on, so
+  // a throw part-way through a render still reaches fail() and shows the retry card
+  // instead of stranding the widget on "Loading the schedule...".
+  var painted = false;     // true once build() has run to completion
+  var _loading = false;    // a load is in flight; blocks stacked retries
   var seenRooms = {};
   var announcements = [];  // { text, dateRaw, key, logic }
   var generalInfo = [];    // raw lines
@@ -592,6 +625,8 @@
       if (sub.code === "EFO") return { rows: upcomingRows(efoRows), banner: "", prefaceHTML: pmPre, emptyMsg: UPCOMING_EMPTY };   // EFO has its own tab, not master-calendar rows
       return { rows: upcomingRows(allRows.filter(function (r) { return r.ensTokens.indexOf(sub.code) !== -1; })), banner: "", prefaceHTML: pmPre, emptyMsg: UPCOMING_EMPTY };
     }
+    if (sub.kind === "allEvents")   // the whole upcoming festival schedule, every event (mirrors the faculty portal's All Events)
+      return { rows: upcomingRows(allRows), banner: "", emptyMsg: UPCOMING_EMPTY };
     if (sub.kind === "allEnsembles")
       return { rows: upcomingRows(allRows.filter(function (r) { return r.ensTokens.length > 0; })), banner: "", emptyMsg: UPCOMING_EMPTY };
     if (sub.kind === "type")
@@ -1379,6 +1414,12 @@
   function renderMap() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
+    // Building Access Hours is repeated here, below the map (it also lives under
+    // General Information > Around Campus), so a student looking a building up on the
+    // map does not have to switch tabs to find out when it is open. Same source, same
+    // renderer, so the two views can never disagree. buildingAccessInner() returns ""
+    // when the sheet has no such section, in which case nothing is appended.
+    var access = buildingAccessInner();
     list.innerHTML =
       '<div class="efmp-map">' +
         '<a class="efmp-map__frame" href="' + esc(MAP_IMAGE_URL) + '" target="_blank" rel="noopener noreferrer" ' +
@@ -1390,8 +1431,9 @@
           'Choir Room and Moon Room; <b>Sternberger Auditorium</b> is in Founders Hall (I); the <b>Carnegie Room</b> ' +
           'is in Hege (C); <b>Ragan-Brown Field House</b> is L1.</p>' +
         '<a class="efmp-modal__cal efmp-map__pdf" href="' + esc(MAP_PDF_URL) + '" target="_blank" rel="noopener noreferrer">Download map (PDF)</a>' +
-      '</div>';
-    announce("Campus map shown.");
+      '</div>' +
+      (access ? '<div class="efmp-info efmp-map__access">' + access + '</div>' : "");
+    announce(access ? "Campus map and building access hours shown." : "Campus map shown.");
   }
 
   function renderHandbook() {
@@ -1400,7 +1442,7 @@
     var pdf = HANDBOOK_URL, flip = HANDBOOK_EMBED_URL;
     var html =
       '<div class="efmp-handbook">' +
-        '<p class="efmp-handbook__lead">The <b>2026 Student Handbook</b> is your guide to the festival &#8212; ' +
+        '<p class="efmp-handbook__lead">The <b>2026 Student Handbook</b> is your guide to the festival: ' +
           'policies, daily life, contacts, and everything you need to know for your time at Eastern.</p>';
     if (flip) html +=
         // Opens the interactive flipbook in a modal; the PDF stays as the accessible fallback.
@@ -2429,8 +2471,35 @@
   }
 
   // ---- load ------------------------------------------------------------
+  // Every network read is time-bounded. A STALLED request (flaky campus wifi, a
+  // captive portal, a phone that slept mid-load) neither resolves nor rejects, and an
+  // unbounded fetch would then leave the widget on "Loading the schedule..." forever:
+  // startFetches() falls back to the direct sheets from a .catch, which a hang never
+  // reaches, and boot's error handler never runs either. A timeout turns that silent
+  // hang into an ordinary rejection, so the fallback and the retry card both work.
+  // AbortController where it exists; on browsers without it the request keeps running
+  // in the background, harmlessly, and we simply stop waiting on it.
+  var FETCH_TIMEOUT_MS = 10000;   // a single CSV tab (a few KB) or the published-tab directory
+  var BLOB_TIMEOUT_MS = 15000;    // the distilled blob is large, so allow more room
+  function fetchT(url, ms) {
+    var opts = { cache: "no-store" }, ctl = null, timer = null;
+    try {
+      if (window.AbortController) { ctl = new window.AbortController(); opts.signal = ctl.signal; }
+    } catch (e) { ctl = null; }
+    var timed = new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        if (ctl) { try { ctl.abort(); } catch (e2) {} }
+        reject(new Error("timeout after " + (ms || FETCH_TIMEOUT_MS) + "ms: " + url));
+      }, ms || FETCH_TIMEOUT_MS);
+    });
+    function clear() { if (timer) { clearTimeout(timer); timer = null; } }
+    return Promise.race([fetch(url, opts), timed]).then(
+      function (r) { clear(); return r; },
+      function (e) { clear(); throw e; }
+    );
+  }
   function loadCSV(url) {
-    return fetch(url, { cache: "no-store" }).then(function (r) {
+    return fetchT(url).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(parseCSV);
@@ -2441,7 +2510,7 @@
   // gids change on rebuild while names don't. pubhtml returns CORS for the
   // requesting origin, so this works from the live site.
   function resolveTabGids(url) {
-    return fetch(url || PUBHTML, { cache: "no-store" }).then(function (r) {
+    return fetchT(url || PUBHTML).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (html) {
@@ -2540,6 +2609,7 @@
 
     renderNav();
     renderList();
+    painted = true;   // a full render completed; only now is error recovery unnecessary
   }
 
   var OFFICE_EMAIL = "info@easternfestivalofmusic.org";
@@ -2560,13 +2630,22 @@
     if (btn) btn.addEventListener("click", retryLoad);
   }
   function retryLoad() {
+    if (_loading) return;   // a retry is already in flight (button mashing, or a refocus)
+    _loading = true;
     if (list) list.innerHTML = "";
     if (status) { status.textContent = "Loading the schedule…"; status.hidden = false; announce("Reloading the schedule…"); }
+    // .then(onFulfilled).catch(...) rather than .then(onFulfilled, onRejected): the
+    // two-argument form cannot catch a throw from its OWN success handler, so a
+    // build() crash here would erase the retry card and strand the user on
+    // "Loading the schedule..." with no way back.
     startFetches().then(function (data) {
-      if (!data || SOURCES.some(function (s) { return s.required && !data[s.key]; })) { fail(new Error("required tab unavailable")); return; }
-      writeCache(data);
-      build(data);
-    }, function (e) { fail(e); });
+      _loading = false;
+      if (!data || SOURCES.some(function (s) { return s.required && !data[s.key]; })) throw new Error("required tab unavailable");
+      try { lastDataStr = JSON.stringify(data); } catch (e) { lastDataStr = null; }
+      build(data);        // build BEFORE caching, so a payload that crashes
+      writeCache(data);   // the renderer is never persisted
+      startAutoRefresh();   // a recovered load should keep polling like a normal one
+    }).catch(function (e) { _loading = false; fail(e); });
   }
 
   // Load every source tab in parallel. Each tab fetches by its known gid FIRST
@@ -2578,20 +2657,31 @@
   // Paint the last-seen data immediately from localStorage, then revalidate in the
   // background and re-render only if the fresh fetch differs. (#4)
   var _generalInfoP = null;   // in-flight General Information fetch, for the early Dining paint
+  // ONE fixed key, with the version stamped INSIDE the envelope. Keying by build id
+  // instead (efmp-cache-<build>) would strand a ~300KB orphan per deploy, and this
+  // origin's ~5MB localStorage is shared with the faculty portal and Duda's own data.
+  // A fixed key overwrites itself.
   var CACHE_KEY = "efmp-cache-v1", CACHE_MAX_AGE = 2 * 24 * 60 * 60 * 1000;   // paint cache up to 2 days old; always revalidate
   function _ls() { try { return window.localStorage; } catch (e) { return null; } }
+  function dropCache() { var ls = _ls(); if (!ls) return; try { ls.removeItem(CACHE_KEY); } catch (e) {} }
   function readCache() {
     var ls = _ls(); if (!ls) return null;
     try {
       var o = JSON.parse(ls.getItem(CACHE_KEY) || "null");
       if (!o || !o.d) return null;
-      if (typeof o.t === "number" && (Date.now() - o.t) > CACHE_MAX_AGE) return null;
+      // A cache written by a different build of this widget may not match what the
+      // current code expects. Drop it rather than hand it to build().
+      if (o.v !== SCHEMA_VERSION || o.b !== BUILD_ID) { dropCache(); return null; }
+      // Fail CLOSED on a missing/corrupt timestamp: the old `typeof o.t === "number" &&`
+      // form skipped the TTL entirely for such an entry, serving it forever and removing
+      // the only automatic escape from a bad cache.
+      if (typeof o.t !== "number" || (Date.now() - o.t) > CACHE_MAX_AGE) { dropCache(); return null; }
       return o.d;
     } catch (e) { return null; }
   }
   function writeCache(data) {
     var ls = _ls(); if (!ls) return;
-    try { ls.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), d: data })); } catch (e) {}
+    try { ls.setItem(CACHE_KEY, JSON.stringify({ v: SCHEMA_VERSION, b: BUILD_ID, t: Date.now(), d: data })); } catch (e) {}
   }
 
   // Kick off all source-tab fetches and resolve to the { key: rows } data object.
@@ -2669,7 +2759,7 @@
   function readDistilledBlob() {
     var url = "https://docs.google.com/spreadsheets/d/" + STUDENT_BLOB_ID +
               "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(BLOB_TAB);
-    return fetch(url, { cache: "no-store" }).then(function (r) {
+    return fetchT(url, BLOB_TIMEOUT_MS).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (csv) {
@@ -2762,7 +2852,7 @@
   var lastDataStr = null;
   var _autoRefreshOn = false;
   function refresh() {
-    if (!BLOB_ENABLED || !built || document.hidden) return;
+    if (!BLOB_ENABLED || !painted || document.hidden) return;
     if (modal && !modal.hidden) return;   // don't yank the UI out from under an open dialog
     readDistilledBlob().then(function (blob) {
       var data = blobToData(blob);
@@ -2770,9 +2860,9 @@
       return withWeekly(data).then(function (d) {             // backfill Weekly Schedules if the blob lacks it
         var s; try { s = JSON.stringify(d); } catch (e) { return; }
         if (s === lastDataStr) return;   // unchanged -> do nothing
-        lastDataStr = s;
-        writeCache(d);
+        lastDataStr = s;   // don't re-attempt this exact payload on every 2-minute poll
         build(d);
+        writeCache(d);   // only persist a payload the renderer actually accepted
         announce("Schedule updated.");
       });
     }).catch(function () {});   // a failed poll just leaves the current view up
@@ -2902,7 +2992,7 @@
       if (row) { e.preventDefault(); openModal(modalData[+row.getAttribute("data-mi")]); }
     });
 
-    searchBox.addEventListener("input", renderList);   // wired once (build() no longer re-adds it)
+    if (searchBox) searchBox.addEventListener("input", renderList);   // wired once; guarded so an embed missing #efmp-search cannot abort boot
     if (!_dataPromise) _dataPromise = startFetches();  // host appeared after the script ran
     // SWR: paint the last-cached data instantly, then revalidate. With no usable
     // cache, fall back to the early Dining paint while the first fetch lands. (#2)(#4)
@@ -2910,8 +3000,20 @@
     var cached = readCache();
     if (cached && !SOURCES.some(function (s) { return s.required && !cached[s.key]; })) {
       try { cacheStr = JSON.stringify(cached); } catch (e) { cacheStr = null; }
-      build(cached);
-    } else if (_generalInfoP) {
+      // The cached paint runs BEFORE the .catch below is registered, so a throw here
+      // used to abort boot() outright: no retry card, no fresh fetch, and the poisoned
+      // cache re-threw on every reload until its 2-day TTL expired. Contain it, drop
+      // the bad cache, and let the fresh fetch below paint normally.
+      try {
+        build(cached);
+      } catch (e) {
+        if (window.console) console.error("EFM schedule: cached paint failed, dropping cache", e);
+        built = false; painted = false; _navRestored = false; cacheStr = null;
+        dropCache();
+        if (list) list.innerHTML = "";
+      }
+    }
+    if (!built && _generalInfoP) {
       _generalInfoP.then(function (rows) {
         if (built || !rows) return;
         generalInfo = rows.map(function (r) { return (r[0] || "").trim(); });
@@ -2920,15 +3022,27 @@
         if (sub && sub.kind === "dining") renderDining();
       });
     }
+    // A first load that dies while the tab is backgrounded (a phone that sleeps, a
+    // network handoff) left the widget on "Loading..." forever: startAutoRefresh only
+    // runs after a successful build, and refresh() bails when nothing has painted.
+    // Retry the initial load the moment the tab comes back.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && !painted && !_loading) retryLoad();
+    });
+    _loading = true;
     _dataPromise.then(function (data) {
-      if (SOURCES.some(function (s) { return s.required && !data[s.key]; })) { if (!built) fail(new Error("required tab unavailable")); return; }
+      _loading = false;
+      if (!data || SOURCES.some(function (s) { return s.required && !data[s.key]; })) { if (!painted) fail(new Error("required tab unavailable")); return; }
       var freshStr; try { freshStr = JSON.stringify(data); } catch (e) { freshStr = null; }
-      writeCache(data);
       if (!built || freshStr === null || freshStr !== cacheStr) build(data);   // first paint, or the data changed
+      // Cache only AFTER build() proved it can consume this payload. Caching first would
+      // persist a payload that crashes the renderer, re-crashing on every load until the
+      // 2-day TTL expired.
+      writeCache(data);
       cacheStr = freshStr;
       lastDataStr = freshStr;
       startAutoRefresh();
-    }).catch(function (e) { if (!built) fail(e); });
+    }).catch(function (e) { _loading = false; if (!painted) fail(e); });
   }
   // (#2) Kick the data fetch off the moment this script runs (the host div sits just
   // above this <script>), instead of waiting for the whole Duda page's DOMContentLoaded.

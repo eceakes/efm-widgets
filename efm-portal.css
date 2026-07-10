@@ -341,6 +341,13 @@
     font-family: var(--efmp-name-font); font-weight: 400; font-size: 14.5px; line-height: 1.4;
   }
   #efm-portal .efmp-kv span { color: #2b3042; font-size: 14.5px; line-height: 1.45; }
+  /* Building Access Hours repeated under the Campus Map (renderMap). It needs its own
+     top spacing + rule because .efmp-info__head:first-child zeroes its margin-top, and
+     this block must sit AFTER `.efmp-info { margin: 0 auto }` above, or that shorthand
+     resets the margin-top back to 0 (same specificity, so source order decides). */
+  #efm-portal .efmp-map__access {
+    margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--efmp-rule);
+  }
   /* Personnel Manager line atop the ESO/GSO schedule (Student-Rosters PM block). */
   #efm-portal .efmp-pm {
     margin: 0 0 14px; padding: 9px 13px; background: var(--efmp-soft);
