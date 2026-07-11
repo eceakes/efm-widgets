@@ -1775,12 +1775,16 @@
   function parsePersonnelManagers(rows) {
     var out = {};
     if (!rows || !rows.length) return out;
-    var ni = -1, ei = -1, pi = -1, start = -1;
+    var ni = -1, ei = -1, pi = -1, mi = -1, start = -1;
     for (var h = 0; h < rows.length; h++) {
       var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
       if (lc.indexOf("ensemble") !== -1 && lc.indexOf("phone") !== -1) {
         ei = lc.indexOf("ensemble"); pi = lc.indexOf("phone");
         ni = lc.indexOf("pm name"); if (ni === -1) ni = lc.indexOf("name"); if (ni === -1) ni = 0;
+        // Email column is optional. Its header may be blank (emails were added to the
+        // column right of Phone with no header), so find it by header when present and
+        // otherwise detect it per row by the "@" test below.
+        for (var m = 0; m < lc.length; m++) { if (lc[m].indexOf("email") !== -1 || lc[m].indexOf("e-mail") !== -1) { mi = m; break; } }
         start = h + 1; break;
       }
     }
@@ -1789,13 +1793,23 @@
       var row = rows[r] || [];
       var ens = clean(row[ei]).toUpperCase();
       if (!ens) continue;
-      out[ens] = { name: clean(row[ni]), phone: clean(row[pi]) };
+      var email = mi !== -1 ? clean(row[mi]) : "";
+      if (!email) {
+        for (var c = 0; c < row.length; c++) {
+          if (c === ni || c === ei || c === pi) continue;
+          var cv = clean(row[c]);
+          if (/@/.test(cv)) { email = cv; break; }
+        }
+      }
+      out[ens] = { name: clean(row[ni]), phone: clean(row[pi]), email: email };
     }
     return out;
   }
-  // The "Personnel Manager: Name, Phone" line shown atop an ESO/GSO schedule. Returns
-  // "" when there is no manager for that ensemble, or the name/phone are still sheet
-  // placeholders ("Placeholder Name", "###-###-####"), so nothing bogus reaches the page.
+  // The "Personnel Manager: Name, Phone, Email" line shown atop an ESO/GSO schedule.
+  // Returns "" when there is no manager for that ensemble, or the name/phone are still
+  // sheet placeholders ("Placeholder Name", "###-###-####"), so nothing bogus reaches
+  // the page. Phone and email are each shown only when they pass their own validity
+  // check, so a manager with a name but no email still renders cleanly.
   function personnelManagerHTML(code) {
     var pm = personnelManagers[code];
     if (!pm) return "";
@@ -1806,7 +1820,12 @@
     var phoneHTML = phoneOk
       ? ', <a class="efmfp-pm__tel" href="tel:' + esc(phone.replace(/[^\d+]/g, "")) + '">' + esc(phone) + "</a>"
       : "";
-    return '<div class="efmfp-pm"><span class="efmfp-pm__label">Personnel Manager:</span> ' + esc(name) + phoneHTML + "</div>";
+    var email = clean(pm.email);
+    var emailOk = email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) && !/placeholder/i.test(email);
+    var emailHTML = emailOk
+      ? ', <a class="efmfp-pm__mail" href="mailto:' + esc(email) + '">' + esc(email) + "</a>"
+      : "";
+    return '<div class="efmfp-pm"><span class="efmfp-pm__label">Personnel Manager:</span> ' + esc(name) + phoneHTML + emailHTML + "</div>";
   }
 
   function renderRoster(code, roster) {
