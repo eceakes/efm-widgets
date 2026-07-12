@@ -2376,22 +2376,30 @@
     efoRows.forEach(function (r) { var m = clean(r.event).match(/^EFO\s*0*(\d+)\s*$/i); if (m && r.key !== null) a[parseInt(m[1], 10)] = r.key; });
     return a;
   }
-  // EFO services for a roster week: the cycle window (previous concert, this concert] from
-  // efoAnchors, then narrowed to the week's program (its "(Mozart)" qualifier), or for a
-  // plain "Week N" with sibling-week program services excluded. Mirrors the faculty portal.
+  // EFO services for a roster week. Two different selectors, because the two kinds of roster
+  // mean different things: a program-qualified week ("Week 3 (Overtures)") is selected by its
+  // PROGRAM across the whole season, while a plain "Week N" is the concert-cycle window from
+  // efoAnchors minus every program-qualified event. Mirrors the faculty portal.
   function efoRosterServices(week, qualifier) {
     if (week == null) return [];
+    // A program-qualified roster ("Week 3 (Overtures)") is defined by its PROGRAM, not a
+    // concert-number window: its rehearsals + performance can straddle a numbered EFO
+    // concert (Overtures rehearses Jul 12 AND Jul 19 around the Jul 18 "EFO 3" concert,
+    // then performs Jul 20), so select by qualifier across ALL EFO rows, ignoring the window.
+    if (qualifier) {
+      var qre = new RegExp(qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      return efoRows.filter(function (r) { return r.key !== null && qre.test(r.event); });
+    }
+    // A plain "Week N" roster is the main program for that concert window (previous concert,
+    // this concert], with EVERY program-qualified event removed (not just same-week siblings)
+    // so a special program never contaminates whichever window it happens to land in.
     var upper = efoAnchors[week]; if (upper === undefined) return [];
     var lower = efoAnchors[week - 1];
     var rows = efoRows.filter(function (r) { return r.key !== null && (lower === undefined ? r.key <= upper : (r.key > lower && r.key <= upper)); });
-    if (qualifier) {
-      var qre = new RegExp(qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      return rows.filter(function (r) { return qre.test(r.event); });
-    }
-    var sibQ = [];
-    efoRostersAll.forEach(function (o) { var m = rosterMetaEfo(o.title); if (m.week === week && m.qualifier) sibQ.push(m.qualifier); });
-    if (!sibQ.length) return rows;
-    var sre = new RegExp(sibQ.map(function (q) { return q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|"), "i");
+    var allQ = [];
+    efoRostersAll.forEach(function (o) { var m = rosterMetaEfo(o.title); if (m.qualifier) allQ.push(m.qualifier); });
+    if (!allQ.length) return rows;
+    var sre = new RegExp(allQ.map(function (q) { return q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|"), "i");
     return rows.filter(function (r) { return !sre.test(r.event); });
   }
   // Concert-cycle anchors for an ensemble: cycle N -> the dateKey of that concert.

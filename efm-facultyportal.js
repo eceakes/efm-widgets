@@ -1734,13 +1734,22 @@
     var q = clean(title).match(/\(([^)]+)\)/);
     return { week: w ? parseInt(w[1], 10) : null, qualifier: q ? q[1].trim() : "" };
   }
-  // The services belonging to a roster row, inferred from concert cycles. EFO uses
-  // its own anchors + program-qualifier filtering (its "(Mozart)" parenthetical
-  // names a program); ESO/GSO use their own anchors and skip the qualifier filter
-  // (their parenthetical names the ensemble, not a program).
+  // The services belonging to a roster row. ESO/GSO use their own concert-cycle anchors and
+  // skip the qualifier filter entirely (their parenthetical names the ENSEMBLE, not a program).
+  // EFO has two kinds of roster, selected differently: a program-qualified week ("Week 3
+  // (Overtures)") is selected by its PROGRAM across the whole season, while a plain "Week N"
+  // is the concert-cycle window from efoAnchors minus every program-qualified event.
   function rosterServices(code, rosterTitle) {
     var meta = rosterMeta(rosterTitle);
     if (meta.week === null) return [];
+    // An EFO program-qualified roster ("Week 3 (Overtures)") is defined by its PROGRAM, not a
+    // concert-number window: its rehearsals + performance can straddle a numbered EFO concert
+    // (Overtures rehearses Jul 12 AND Jul 19 around the Jul 18 "EFO 3" concert, then performs
+    // Jul 20), so select by qualifier across ALL EFO rows, ignoring the window.
+    if (code === "EFO" && meta.qualifier) {
+      var pqre = new RegExp(meta.qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      return (ensembles.EFO || []).filter(function (r) { return r.key !== null && pqre.test(r.event); });
+    }
     var anchors = code === "EFO" ? efoAnchors : (ensAnchors[code] || {});
     var upper = anchors[meta.week];
     if (upper === undefined) return [];                 // that concert not in the calendar yet
@@ -1750,20 +1759,17 @@
       return (lower === undefined ? r.key <= upper : (r.key > lower && r.key <= upper));
     });
     if (code !== "EFO") return rows;                     // ESO/GSO: parenthetical is the ensemble
-    if (meta.qualifier) {
-      var qre = new RegExp(meta.qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      rows = rows.filter(function (r) { return qre.test(r.event); });
-    } else {
-      // exclude any sibling-week qualifier (e.g. plain "Week 1" drops the Mozart services)
-      var sibQ = [];
-      rostersAll.forEach(function (o) {
-        var m2 = rosterMeta(o.title);
-        if (m2.week === meta.week && m2.qualifier) sibQ.push(m2.qualifier);
-      });
-      if (sibQ.length) {
-        var sre = new RegExp(sibQ.map(function (q) { return q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|"), "i");
-        rows = rows.filter(function (r) { return !sre.test(r.event); });
-      }
+    // Plain "Week N" EFO roster = the main program for that window, with EVERY program-qualified
+    // event removed (not just same-week siblings) so a special program (Mozart, Overtures)
+    // never contaminates whichever window it happens to land in.
+    var allQ = [];
+    rostersAll.forEach(function (o) {
+      var m2 = rosterMeta(o.title);
+      if (m2.qualifier) allQ.push(m2.qualifier);
+    });
+    if (allQ.length) {
+      var sre = new RegExp(allQ.map(function (q) { return q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }).join("|"), "i");
+      rows = rows.filter(function (r) { return !sre.test(r.event); });
     }
     return rows;
   }
