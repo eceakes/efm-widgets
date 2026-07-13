@@ -1,0 +1,355 @@
+/* EFM Contact: hosted styles (eceakes/efm-widgets)
+   Scoped under #efm-contact (prefix efmc) so nothing leaks to the page.
+   Shares the EFM widget design system (efm-portal / efm-events / efm-donate / efm-tickets).
+
+   Prefix efmc: no collision with efmp / efmfp / efmf / efmfl / efme / efmpr / efmsc /
+   efmt / efmd / efmg / efmn, and no existing prefix is a prefix of it.
+
+   Paints its OWN white surface (#fff !important). Duda's page background can be dark,
+   and every section below uses dark text; without this they would be dark-on-dark.
+   Same guard the Donate widget uses.
+
+   All role=heading DIVs force color with !important: Duda's global theme recolors real
+   headings (white/gold/serif) and would otherwise make them invisible. */
+
+#efm-contact.efmc{
+  /* ---- shared EFM design tokens ---- */
+  --efmc-ink:#0E178E;          /* brand blue */
+  --efmc-ink-deep:#0A1170;     /* darker blue for the hero gradient floor */
+  --efmc-hover:#4E63D6;        /* accent (AA on white) */
+  --efmc-role:#5b6473;         /* muted text */
+  --efmc-rule:#e4e6ef;         /* hairlines */
+  --efmc-soft:#f4f6fc;         /* soft fills */
+  --efmc-cream:#F7F7F7;        /* off-white text on the dark hero */
+  --efmc-gold:#C9A23F;         /* warm accent */
+  --efmc-gold-ink:#1D1704;     /* near-black text on gold (7.4:1) */
+  --efmc-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmc-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmc-title-font:"PPPangaia-Medium",Georgia,"Times New Roman",serif;
+
+  box-sizing:border-box;
+  width:100%;
+  max-width:1040px;
+  margin:0 auto;
+  background:#ffffff !important;
+  border-radius:24px;
+  padding:clamp(20px,3vw,34px) clamp(16px,3vw,32px) clamp(28px,3vw,40px);
+  font-family:var(--efmc-body-font);
+  color:#2b3042;
+  -webkit-font-smoothing:antialiased;
+  container-type:inline-size;
+  container-name:efmc;
+}
+#efm-contact.efmc *,
+#efm-contact.efmc *::before,
+#efm-contact.efmc *::after{ box-sizing:border-box; }
+
+#efm-contact .efmc-sr-only{
+  position:absolute!important; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
+/* ============================================================
+   HEADINGS: REAL <h1>/<h2>, NOT role=heading DIVs
+
+   The other EFM widgets use role=heading divs because Duda's theme recolors real
+   headings. Verified on the LIVE Duda page that this is over-cautious: with the
+   !important colour guards below, a real <h1> and a real <h2> render byte-identical to
+   the div version. Real headings are worth it here because search engines weight an <h1>
+   far above an ARIA heading, and deleting Duda's "CONTACT" element leaves the page with
+   none.
+
+   font-weight is pinned on every heading: it is the ONE property the browser's own
+   heading defaults change, and an unpinned <h1> comes out bold where the div did not.
+   ============================================================ */
+#efm-contact h1,
+#efm-contact h2,
+#efm-contact h3{
+  font-weight:400;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* the page's H1, above the hero */
+#efm-contact .efmc__page-title{
+  font-family:var(--efmc-title-font) !important;
+  font-size:clamp(13px,1.4vw,14px);
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  text-align:center;
+  margin:0 0 18px;
+  color:var(--efmc-role) !important;   /* quiet: the hero is the loud thing, not this */
+}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+#efm-contact .efmc__hero{
+  position:relative;
+  overflow:hidden;
+  border-radius:18px;
+  padding:clamp(28px,4vw,46px) clamp(20px,4vw,44px);
+  background:linear-gradient(135deg, var(--efmc-ink) 0%, var(--efmc-ink-deep) 100%);
+  color:var(--efmc-cream);
+  text-align:center;
+}
+#efm-contact .efmc__eyebrow{
+  margin:0 0 10px;
+  font-family:var(--efmc-name-font);
+  font-size:12.5px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--efmc-cream);
+  opacity:.85;
+}
+#efm-contact .efmc__title{
+  font-family:var(--efmc-title-font) !important;
+  font-size:clamp(28px,4.4vw,44px);
+  line-height:1.12;
+  margin:0 0 12px;
+  color:var(--efmc-cream) !important;
+}
+#efm-contact .efmc__lede{
+  margin:0 auto;
+  max-width:56ch;
+  font-size:clamp(15px,1.6vw,17px);
+  line-height:1.6;
+  color:var(--efmc-cream);
+  opacity:.94;
+}
+#efm-contact .efmc__hero-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:14px;
+  margin-top:24px;
+}
+
+/* ---- pill buttons (repo convention: 999px radius, arbeit labels) ---- */
+#efm-contact .efmc-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-height:48px;
+  padding:14px 32px;
+  font-family:var(--efmc-name-font);
+  font-size:16px;
+  line-height:1.2;
+  letter-spacing:.01em;
+  border:0;
+  border-radius:999px;
+  cursor:pointer;
+  text-decoration:none !important;   /* beats Duda's global widget link underline */
+  transition:background-color .18s ease, color .18s ease, border-color .18s ease,
+             box-shadow .18s ease, transform .18s ease;
+}
+#efm-contact .efmc-btn:hover{ box-shadow:0 10px 24px rgba(9,12,38,.30); }
+#efm-contact .efmc-btn:active{ transform:translateY(1px); }
+#efm-contact .efmc-btn:focus-visible{ outline:2px solid var(--efmc-cream); outline-offset:3px; }
+
+#efm-contact .efmc-btn--primary{
+  background:var(--efmc-cream) !important;
+  color:var(--efmc-ink) !important;
+}
+#efm-contact .efmc-btn--primary:hover{ background:#ffffff !important; }
+
+#efm-contact .efmc-btn--ghost{
+  background:transparent !important;
+  color:var(--efmc-cream) !important;
+  border:2px solid rgba(247,247,247,.7);
+}
+#efm-contact .efmc-btn--ghost:hover{
+  border-color:var(--efmc-cream);
+  background:rgba(247,247,247,.12) !important;
+}
+
+/* Buttons on the light "ways to help" cards.
+   Giving is the stronger ask, so it gets the solid brand blue (13.7:1 on white) and the
+   newsletter gets the gold (7.4:1). Two distinct fills, so the pair never reads as one
+   repeated CTA. */
+#efm-contact .efmc-btn--ink{
+  background:var(--efmc-ink) !important;
+  color:#ffffff !important;
+}
+#efm-contact .efmc-btn--ink:hover{ background:var(--efmc-hover) !important; }
+#efm-contact .efmc-btn--ink:focus-visible{ outline-color:var(--efmc-ink); }
+
+#efm-contact .efmc-btn--gold{
+  background:var(--efmc-gold) !important;
+  color:var(--efmc-gold-ink) !important;
+}
+#efm-contact .efmc-btn--gold:hover{ background:#D9B457 !important; }
+#efm-contact .efmc-btn--gold:focus-visible{ outline-color:var(--efmc-ink); }
+
+/* ============================================================
+   CARDS (address / campus)
+   ============================================================ */
+#efm-contact .efmc__grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:18px;
+  margin-top:26px;
+}
+@container efmc (min-width:720px){
+  #efm-contact .efmc__grid{ grid-template-columns:1fr 1fr; }
+}
+
+#efm-contact .efmc__card{
+  display:flex;
+  flex-direction:column;
+  padding:24px 24px 22px;
+  background:var(--efmc-soft);
+  border:1px solid var(--efmc-rule);
+  border-radius:16px;
+}
+#efm-contact .efmc__card-icon{
+  width:42px; height:42px;
+  display:flex; align-items:center; justify-content:center;
+  margin-bottom:14px;
+  color:var(--efmc-ink);
+  background:#fff;
+  border:1px solid var(--efmc-rule);
+  border-radius:12px;
+}
+#efm-contact .efmc__card-svg{
+  width:20px; height:20px;
+  fill:currentColor;   /* inherits --efmc-ink from the tile, so no separate theming */
+}
+#efm-contact .efmc__card-title{
+  font-family:var(--efmc-name-font);
+  font-size:13px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin:0 0 8px;
+  color:var(--efmc-ink) !important;
+}
+#efm-contact .efmc__card-body{
+  margin:0;
+  font-size:16px;
+  line-height:1.6;
+  color:#2b3042;
+}
+#efm-contact .efmc__card-note{
+  margin:8px 0 0;
+  font-size:14px;
+  line-height:1.5;
+  color:var(--efmc-role);
+}
+/* inline-flex + min-height 44px: as a plain inline link this was 31px tall, which passes
+   WCAG 2.2's 24x24 floor but is an uncomfortably small tap target on a phone. 44px is the
+   bar that actually matters in the hand. */
+#efm-contact .efmc__card-link{
+  display:inline-flex;
+  align-items:center;
+  align-self:flex-start;      /* only as wide as its text, so the whole card is not clickable */
+  min-height:44px;
+  margin-top:auto;
+  padding-top:10px;
+  font-family:var(--efmc-name-font);
+  font-size:15px;
+  color:var(--efmc-ink) !important;
+  text-decoration:none !important;
+  border-bottom:0;
+}
+#efm-contact .efmc__card-link:hover{ color:var(--efmc-hover) !important; text-decoration:underline !important; }
+#efm-contact .efmc__card-link:focus-visible{ outline:2px solid var(--efmc-hover); outline-offset:3px; }
+#efm-contact .efmc__card a{ color:var(--efmc-ink); }
+
+/* ============================================================
+   WAYS TO HELP (giving + newsletter, side by side)
+   ============================================================ */
+#efm-contact .efmc__ways{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:18px;
+  margin-top:18px;
+}
+@container efmc (min-width:720px){
+  #efm-contact .efmc__ways{ grid-template-columns:1fr 1fr; }
+}
+
+/* Each card stacks its text above its button, and the buttons bottom-align across the
+   pair (margin-top:auto on the action) so two cards with different copy lengths still
+   line their buttons up. */
+#efm-contact .efmc__band{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+  gap:16px;
+  padding:26px clamp(20px,3vw,28px);
+  background:var(--efmc-soft);
+  border:1px solid var(--efmc-rule);
+  border-radius:16px;
+}
+/* margin-top:auto bottom-aligns the buttons across the pair even when the copy runs to
+   different lengths (align-self is already centre, from the parent). */
+#efm-contact .efmc__band > .efmc-btn{ margin-top:auto; }
+/* Centred text needs a measure, or a wide card stretches a line past comfortable reading
+   length and the ragged edges on BOTH sides start to look accidental. */
+#efm-contact .efmc__band-text{ min-width:0; max-width:38ch; margin:0 auto; }
+#efm-contact .efmc__band-title{
+  font-family:var(--efmc-title-font);
+  font-size:clamp(19px,2.4vw,23px);
+  line-height:1.2;
+  margin:0 0 6px;
+  color:var(--efmc-ink) !important;
+}
+#efm-contact .efmc__band-copy{
+  margin:0;
+  font-size:15px;
+  line-height:1.55;
+  color:var(--efmc-role);
+}
+
+/* ============================================================
+   SOCIAL
+   ============================================================ */
+#efm-contact .efmc__social{
+  margin-top:26px;
+  padding-top:24px;
+  border-top:1px solid var(--efmc-rule);
+  text-align:center;
+}
+#efm-contact .efmc__social-title{
+  font-family:var(--efmc-name-font);
+  font-size:13px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  margin:0 0 14px;
+  color:var(--efmc-role) !important;
+}
+#efm-contact .efmc__social-row{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:12px;
+}
+#efm-contact .efmc__social-link{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-height:44px;             /* was 42px: under the comfortable tap-target bar */
+  padding:11px 20px;
+  font-family:var(--efmc-name-font);
+  font-size:15px;
+  color:var(--efmc-ink) !important;
+  background:#fff;
+  border:1px solid var(--efmc-rule);
+  border-radius:999px;
+  text-decoration:none !important;
+  transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+#efm-contact .efmc__social-link:hover{
+  border-color:var(--efmc-hover);
+  box-shadow:0 8px 18px rgba(9,12,38,.10);
+}
+#efm-contact .efmc__social-link:active{ transform:translateY(1px); }
+#efm-contact .efmc__social-link:focus-visible{ outline:2px solid var(--efmc-hover); outline-offset:3px; }
+#efm-contact .efmc__social-icon{ width:18px; height:18px; flex:0 0 auto; fill:currentColor; }
+
+@media (prefers-reduced-motion:reduce){
+  #efm-contact .efmc-btn,
+  #efm-contact .efmc__social-link{ transition:none; }
+  #efm-contact .efmc-btn:active,
+  #efm-contact .efmc__social-link:active{ transform:none; }
+}
