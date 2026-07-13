@@ -1,0 +1,302 @@
+/* EFM Newsletter Signup: hosted styles (eceakes/efm-widgets)
+   A "Sign up for our newsletter" trigger that opens a MODAL signup form.
+   Host #efm-newsletter (prefix efmn).
+
+   NOTE ON SCOPE 1 BELOW: it styles the widget's OWN gold pill button, which it renders
+   only when an #efm-newsletter host div is present. The Tickets CTA does NOT use it: it
+   marks one of its existing efmt-btn buttons with data-efmn-open, so the trigger keeps
+   efm-tickets.css styling and nothing is duplicated. Scope 1 is therefore dead weight on
+   the tickets page, and load-bearing anywhere the widget renders its own button.
+
+   Prefix note: efmn, NOT efms. "efms" is a prefix of "efmsc" (School Tabs), so a
+   global find/replace on efms would corrupt that widget. Same trap as efmf/efmfl.
+
+   TWO SCOPES, ON PURPOSE:
+     #efm-newsletter ...   the trigger button, which stays inside the host div.
+     .efmn-modal ...       the dialog, which is MOVED TO document.body when it opens.
+   The dialog cannot be scoped under #efm-newsletter because it no longer lives
+   there. It is moved out because a position:fixed element is trapped by any
+   ancestor with a transform/filter/perspective, and Duda's footer is exactly the
+   kind of place that has one. Re-parenting to <body> makes the overlay immune to
+   whatever the footer does. The efmn- prefix keeps the top-level selectors safe.
+
+   All role=heading DIVs force color with !important: Duda's global theme recolors
+   real headings (white/gold/serif) and would otherwise make them invisible. */
+
+/* ============================================================
+   1. THE WIDGET'S OWN BUTTON (only when an #efm-newsletter host div is present)
+   ============================================================ */
+#efm-newsletter.efmn{
+  --efmn-ink:#0E178E;          /* brand blue */
+  --efmn-hover:#4E63D6;        /* accent */
+  --efmn-cream:#F7F7F7;
+  --efmn-gold:#C9A23F;         /* the button */
+  --efmn-gold-hi:#D9B457;      /* button hover */
+  --efmn-gold-ink:#1D1704;     /* near-black text ON gold (7.4:1) */
+  --efmn-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmn-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+
+  box-sizing:border-box;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:10px 16px;
+  /* NO background: the trigger sits directly on Duda's footer, whatever colour it is */
+  font-family:var(--efmn-body-font);
+}
+#efm-newsletter.efmn *,
+#efm-newsletter.efmn *::before,
+#efm-newsletter.efmn *::after{ box-sizing:border-box; }
+
+#efm-newsletter .efmn__cta{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-height:46px;                 /* comfortable touch target */
+  padding:12px 28px;
+  font-family:var(--efmn-name-font);
+  font-size:15px;
+  letter-spacing:.3px;
+  line-height:1.2;
+  color:var(--efmn-gold-ink) !important;   /* defeat Duda's link/button theming */
+  background:var(--efmn-gold);
+  border:0;
+  border-radius:999px;
+  cursor:pointer;
+  text-decoration:none;
+  transition:background .14s ease, transform .14s ease;
+}
+#efm-newsletter .efmn__cta:hover{ background:var(--efmn-gold-hi); }
+#efm-newsletter .efmn__cta:active{ transform:translateY(1px); }
+#efm-newsletter .efmn__cta:focus-visible{ outline:3px solid var(--efmn-cream); outline-offset:2px; }
+#efm-newsletter .efmn__cta-icon{ font-size:16px; line-height:1; }
+
+/* light variant: blue button, for a light footer */
+#efm-newsletter.efmn[data-efmn-theme="light"] .efmn__cta{
+  color:#fff !important;
+  background:var(--efmn-ink);
+}
+#efm-newsletter.efmn[data-efmn-theme="light"] .efmn__cta:hover{ background:var(--efmn-hover); }
+#efm-newsletter.efmn[data-efmn-theme="light"] .efmn__cta:focus-visible{ outline-color:var(--efmn-ink); }
+
+/* an optional short line of copy beside the button */
+#efm-newsletter .efmn__teaser{
+  margin:0;
+  font-size:14.5px;
+  line-height:1.45;
+  color:inherit;                   /* inherit the footer's own text colour */
+}
+
+/* ============================================================
+   1b. EXTERNAL TRIGGERS (any element marked data-efmn-open)
+   ============================================================ */
+/* A data-efmn-open trigger is usually a button borrowed from another module: the Tickets
+   CTA marks one of its own <a class="efmt-btn"> elements, which has NO href (see the JS
+   for why). To a browser, an <a> without an href is not a link, so it gets none of the
+   link affordances: no cursor:pointer, and the pointer shows the text I-beam instead.
+   Put the button affordance back here, on the attribute we own, so every host module
+   gets it without us touching that module's stylesheet. */
+[data-efmn-open]{
+  cursor:pointer;
+  -webkit-user-select:none;
+  user-select:none;              /* it behaves as a button: double-click must not select the label */
+}
+
+/* ============================================================
+   2. THE MODAL (moved to <body> when open)
+   ============================================================ */
+.efmn-modal{
+  --efmn-ink:#0E178E;
+  --efmn-hover:#4E63D6;
+  --efmn-gold:#C9A23F;
+  --efmn-gold-hi:#D9B457;
+  --efmn-gold-ink:#1D1704;
+  --efmn-role:#5b6473;
+  --efmn-rule:#e4e6ef;
+  --efmn-field-ink:#2b3042;
+  --efmn-field-rule:#cfd3e6;
+  --efmn-err:#8f1d1d;
+  --efmn-err-bg:#fdeaea;
+  --efmn-ok:#175c38;
+  --efmn-ok-bg:#e8f7ef;
+  --efmn-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmn-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmn-title-font:"PPPangaia-Medium",Georgia,"Times New Roman",serif;
+
+  position:fixed;
+  inset:0;
+  z-index:2147483000;              /* above Duda's sticky header/footer chrome */
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  font-family:var(--efmn-body-font);
+}
+.efmn-modal[hidden]{ display:none; }
+.efmn-modal *,
+.efmn-modal *::before,
+.efmn-modal *::after{ box-sizing:border-box; }
+
+.efmn-modal__backdrop{ position:absolute; inset:0; background:rgba(9,12,38,.55); }
+
+.efmn-modal__panel{
+  position:relative;
+  z-index:1;
+  width:100%;
+  max-width:520px;
+  max-height:88vh;
+  overflow-y:auto;
+  background:#fff !important;      /* never inherit Duda's dark page theme */
+  color:var(--efmn-field-ink);
+  border-radius:18px;
+  padding:clamp(22px,3vw,32px);
+  box-shadow:0 24px 60px rgba(9,12,38,.32);
+  animation:efmn-rise .18s ease-out;
+}
+@keyframes efmn-rise{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+
+.efmn-modal__close{
+  position:absolute;
+  top:12px; right:12px;
+  width:38px; height:38px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; line-height:1;
+  color:var(--efmn-role) !important;
+  background:transparent;
+  border:0;
+  border-radius:50%;
+  cursor:pointer;
+}
+.efmn-modal__close:hover{ color:var(--efmn-ink) !important; background:#f4f6fc; }
+.efmn-modal__close:focus-visible{ outline:3px solid var(--efmn-hover); outline-offset:2px; }
+
+.efmn-modal__title{
+  font-family:var(--efmn-title-font);
+  font-size:clamp(21px,2.6vw,26px);
+  line-height:1.2;
+  margin:0 6px 8px 0;
+  padding-right:30px;              /* clear the close button */
+  color:var(--efmn-ink) !important;
+}
+.efmn-modal__copy{
+  margin:0 0 20px;
+  font-size:15px;
+  line-height:1.5;
+  color:var(--efmn-role);
+}
+
+/* ---- form ---- */
+.efmn-modal .efmn__grid{ display:grid; grid-template-columns:1fr; gap:13px; }
+@media (min-width:520px){
+  .efmn-modal .efmn__grid{ grid-template-columns:1fr 1fr; }
+  .efmn-modal .efmn__field--email,
+  .efmn-modal .efmn__actions{ grid-column:1 / -1; }
+}
+
+.efmn-modal .efmn__field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+.efmn-modal .efmn__label{
+  font-family:var(--efmn-name-font);
+  font-size:12.5px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:var(--efmn-role);
+}
+.efmn-modal .efmn__req{ color:#b3261e; margin-left:2px; }
+
+.efmn-modal .efmn__input{
+  width:100%;
+  min-height:46px;
+  padding:11px 13px;
+  font-family:var(--efmn-body-font);
+  font-size:16px;                  /* 16px stops iOS Safari zooming on focus */
+  line-height:1.3;
+  color:var(--efmn-field-ink);
+  background:#fff;
+  border:1px solid var(--efmn-field-rule);
+  border-radius:10px;
+  appearance:none;
+  transition:border-color .14s ease, box-shadow .14s ease;
+}
+.efmn-modal .efmn__input:focus{
+  outline:none;
+  border-color:var(--efmn-hover);
+  box-shadow:0 0 0 3px rgba(78,99,214,.28);
+}
+.efmn-modal .efmn__input[aria-invalid="true"]{
+  border-color:#d05353;
+  box-shadow:0 0 0 3px rgba(208,83,83,.22);
+}
+.efmn-modal .efmn__err{ font-size:12.5px; line-height:1.35; color:var(--efmn-err); }
+.efmn-modal .efmn__err:empty{ display:none; }
+
+.efmn-modal .efmn__actions{ display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin-top:4px; }
+.efmn-modal .efmn__btn{
+  flex:0 0 auto;
+  min-height:46px;
+  padding:12px 30px;
+  font-family:var(--efmn-name-font);
+  font-size:15px;
+  letter-spacing:.3px;
+  color:var(--efmn-gold-ink);
+  background:var(--efmn-gold);
+  border:0;
+  border-radius:999px;
+  cursor:pointer;
+  transition:background .14s ease, transform .14s ease;
+}
+.efmn-modal .efmn__btn:hover{ background:var(--efmn-gold-hi); }
+.efmn-modal .efmn__btn:active{ transform:translateY(1px); }
+.efmn-modal .efmn__btn:focus-visible{ outline:3px solid var(--efmn-ink); outline-offset:2px; }
+.efmn-modal .efmn__btn[disabled]{ opacity:.6; cursor:default; }
+.efmn-modal .efmn__btn[disabled]:hover{ background:var(--efmn-gold); }
+
+.efmn-modal .efmn__fine{
+  flex:1 1 200px;
+  margin:0;
+  font-size:12.5px;
+  line-height:1.4;
+  color:var(--efmn-role);
+}
+
+/* honeypot: present for Mailchimp's bot trap, never visible, never focusable */
+.efmn-modal .efmn__pot{ position:absolute !important; left:-5000px; width:1px; height:1px; overflow:hidden; }
+
+/* ---- status / result ---- */
+.efmn-modal .efmn__status{
+  margin:14px 0 0;
+  padding:11px 14px;
+  border-radius:10px;
+  font-size:14.5px;
+  line-height:1.45;
+  color:var(--efmn-err);
+  background:var(--efmn-err-bg);
+}
+.efmn-modal .efmn__status:empty{ display:none; padding:0; margin:0; }
+
+.efmn-modal .efmn__done{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  padding:18px 20px;
+  border-radius:12px;
+  background:var(--efmn-ok-bg);
+  color:var(--efmn-ok);
+}
+.efmn-modal .efmn__done:focus{ outline:none; }
+.efmn-modal .efmn__done-mark{ flex:0 0 auto; font-size:19px; line-height:1.3; }
+.efmn-modal .efmn__done-text{ margin:0; font-size:15px; line-height:1.5; }
+
+.efmn-sr-only{
+  position:absolute!important; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .efmn-modal__panel{ animation:none; }
+  .efmn-modal .efmn__input,
+  .efmn-modal .efmn__btn,
+  #efm-newsletter .efmn__cta{ transition:none; }
+  .efmn-modal .efmn__btn:active,
+  #efm-newsletter .efmn__cta:active{ transform:none; }
+}
