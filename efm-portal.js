@@ -168,6 +168,7 @@
   var NAV_TEMPLATE = [
     { id: "info", label: "General Information", subs: [
       { label: "Weekly Schedule", kind: "weekly" },
+      { label: "College Fair", kind: "collegeFair" },   // self-retiring: build() drops it when the sheet section is gone
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
       { label: "Health Services", kind: "health" },
@@ -1010,32 +1011,49 @@
     });
   }
 
-  // The nurse / health-services section of the Master Calendar "General Information"
-  // tab. Staff type it as ONE multi-line cell (a location title, then a "Day: hours"
-  // line per day, then any notes), the same shape as Maintenance and Mail, so the
-  // section is joined and re-split on newlines here. Day/hours lines become key/value
-  // rows rather than the heading + paragraph pairs giCellHTML would produce, and any
-  // phone number becomes a tel: link. Returns the inner HTML, or "" when the sheet has
-  // no such section. Used by the "Health Services" pill.
-  function nurseInner() {
+  // The lines of ONE General Information section, found by its heading regex. Staff
+  // type a section as ONE multi-line cell (the Nurse, Maintenance, Mail and College
+  // Fair sections are all this shape), so the section's rows are joined and re-split
+  // on newlines. The first line back is the section's own heading line. Returns [] when
+  // the sheet has no such section, which is how a pill knows to hide itself.
+  function giSectionLines(matchRe) {
     var lines = generalInfo.filter(function (l) { return l !== ""; });
     var start = -1;
-    for (var i = 0; i < lines.length; i++) { if (NURSE_RE.test(lines[i])) { start = i; break; } }
-    if (start < 0) return "";
+    for (var i = 0; i < lines.length; i++) { if (matchRe.test(lines[i])) { start = i; break; } }
+    if (start < 0) return [];
     var end = lines.length;
     for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
-    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Health Services</div>';
-    lines.slice(start, end).join("\n").split(/\r?\n/).forEach(function (raw) {
-      var s = raw.trim();
-      if (!s) return;
+    return lines.slice(start, end).join("\n").split(/\r?\n/)
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s !== ""; });
+  }
+
+  // Render General Information section lines richly. Used by the Health Services and
+  // College Fair pills, where the heading + paragraph pairs giCellHTML produces would
+  // read badly (a weekday or a school name is not a heading). Line shapes:
+  //   "Label: value", short label  -> key/value row     ("Monday: 9:00AM to 3:00PM")
+  //   "1. Name" or "12) Name"      -> numbered row      (the college-fair school list)
+  //   "*note"                      -> paragraph, asterisk stripped
+  //   short line, no end punctuation -> sub-heading     ("Bauman Gallery - East:")
+  //   anything else (a sentence)   -> paragraph
+  // Phone numbers become tel: links and emails mailto:, so a student on a phone can tap
+  // to reach someone.
+  function giRichHTML(lines) {
+    var html = "";
+    lines.forEach(function (s) {
       if (s.charAt(0) === "*") {                                  // a footnote ("*The Nurses are on call...")
         html += "<p>" + linkPhones(esc(s.replace(/^\*\s*/, ""))) + "</p>";
+        return;
+      }
+      var num = s.match(/^(\d+)[.)]\s+(.+)$/);                    // "1. Bard College Conservatory of Music"
+      if (num) {
+        html += '<div class="efmp-kv"><b>' + esc(num[1]) + "</b><span>" + esc(num[2]) + "</span></div>";
         return;
       }
       var ci = s.indexOf(":");
       var label = ci >= 0 ? s.slice(0, ci).trim() : "";
       var value = ci >= 0 ? s.slice(ci + 1).trim() : "";
-      if (value && label && label.split(/\s+/).length <= 3) {     // "Monday: 9:00AM to 3:00PM", "Phone: ..."
+      if (value && label && label.split(/\s+/).length <= 3) {     // "Monday: 9:00AM to 3:00PM", "When: ..."
         var shown = /@/.test(value)
           ? '<a href="mailto:' + esc(value) + '">' + esc(value) + "</a>"
           : linkPhones(esc(value));
@@ -1049,14 +1067,34 @@
     return html;
   }
 
+  // Health Services pill. The section's own heading line is KEPT: in the sheet it reads
+  // "Nurse's Office - Milner Room 121", so it carries the location and renders as the
+  // sub-heading under the "Health Services" head.
+  function nurseInner() {
+    var lines = giSectionLines(NURSE_RE);
+    if (!lines.length) return "";
+    return '<div class="efmp-info__head" role="heading" aria-level="3">Health Services</div>' + giRichHTML(lines);
+  }
+
+  // College Fair pill. Here the heading line is just the words "College Fair", so it is
+  // DROPPED (slice(1)) rather than repeated under an identical head. Returns "" when the
+  // sheet carries no College Fair section, which is how the pill retires itself: staff
+  // delete the section after the fair and the pill disappears, with no redeploy.
+  function collegeFairInner() {
+    var lines = giSectionLines(COLLEGE_FAIR_RE);
+    if (!lines.length) return "";
+    return '<div class="efmp-info__head" role="heading" aria-level="3">College Fair</div>' + giRichHTML(lines.slice(1));
+  }
+
   // Section headings on the Master Calendar "General Information" tab. A pill that
   // shows one section slices from its heading to the next heading in this list, so
   // a new section (maintenance, mail, ...) never bleeds into a neighboring pill.
   var NURSE_RE = /^(nurse|health services|health center)/i;
+  var COLLEGE_FAIR_RE = /^college fair/i;
   var GI_HEADINGS = [
     /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
     /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i,
-    /^religious service/i, NURSE_RE
+    /^religious service/i, NURSE_RE, COLLEGE_FAIR_RE
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
@@ -1138,6 +1176,18 @@
     if (!inner) { finishList("", 0, "", "Health services information will appear here once posted."); return; }
     list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
     announce("Health services information shown.");
+  }
+
+  // General Information -> "College Fair" pill: the fair's when/where, the invitation,
+  // and the participating schools grouped by gallery. Sheet-driven and self-retiring
+  // (see collegeFairInner): the pill only exists while the section does.
+  function renderCollegeFair() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var inner = collegeFairInner();
+    if (!inner) { finishList("", 0, "", "College Fair information will appear here once posted."); return; }
+    list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
+    announce("College Fair information shown.");
   }
 
   // General Information -> "Around Campus" pill: building access hours + maintenance
@@ -2006,7 +2056,7 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "health" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "health" || sub.kind === "collegeFair" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "weekly") renderWeekly();
@@ -2016,6 +2066,7 @@
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
     else if (sub.kind === "health") renderHealth();
+    else if (sub.kind === "collegeFair") renderCollegeFair();
     else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else if (sub.kind === "lessons") renderLessons();
@@ -2677,6 +2728,13 @@
     // when their tab's Show/Hide cell reads "Yes"; drop any parent left with no subs.
     NAV.forEach(function (t) {
       t.subs = t.subs.filter(function (s) { return !s.showWhen || /^y(es)?$/i.test(showHideValue(infoTabs[s.showWhen] || [])); });
+    });
+    // The College Fair pill exists only while the General Information tab carries a
+    // College Fair section (generalInfo is set above, so this is safe here). Staff
+    // retire the fair by deleting that section: the pill then disappears by itself,
+    // with no redeploy and no dead tab advertising an event that already happened.
+    NAV.forEach(function (t) {
+      t.subs = t.subs.filter(function (s) { return s.kind !== "collegeFair" || collegeFairInner() !== ""; });
     });
     NAV = NAV.filter(function (t) { return t.subs.length; });
     if (!_navRestored) { _navRestored = true; restoreNav(); }   // restore last-viewed screen on first load
