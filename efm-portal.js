@@ -170,6 +170,7 @@
       { label: "Weekly Schedule", kind: "weekly" },
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
+      { label: "Health Services", kind: "health" },
       { label: "People", kind: "people" },
       { label: "Student Handbook", kind: "handbook" },
       { label: "Crew Documents", kind: "crew" } ] },
@@ -1000,13 +1001,62 @@
     return html;
   }
 
+  // Make any phone number in ALREADY-ESCAPED text tappable, so a student on a phone
+  // can call from the page. Safe to run after esc(): digits, parens, dots and dashes
+  // are not touched by escaping.
+  function linkPhones(escaped) {
+    return escaped.replace(/\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/g, function (m) {
+      return '<a href="tel:' + m.replace(/[^\d+]/g, "") + '">' + m + "</a>";
+    });
+  }
+
+  // The nurse / health-services section of the Master Calendar "General Information"
+  // tab. Staff type it as ONE multi-line cell (a location title, then a "Day: hours"
+  // line per day, then any notes), the same shape as Maintenance and Mail, so the
+  // section is joined and re-split on newlines here. Day/hours lines become key/value
+  // rows rather than the heading + paragraph pairs giCellHTML would produce, and any
+  // phone number becomes a tel: link. Returns the inner HTML, or "" when the sheet has
+  // no such section. Used by the "Health Services" pill.
+  function nurseInner() {
+    var lines = generalInfo.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (NURSE_RE.test(lines[i])) { start = i; break; } }
+    if (start < 0) return "";
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
+    var html = '<div class="efmp-info__head" role="heading" aria-level="3">Health Services</div>';
+    lines.slice(start, end).join("\n").split(/\r?\n/).forEach(function (raw) {
+      var s = raw.trim();
+      if (!s) return;
+      if (s.charAt(0) === "*") {                                  // a footnote ("*The Nurses are on call...")
+        html += "<p>" + linkPhones(esc(s.replace(/^\*\s*/, ""))) + "</p>";
+        return;
+      }
+      var ci = s.indexOf(":");
+      var label = ci >= 0 ? s.slice(0, ci).trim() : "";
+      var value = ci >= 0 ? s.slice(ci + 1).trim() : "";
+      if (value && label && label.split(/\s+/).length <= 3) {     // "Monday: 9:00AM to 3:00PM", "Phone: ..."
+        var shown = /@/.test(value)
+          ? '<a href="mailto:' + esc(value) + '">' + esc(value) + "</a>"
+          : linkPhones(esc(value));
+        html += '<div class="efmp-kv"><b>' + esc(label) + "</b><span>" + shown + "</span></div>";
+      } else if (!/[.!?]$/.test(s) && s.split(/\s+/).length <= 8) {   // "Nurse's Office - Milner Room 121"
+        html += '<div class="efmp-info__dept" role="heading" aria-level="4">' + esc(s.replace(/:\s*$/, "")) + "</div>";
+      } else {                                                    // a sentence: a note or instruction
+        html += "<p>" + linkPhones(esc(s)) + "</p>";
+      }
+    });
+    return html;
+  }
+
   // Section headings on the Master Calendar "General Information" tab. A pill that
   // shows one section slices from its heading to the next heading in this list, so
   // a new section (maintenance, mail, ...) never bleeds into a neighboring pill.
+  var NURSE_RE = /^(nurse|health services|health center)/i;
   var GI_HEADINGS = [
     /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
     /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i,
-    /^religious service/i
+    /^religious service/i, NURSE_RE
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
@@ -1076,6 +1126,18 @@
       "<p>Need a ride to religious services during the festival? Sign up using the form below.</p>" +
       '<a class="efmp-modal__cal efmp-modal__cal--ghost" href="' + esc(religiousTransport.url) + '" ' +
         'target="_blank" rel="noopener noreferrer">Open the transportation sign-up form</a>';
+  }
+
+  // General Information -> "Health Services" pill: the nurse's location, hours, and
+  // contact. Its own pill (not stacked into Around Campus) so it is one click away:
+  // a student looking for the nurse is usually not in the mood to scroll.
+  function renderHealth() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var inner = nurseInner();
+    if (!inner) { finishList("", 0, "", "Health services information will appear here once posted."); return; }
+    list.innerHTML = '<div class="efmp-info">' + inner + "</div>";
+    announce("Health services information shown.");
   }
 
   // General Information -> "Around Campus" pill: building access hours + maintenance
@@ -1944,7 +2006,7 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "health" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "weekly") renderWeekly();
@@ -1953,6 +2015,7 @@
     else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
     else if (sub.kind === "dining") renderDining();
     else if (sub.kind === "aroundCampus") renderAroundCampus();
+    else if (sub.kind === "health") renderHealth();
     else if (sub.kind === "people") { if (peopleView === "staff") renderStaffView(); else renderFacultyView(); }
     else if (sub.kind === "infoTab") renderInfoTab(sub);
     else if (sub.kind === "lessons") renderLessons();

@@ -187,6 +187,7 @@
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
+      { label: "Health Services", kind: "health" },
       { label: "Dress Code", kind: "infoSection", match: ["dress"] },
       { label: "Documents", kind: "infoSection", match: ["document"], all: true },
       { label: "Tickets", kind: "tickets" } ] },
@@ -1300,10 +1301,11 @@
   // Section headings on the Master Calendar "General Information" tab (the Dining
   // source). A pill that shows one section slices from its heading to the next
   // heading in this list, so a new section never bleeds into a neighboring pill.
+  var NURSE_RE = /^(nurse|health services|health center)/i;
   var GI_HEADINGS = [
     /^general information$/i, /^dining hall/i, /^(student|building) access hours/i,
     /^(urgent )?maintenance/i, /^mail\b/i, /^chamber music coaches/i, /^off[\s-]*campus dining/i,
-    /^religious service/i
+    /^religious service/i, NURSE_RE
   ];
   function giIsHeading(l) { return GI_HEADINGS.some(function (re) { return re.test(l); }); }
 
@@ -1341,6 +1343,74 @@
     var html = '<div class="efmfp-info__head" role="heading" aria-level="3">' + esc(head) + '</div><div class="efmfp-info__card">';
     lines.slice(start, end).forEach(function (l) { html += giCellHTML(l); });
     return html + "</div>";
+  }
+
+  // Make any phone number in ALREADY-ESCAPED text tappable. Safe to run after esc():
+  // digits, parens, dots and dashes are not touched by escaping.
+  function linkPhones(escaped) {
+    return escaped.replace(/\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/g, function (m) {
+      return '<a href="tel:' + m.replace(/[^\d+]/g, "") + '">' + m + "</a>";
+    });
+  }
+
+  // The nurse / health-services section of the Master Calendar "General Information"
+  // tab. Staff type it as ONE multi-line cell (a location title, then a "Day: hours"
+  // line per day, then any notes), the same shape as Maintenance and Mail, so the
+  // section is joined and re-split on newlines here. Day/hours lines become key/value
+  // rows rather than the heading + paragraph pairs giCellHTML would produce, and any
+  // phone number becomes a tel: link. This is the SAME sheet section the student
+  // portal reads, so the two portals can never disagree. Returns the inner HTML (head
+  // + card), or "" when the sheet has no such section.
+  function nurseInner() {
+    var lines = diningLines.filter(function (l) { return l !== ""; });
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) { if (NURSE_RE.test(lines[i])) { start = i; break; } }
+    if (start < 0) return "";
+    var end = lines.length;
+    for (var e = start + 1; e < lines.length; e++) { if (giIsHeading(lines[e])) { end = e; break; } }
+    var html = '<div class="efmfp-info__head" role="heading" aria-level="3">Health Services</div><div class="efmfp-info__card">';
+    lines.slice(start, end).join("\n").split(/\r?\n/).forEach(function (raw) {
+      var s = raw.trim();
+      if (!s) return;
+      if (s.charAt(0) === "*") {                                  // a footnote ("*The Nurses are on call...")
+        html += "<p>" + linkPhones(esc(s.replace(/^\*\s*/, ""))) + "</p>";
+        return;
+      }
+      var ci = s.indexOf(":");
+      var label = ci >= 0 ? s.slice(0, ci).trim() : "";
+      var value = ci >= 0 ? s.slice(ci + 1).trim() : "";
+      if (value && label && label.split(/\s+/).length <= 3) {     // "Monday: 9:00AM to 3:00PM", "Phone: ..."
+        var shown = isEmail(value)
+          ? '<a href="mailto:' + esc(clean(value)) + '">' + esc(value) + "</a>"
+          : linkPhones(esc(value));
+        html += '<div class="efmfp-kv"><b>' + esc(label) + "</b><span>" + shown + "</span></div>";
+      } else if (!/[.!?]$/.test(s) && s.split(/\s+/).length <= 8) {   // "Nurse's Office - Milner Room 121"
+        html += '<div class="efmfp-info__sub" role="heading" aria-level="4">' + esc(s.replace(/:\s*$/, "")) + "</div>";
+      } else {                                                    // a sentence: a note or instruction
+        html += "<p>" + linkPhones(esc(s)) + "</p>";
+      }
+    });
+    return html + "</div>";
+  }
+
+  // General Information -> "Health Services" pill: the nurse's location, hours, and
+  // contact, read from the same Master Calendar section the student portal reads, so
+  // the two can never disagree. Its own pill (not stacked into Around Campus) so it
+  // is one click away.
+  function renderHealth() {
+    banner.hidden = true; status.hidden = true;
+    var inner = nurseInner();
+    if (!inner) {
+      list.innerHTML = "";
+      status.textContent = "Health services information will appear here once posted.";
+      status.hidden = false;
+      announce("Health services information will appear here once posted.");
+      syncBox();
+      return;
+    }
+    list.innerHTML = '<div class="efmfp-info efmfp-info--center">' + inner + "</div>";
+    announce("Health services information shown.");
+    syncBox();
   }
 
   // General Information -> "Around Campus" pill: maintenance + mail (Master Calendar
@@ -1892,6 +1962,7 @@
     else if (k === "alexander") renderAlexander();
     else if (k === "infoSection") renderInfoSection(sub);
     else if (k === "aroundCampus") renderAroundCampus();
+    else if (k === "health") renderHealth();
     else if (k === "tickets") renderTickets();
     else if (k === "programs") renderPrograms();
     else if (k === "infoTab") renderInfoTab(sub);
