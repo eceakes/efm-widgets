@@ -20,6 +20,7 @@
   function csvUrl(tab){ return "https://docs.google.com/spreadsheets/d/"+WORKBOOK+"/gviz/tq?tqx=out:csv&sheet="+encodeURIComponent(tab); }
   var EVENTS_CSV      = csvUrl("EventGridToWebsite");
   var MASTERCLASS_CSV = csvUrl("Masterclasses");
+  var BOOKS_CSV       = csvUrl("flipbooks");   /* Program Book tab: see PROGRAM BOOKS below */
 
   var MODULE_TITLE = "Concert Programs";          /* "" hides it */
   var INTRO        = "Download the program for each concert and masterclass of the season.";  /* "" hides */
@@ -28,13 +29,85 @@
   var DEFAULT_TAB = "concerts";
   var DESC_MAX_LINES = 6;   /* a description longer than N lines is clamped on the card with a "Read more" toggle */
 
-  /* Program Book tab — an interactive flipbook embed with a downloadable PDF
-     (the PDF is also the screen-reader-accessible fallback). Either URL may be ""
-     (blank both to hide the tab). */
-  var PROGRAM_BOOK_EMBED_URL = "https://online.flippingbook.com/view/416920229/";   /* flipbook viewer ("" -> show the PDF inline instead) */
-  var PROGRAM_BOOK_URL   = "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17-d59928dd.pdf";   /* PDF: download + screen-reader-accessible alternative to the flipbook */
-  var PROGRAM_BOOK_TITLE = "2026 Program Book";
-  var PROGRAM_BOOK_BLURB = "Flip through the season program book below, or download the PDF.";
+  /* ============================================================
+     PROGRAM BOOKS — read LIVE from the "flipbooks" tab of the Event Grid workbook.
+
+     *** ADDING NEXT WEEK'S BOOK IS A SHEET EDIT. NO CODE, NO PUSH, NO RE-UPLOAD. ***
+     Add a row and it is on the site within a minute, like the concert programs.
+
+     COLUMNS (matched by HEADER NAME, so their order does not matter):
+       Title          required. A row with no title is skipped.
+       PDF-URL        the downloadable PDF.        -> "View / Download (PDF)" button
+       FlipBook-URL   the FlippingBook "view" url. -> the interactive flipbook
+     OPTIONAL, add them only if you want them:
+       Blurb          a line of text under the title
+       Download only  "yes" -> show this book as a compact download ROW, never a flipbook
+
+     ROW ORDER IS DISPLAY ORDER. Put the current week at the TOP.
+
+     DEFAULT WHEN THERE IS NO "Download only" COLUMN: the FIRST book that has a flipbook is
+     embedded as the big flipbook; every book below it becomes a compact download row (with
+     a "flip through it online" link if it has a flipbook). That is deliberate: the current
+     week should be the thing you can read on the page, and stacking several 80vh
+     third-party iframes would make the tab enormous.
+
+     If the sheet tab is missing or empty, FALLBACK_BOOKS below is used instead, so the tab
+     can never go blank. */
+  var BOOK_ALIASES = {
+    title:    ["title","name","book","program book","label"],
+    pdf:      ["pdf-url","pdf url","pdf","download","download url","pdf link","file","program pdf"],
+    embed:    ["flipbook-url","flipbook url","flipbook","flip book","embed","embed url","online","view url"],
+    blurb:    ["blurb","description","desc","notes","subtitle","summary"],
+    download: ["download only","download-only","downloadonly","no flipbook","pdf only","pdf-only"]
+  };
+
+  /* Used only if the "flipbooks" sheet tab is missing or empty. */
+  var FALLBACK_BOOKS = [
+    {
+      title: "2026 Full Program Book",
+      blurb: "The complete season program book.",
+      /* NOTE: the ORIGINAL full-book flipbook (view/416920229/) was DELETED from
+         FlippingBook while still embedded on the live page, which is why every visitor who
+         opened this tab saw "Sorry, but this online flipbook was deleted." This is its
+         replacement. Do not restore the old id. */
+      embed: "https://online.flippingbook.com/view/958667728/",
+      pdf:   "https://irp.cdn-website.com/1e6f3c7e/files/uploaded/11x17+-+EFM+PROGRAM+BOOK+-+11x17-d59928dd.pdf",   /* ~62 MB */
+      download: true
+    }
+  ];
+
+  function parseBookRows(rows){
+    if(!rows || !rows.length) return [];
+    var m=makeMap(rows[0], BOOK_ALIASES);
+    if(m.title===undefined) return [];            /* not the flipbooks tab */
+
+    var out=[];
+    for(var i=1;i<rows.length;i++){
+      var r=rows[i];
+      var title=cell(r,m.title);
+      if(!title) continue;
+      var pdf=httpUrl(cell(r,m.pdf)), embed=httpUrl(cell(r,m.embed));
+      if(!pdf && !embed) continue;                /* nothing to point at */
+      out.push({
+        title: title,
+        blurb: cell(r,m.blurb),
+        pdf: pdf,
+        embed: embed,
+        /* undefined (not false) when the column is absent, so the default rule below can
+           tell "the operator said no" apart from "the operator did not say". */
+        download: (m.download===undefined) ? undefined : /^y(es)?|^true|^1$/i.test(cell(r,m.download))
+      });
+    }
+
+    /* The default rule: feature the first flipbook, everything else is a download row. */
+    var featured=false;
+    out.forEach(function(b){
+      if(b.download!==undefined) return;          /* the sheet was explicit: respect it */
+      if(b.embed && !featured){ b.download=false; featured=true; }
+      else b.download=true;
+    });
+    return out;
+  }
 
   /* Conversion CTA (any blank URL hides that button). */
   var TICKETS_URL   = "https://www.tangercenter.com/events/eastern-festival-of-music/";
@@ -266,32 +339,219 @@
     section("Past", past, true);
   }
 
-  /* ---- Program Book panel: inline PDF viewer + download (lazy-loaded on tab activate) ---- */
-  var bookFrame=null;
-  function renderProgramBook(panelEl, book){
-    var pdf=httpUrl(book.pdf), embed=httpUrl(book.embed);
-    var viewer=embed||(pdf?pdf+"#view=FitH":""), dl=pdf||embed, isFlip=!!embed;
-    var frameTitle=escapeHtml(PROGRAM_BOOK_TITLE+(isFlip?" (interactive flipbook)":" (PDF document viewer)"));
-    var btnLabel=pdf?"View / Download (PDF)":"Open the program book";
-    var btnAria=escapeHtml(pdf?("View or download "+PROGRAM_BOOK_TITLE+" (PDF, opens in a new tab)"):("Open "+PROGRAM_BOOK_TITLE+" (opens in a new tab)"));
-    var srNote=(isFlip&&pdf)?'<p class="efmpr-sr-only">The program book below is shown as an interactive flipbook. For a screen-reader-accessible version, use the "View / Download (PDF)" button above.</p>':'';
-    panelEl.innerHTML="";
-    var card=document.createElement("div"); card.className="efmpr-book";
-    card.innerHTML='<div class="efmpr-book__head">'+
-        '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(PROGRAM_BOOK_TITLE)+'</div>'+
-          (PROGRAM_BOOK_BLURB?'<div class="efmpr-book__blurb">'+escapeHtml(PROGRAM_BOOK_BLURB)+'</div>':'')+'</div>'+
-        '<a class="efmpr-book__btn" href="'+escapeHtml(dl)+'" target="_blank" rel="noopener noreferrer"'+(pdf?' download':'')+' data-book-dl aria-label="'+btnAria+'">'+downloadIconSvg()+'<span>'+escapeHtml(btnLabel)+'</span></a>'+
-      '</div>'+
-      '<div class="efmpr-book__viewer" aria-busy="false">'+srNote+'<iframe class="efmpr-book__frame" title="'+frameTitle+'" loading="lazy" allowfullscreen scrolling="no" data-src="'+escapeHtml(viewer)+'"></iframe>'+
-        '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(embed||dl)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a>'+(pdf&&isFlip?' Or <a href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download>download the PDF</a>.':'')+'</p></div>';
-    panelEl.appendChild(card);
-    bookFrame=card.querySelector(".efmpr-book__frame");
-    var viewerEl=card.querySelector(".efmpr-book__viewer");
-    if(bookFrame&&viewerEl) bookFrame.addEventListener("load",function(){ viewerEl.setAttribute("aria-busy","false"); });
-    var dlbtn=card.querySelector("[data-book-dl]");
-    if(dlbtn) dlbtn.addEventListener("click",function(){ track(EV_DOWNLOAD,{ concert:"Program Book", item_type:"Program Book", item_title:PROGRAM_BOOK_TITLE, file_name:fileNameOf(dl), link_url:dl }); });
+  /* ============================================================
+     FLIPBOOK FAILOVER: if the flipbook will not display, show the PDF instead.
+
+     A flipbook can fail in three ways. We can detect all three, but only just, and each
+     needed a different trick. Everything below fails SAFE: if a check is inconclusive we
+     still show the flipbook (today's behaviour), and if a check fires we drop to the PDF,
+     which is degraded but never broken. Set FAILOVER=false to switch it all off.
+
+     1. THE BOOK WAS DELETED.
+        FlippingBook serves the error page with HTTP 200, so a status check proves nothing
+        (this is exactly how the live /programs page ended up embedding a deleted book and
+        showing "Sorry, but this online flipbook was deleted" to every visitor). But the
+        deleted page's HTML is tiny and literally contains that sentence, and
+        online.flippingbook.com reflects our Origin in Access-Control-Allow-Origin, so we
+        can just fetch() it and read it. Caught before the iframe is ever given a src.
+
+     2. FLIPPINGBOOK IS UNREACHABLE (offline, or the network blocks it).
+        The same fetch() rejects. Worth failing over on: the Guilford campus wifi already
+        blocks cdn.jsdelivr.net, so a blocked flippingbook.com is not hypothetical, and an
+        iframe pointed at a blocked host renders nothing at all.
+
+     3. THE BOOK IS IN "PROTECTED EMBED" PRIVACY MODE.
+        This one is invisible to fetch(): the server returns the full, healthy viewer page
+        to any request (verified, including with a spoofed Referer). The block is enforced
+        client-side INSIDE the iframe, which then renders "cannot be displayed here because
+        of its privacy settings". Cross-origin we cannot read that.
+        What we CAN see: a protected book postMessages {fbPublicationUrl:"<its url>"} to the
+        parent, over and over (12 times in ~10s in testing). That is its handshake: it is
+        waiting for FlippingBook's official embed script to answer, and ours never does.
+        A public book has nothing to negotiate. So: repeated handshakes with no answer =
+        this book will not render for us.
+        CAUTION: that message is undocumented FlippingBook behaviour and could change. It
+        is therefore treated as a HINT, not gospel: we require the RETRY (>= 2 messages),
+        never act on a single one, and if FlippingBook ever stops sending it we simply lose
+        this one check and are back to today's behaviour. We deliberately do NOT answer the
+        handshake to force a protected book to render: that would be reverse-engineering a
+        protection mechanism, and the supported fix is one setting (see below).
+
+     THE REAL FIX, which makes all of this unnecessary: set the publication's privacy to
+     Public in FlippingBook. Protected embed additionally requires FlippingBook's own JS
+     embed code (their docs are explicit that whitelisting a domain is NOT enough), and a
+     public program book has nothing to protect.
+     ============================================================ */
+  var FAILOVER = true;
+  var HANDSHAKES_BEFORE_FAILOVER = 2;   /* never act on a single message: require the retry */
+  var PROBE_TIMEOUT_MS = 6000;
+
+  var bookFrames=[];
+  var handshakeCounts={};               /* flipbook url -> how many times it has called out */
+
+  function isFlipbookErrorPage(html){
+    if(!html) return true;
+    /* the deleted page is ~1.8k and says so; the real viewer is ~77k and does not */
+    return /this online flipbook was deleted|class="error-image"/i.test(html);
   }
-  function loadBookFrame(){ if(bookFrame && !bookFrame.getAttribute("src")){ var s=bookFrame.getAttribute("data-src"); if(s){ var v=bookFrame.parentNode; if(v&&v.setAttribute) v.setAttribute("aria-busy","true"); bookFrame.setAttribute("src",s); } } }
+
+  /* Resolves "ok" | "gone" | "unreachable". Never throws. */
+  function probeFlipbook(url){
+    return new Promise(function(resolve){
+      var done=false;
+      var t=setTimeout(function(){ if(!done){ done=true; resolve("unreachable"); } }, PROBE_TIMEOUT_MS);
+      try{
+        fetch(url, { method:"GET", credentials:"omit" })
+          .then(function(r){ return r.text(); })
+          .then(function(html){ if(done) return; done=true; clearTimeout(t);
+            resolve(isFlipbookErrorPage(html) ? "gone" : "ok"); })
+          .catch(function(){ if(done) return; done=true; clearTimeout(t); resolve("unreachable"); });
+      }catch(e){ if(!done){ done=true; clearTimeout(t); resolve("unreachable"); } }
+    });
+  }
+
+  /* Swap a book's card from "flipbook" to "download row", in place. Only worth doing if
+     the book actually HAS a pdf: with no pdf there is nothing better to show, so we leave
+     the flipbook (and its "open in a new tab" link) alone rather than blank the card. */
+  function failoverToPdf(card, book, why){
+    if(!card || !httpUrl(book.pdf)) return;
+    if(card.getAttribute("data-failed-over")) return;
+    var replacement=document.createElement("div");
+    replacement.innerHTML=bookCardHtml(assign({}, book, { download:true }));
+    var next=replacement.firstChild;
+    if(!next) return;
+    next.setAttribute("data-failed-over", why);
+    card.parentNode.replaceChild(next, card);
+    wireBookCard(next, book);
+    bookFrames=bookFrames.filter(function(f){ return document.contains(f); });
+    track("program_book_failover", { item_title:book.title||"", reason:why });
+  }
+
+  function assign(target){
+    for(var i=1;i<arguments.length;i++){ var s=arguments[i];
+      for(var k in s){ if(Object.prototype.hasOwnProperty.call(s,k)) target[k]=s[k]; } }
+    return target;
+  }
+
+  function bookCardHtml(book){
+    var pdf=httpUrl(book.pdf), embed=httpUrl(book.embed);
+    var dl=pdf||embed;
+    if(!dl) return "";                                  /* nothing to point at: skip it */
+
+    /* download:true renders the compact row even when an embed exists (see the config). */
+    var showFlip = !!embed && !book.download;
+    var title=book.title||"Program Book";
+
+    var btnLabel = pdf ? "View / Download (PDF)" : "Open the program book";
+    var btnAria  = escapeHtml(pdf
+      ? ("View or download "+title+" (PDF, opens in a new tab)")
+      : ("Open "+title+" (opens in a new tab)"));
+
+    /* A flipbook is an <iframe> full of images: useless to a screen reader. Point those
+       users at the PDF, which is the accessible equivalent. */
+    var srNote = (showFlip && pdf)
+      ? '<p class="efmpr-sr-only">This program book is shown as an interactive flipbook. For a screen-reader-accessible version, use the "View / Download (PDF)" button above.</p>'
+      : '';
+
+    var head='<div class="efmpr-book__head">'+
+        '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(title)+'</div>'+
+          (book.blurb?'<div class="efmpr-book__blurb">'+escapeHtml(book.blurb)+'</div>':'')+'</div>'+
+        '<a class="efmpr-book__btn" href="'+escapeHtml(dl)+'" target="_blank" rel="noopener noreferrer"'+(pdf?' download':'')+
+          ' data-book-dl data-book-title="'+escapeHtml(title)+'" aria-label="'+btnAria+'">'+
+          downloadIconSvg()+'<span>'+escapeHtml(btnLabel)+'</span></a>'+
+      '</div>';
+
+    if(!showFlip){
+      /* Download row. If the book ALSO has a flipbook, offer it: handing someone a 62 MB
+         PDF as their only option is not a kindness. */
+      var online = embed
+        ? '<p class="efmpr-book__fallback">Or <a href="'+escapeHtml(embed)+'" target="_blank" rel="noopener noreferrer">flip through it online</a> without downloading.</p>'
+        : '';
+      return '<div class="efmpr-book efmpr-book--dl">'+head+online+'</div>';
+    }
+
+    var viewer=embed||(pdf?pdf+"#view=FitH":"");
+    var frameTitle=escapeHtml(title+(embed?" (interactive flipbook)":" (PDF document viewer)"));
+    return '<div class="efmpr-book">'+head+
+      '<div class="efmpr-book__viewer" aria-busy="false">'+srNote+
+        '<iframe class="efmpr-book__frame" title="'+frameTitle+'" loading="lazy" allowfullscreen scrolling="no" data-src="'+escapeHtml(viewer)+'"></iframe>'+
+        '<p class="efmpr-book__fallback">Trouble viewing it here? <a href="'+escapeHtml(embed||dl)+'" target="_blank" rel="noopener noreferrer">Open the program book in a new tab.</a>'+
+          (pdf&&embed?' Or <a href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download>download the PDF</a>.':'')+'</p>'+
+      '</div></div>';
+  }
+
+  /* Per-card wiring, so a card built by the initial render and a card rebuilt by the
+     failover get identical behaviour. */
+  function wireBookCard(card, book){
+    var f=card.querySelector(".efmpr-book__frame");
+    if(f){
+      var viewerEl=f.parentNode;
+      if(viewerEl&&viewerEl.setAttribute) f.addEventListener("load",function(){ viewerEl.setAttribute("aria-busy","false"); });
+      f.__book=book;                       /* so the message listener can find its card */
+      bookFrames.push(f);
+    }
+    [].slice.call(card.querySelectorAll("[data-book-dl]")).forEach(function(btn){
+      btn.addEventListener("click",function(){
+        var href=btn.getAttribute("href"), t=btn.getAttribute("data-book-title");
+        track(EV_DOWNLOAD,{ concert:"Program Book", item_type:"Program Book", item_title:t, file_name:fileNameOf(href), link_url:href });
+      });
+    });
+  }
+
+  var bookList=[];
+  function renderProgramBook(panelEl, books){
+    bookList=books||[];
+    bookFrames=[];
+    panelEl.innerHTML = bookList.map(bookCardHtml).join("");
+    [].slice.call(panelEl.querySelectorAll(".efmpr-book")).forEach(function(card, i){
+      wireBookCard(card, bookList[i]);
+    });
+    if(FAILOVER) listenForHandshakes();
+  }
+
+  /* A protected-embed flipbook calls out to the parent repeatedly, waiting for an answer
+     it will never get from us. Count those calls; on the RETRY (not the first message),
+     conclude it will not render and swap in the PDF. See the big note above. */
+  var handshakeWired=false;
+  function listenForHandshakes(){
+    if(handshakeWired) return; handshakeWired=true;
+    window.addEventListener("message", function(e){
+      if(!/(^|\.)flippingbook\.com$/i.test((function(){ try{ return new URL(e.origin).hostname; }catch(_){ return ""; } })())) return;
+      var url = e.data && e.data.fbPublicationUrl;
+      if(!url) return;
+
+      handshakeCounts[url]=(handshakeCounts[url]||0)+1;
+      if(handshakeCounts[url] < HANDSHAKES_BEFORE_FAILOVER) return;
+
+      bookFrames.slice().forEach(function(f){
+        var b=f.__book; if(!b) return;
+        if(httpUrl(b.embed)!==url) return;
+        var card=f.closest ? f.closest(".efmpr-book") : null;
+        failoverToPdf(card, b, "protected-embed");
+      });
+    });
+  }
+
+  /* Lazy-load, on tab activate. Each flipbook is probed BEFORE it is given a src, so a
+     deleted or unreachable book never gets rendered as a broken iframe at all. */
+  function loadBookFrame(){
+    bookFrames.slice().forEach(function(f){
+      if(f.getAttribute("src")) return;
+      var s=f.getAttribute("data-src"); if(!s) return;
+      var v=f.parentNode; if(v&&v.setAttribute) v.setAttribute("aria-busy","true");
+
+      if(!FAILOVER || !window.fetch || !window.Promise){ f.setAttribute("src",s); return; }
+
+      probeFlipbook(s).then(function(verdict){
+        if(!document.contains(f)) return;              /* already swapped out */
+        if(verdict==="ok"){ f.setAttribute("src",s); return; }
+        var card=f.closest ? f.closest(".efmpr-book") : null;
+        var b=f.__book||{};
+        if(httpUrl(b.pdf)) failoverToPdf(card, b, verdict);
+        else f.setAttribute("src",s);                  /* no pdf to fall back to: try anyway */
+      });
+    });
+  }
 
   function renderCTA(){
     var tickets=httpUrl(TICKETS_URL), donate=httpUrl(DONATE_URL);
@@ -338,9 +598,13 @@
     try{ el.scrollIntoView({behavior:(window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches)?"auto":"smooth", block:"start"}); }catch(e){ el.scrollIntoView(); } }
 
   function render(data){
-    var bpdf=httpUrl(PROGRAM_BOOK_URL), bembed=httpUrl(PROGRAM_BOOK_EMBED_URL);
+    /* Keep only books that have a title AND somewhere to point. An entry with neither a
+       pdf nor an embed would render an empty card; an empty list hides the tab. */
+    var books=(data.books||[]).filter(function(b){
+      return b && b.title && (httpUrl(b.pdf) || httpUrl(b.embed));
+    });
     var content={ concerts:buildGroups(data.events), masterclasses:buildGroups(data.masterclasses),
-                  programbook: (bpdf||bembed)? [{ pdf:bpdf, embed:bembed }] : [] };
+                  programbook: books };
     var keys=TABS.map(function(t){return t.key;}).filter(function(k){ return content[k] && content[k].length; });
     if(!keys.length){ setStatus("Programs will be posted here soon — check back closer to each concert."); return; }
     setStatus("");
@@ -349,7 +613,7 @@
     listEl.innerHTML=""; panels={};
     TABS.forEach(function(t){ if(keys.indexOf(t.key)<0) return;
       var p=document.createElement("div"); p.className="efmpr__panel"; p.id="efmpr-panel-"+t.key; p.setAttribute("role","tabpanel"); p.setAttribute("aria-labelledby","efmpr-tab-"+t.key); p.hidden=true;
-      if(t.key==="programbook") renderProgramBook(p, content[t.key][0]); else renderPanel(p, content[t.key]);
+      if(t.key==="programbook") renderProgramBook(p, content[t.key]); else renderPanel(p, content[t.key]);
       listEl.appendChild(p); panels[t.key]=p; });
     buildTabs(keys);
     activate(keys.indexOf(DEFAULT_TAB)>=0?DEFAULT_TAB:keys[0], false);
@@ -390,12 +654,22 @@
   function headerSig(rows){ return (rows&&rows[0])? rows[0].map(function(c){ return String(c==null?"":c).trim().toLowerCase(); }).join("|") : ""; }
   function start(){
     setStatus("Loading programs…");
-    Promise.all([ fetchRows(EVENTS_CSV), fetchRows(MASTERCLASS_CSV) ]).then(function(res){
-      var evRows=res[0], mcRows=res[1], evSig=headerSig(evRows);
+    /* The books tab is optional: if it 404s or is empty we fall back, so its fetch must
+       never take the whole page down with it. */
+    var books = fetchRows(BOOKS_CSV).catch(function(){ return []; });
+
+    Promise.all([ fetchRows(EVENTS_CSV), fetchRows(MASTERCLASS_CSV), books ]).then(function(res){
+      var evRows=res[0], mcRows=res[1], bkRows=res[2], evSig=headerSig(evRows);
       /* gviz returns the FIRST sheet when a named tab doesn't exist — if "Masterclasses"
-         comes back identical to the events sheet, that tab is missing: treat as empty. */
+         (or "flipbooks") comes back identical to the events sheet, that tab is missing:
+         treat as empty. */
       if(evSig && headerSig(mcRows)===evSig) mcRows=[];
-      render({ events:parseEventRows(evRows), masterclasses:parseEventRows(mcRows) });
+      if(evSig && headerSig(bkRows)===evSig) bkRows=[];
+
+      var parsedBooks=parseBookRows(bkRows);
+      if(!parsedBooks.length) parsedBooks=FALLBACK_BOOKS;   /* the tab can never go blank */
+
+      render({ events:parseEventRows(evRows), masterclasses:parseEventRows(mcRows), books:parsedBooks });
       wire();
     });
   }

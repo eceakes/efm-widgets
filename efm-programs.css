@@ -122,7 +122,13 @@
 
 /* ---- Program Book viewer ---- */
 #efm-programs .efmpr-book{ border:1px solid var(--efmpr-rule); border-radius:14px; background:#fff; overflow:hidden; }
+#efm-programs .efmpr-book + .efmpr-book{ margin-top:18px; }   /* the tab now stacks one card per book */
 #efm-programs .efmpr-book__head{ display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:18px 22px; border-bottom:1px solid var(--efmpr-rule); }
+
+/* A download-only card (efmpr-book--dl) has no viewer under it, so the head's bottom rule
+   would dangle. Drop it, unless a "flip through it online" line follows and needs it. */
+#efm-programs .efmpr-book--dl .efmpr-book__head{ border-bottom:0; }
+#efm-programs .efmpr-book--dl .efmpr-book__fallback{ text-align:left; padding:0 22px 16px; }
 #efm-programs .efmpr-book__title{ font-family:var(--efmpr-name-font); color:var(--efmpr-ink); font-size:20px; line-height:1.2; }
 #efm-programs .efmpr-book__blurb{ color:var(--efmpr-role); font-size:14px; margin-top:3px; }
 #efm-programs .efmpr-book__btn{ display:inline-flex; align-items:center; gap:8px; font-family:var(--efmpr-name-font); font-size:15px; color:#fff!important; background:var(--efmpr-ink); text-decoration:none!important; padding:10px 20px; border-radius:999px; transition:background .18s ease; }
