@@ -415,8 +415,15 @@
     this.paint();
   };
 
-  /* The turn itself: put the page you are leaving on the leaf's FRONT and the page you are
-     turning to on its BACK, rotate 180 degrees, then commit the new spread underneath. */
+  /* The turn itself.
+     The leaf's FRONT is the page you are leaving and its BACK is the page you are turning
+     to, so one rotation reveals the next page the way a real sheet does.
+
+     AND, crucially, THE PAGE REVEALED UNDERNEATH IS PAINTED BEFORE THE TURN STARTS.
+     Without that you see the page you are leaving TWICE, once on the turning leaf and once
+     still sitting in the slot beneath it, and then it pops to the new page the instant the
+     animation ends. Think about what a real book does: as the sheet lifts, what appears in
+     the gap is already the NEXT page, not the one in your hand. */
   Flipbook.prototype.turn=function(dir){
     var self=this;
     if(this.busy) return;
@@ -427,13 +434,37 @@
     var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion:reduce)").matches;
     if(reduce){ this.goto(target); return; }
 
-    var frontNo = dir>0 ? (this.spread ? this.index+2 : this.index+1)
-                        : (this.spread ? this.index+1 : this.index+1);
-    var backNo  = dir>0 ? (this.spread ? this.index+3 : this.index+2)
-                        : (this.spread ? this.index-1 : this.index);
+    var frontNo, backNo, revealSlot, revealNo;
+
+    if(dir>0){
+      /* Turning forward. The right-hand page lifts and swings left.
+         front = the right page you are leaving; back = the new left page.
+         Underneath, the RIGHT slot must already show the new right page. */
+      frontNo = this.spread ? this.index+2 : this.index+1;
+      backNo  = this.spread ? this.index+3 : this.index+2;
+      revealSlot = this.spread ? this.right : this.left;
+      revealNo   = this.spread ? target+2 : target+1;
+    } else {
+      /* Turning back. The left-hand page lifts and swings right.
+         front = the left page you are leaving; back = the new right page.
+         Underneath, the LEFT slot must already show the new left page.
+         (target+2 and target+1 both happen to equal this.index here, but write what we
+         MEAN, not the coincidence: pages are 1-based and target is a 0-based left index.) */
+      frontNo = this.index+1;
+      backNo  = this.spread ? target+2 : target+1;
+      revealSlot = this.left;
+      revealNo   = target+1;
+    }
 
     this.busy=true;
-    Promise.all([ this.renderPage(frontNo), this.renderPage(backNo) ]).then(function(cs){
+    Promise.all([ this.renderPage(frontNo), this.renderPage(backNo), this.renderPage(revealNo) ]).then(function(cs){
+      /* paint the revealed page FIRST, under the leaf, before anything moves */
+      if(revealSlot && cs[2]){
+        revealSlot.innerHTML="";
+        revealSlot.appendChild(copyCanvas(cs[2]));
+        self.addTextLayer(revealSlot, revealNo);
+      }
+
       self.leafFront.innerHTML=""; self.leafBack.innerHTML="";
       if(cs[0]) self.leafFront.appendChild(copyCanvas(cs[0]));
       if(cs[1]) self.leafBack.appendChild(copyCanvas(cs[1]));

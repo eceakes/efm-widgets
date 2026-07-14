@@ -99,12 +99,19 @@
       });
     }
 
-    /* The default rule: feature the first flipbook, everything else is a download row. */
-    var featured=false;
+    /* Default: EVERY book with a PDF gets a viewer, and the books are COLLAPSIBLE, so the
+       reader opens the one they want. Only the first is open, and a closed book has not
+       downloaded anything, so having several weeks listed costs nothing.
+
+       (This used to force every book after the first into a download-only row, because
+       stacking several always-open 80vh viewers would have been enormous. Collapsing them
+       solves that properly instead.)
+
+       A book with no PDF cannot use our viewer, so it stays a download/FlippingBook row.
+       "Download only" = yes in the sheet still forces a plain download row. */
     out.forEach(function(b){
       if(b.download!==undefined) return;          /* the sheet was explicit: respect it */
-      if(b.embed && !featured){ b.download=false; featured=true; }
-      else b.download=true;
+      b.download = !b.pdf;
     });
     return out;
   }
@@ -401,6 +408,7 @@
 
   var bookFrames=[];
   var handshakeCounts={};               /* flipbook url -> how many times it has called out */
+  var bookSeq=0;                        /* only the FIRST book starts open */
 
   function isFlipbookErrorPage(html){
     if(!html) return true;
@@ -460,18 +468,36 @@
        wifi to block, and no subscription. The FlippingBook iframe path below is kept only
        for a book that has a FlipBook-URL and NO PDF, which should not happen again. */
     if(pdf && !book.download && OWN_FLIPBOOK){
-      return '<div class="efmpr-book">'+
+      /* COLLAPSIBLE. Each book is a header you can open and close, and the reader chooses
+         which one to read. This is not just tidiness: opening a book is what downloads and
+         rasterises its PDF, so a collapsed book costs nothing. With several weeks' books on
+         the page, mounting them all would mean several PDFs and several sets of page
+         bitmaps for books nobody looked at.
+
+         The FIRST book is open by default, because that is the current week and it is what
+         almost everyone came for. */
+      var open = (bookSeq===0);
+      var id = "efmpr-book-" + (bookSeq++);
+
+      return '<div class="efmpr-book efmpr-book--collapsible'+(open?" is-open":"")+'" data-book-panel>'+
           '<div class="efmpr-book__head">'+
-            '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(title)+'</div>'+
-              (book.blurb?'<div class="efmpr-book__blurb">'+escapeHtml(book.blurb)+'</div>':'')+'</div>'+
+            '<button type="button" class="efmpr-book__toggle" aria-expanded="'+(open?"true":"false")+'" aria-controls="'+id+'" data-book-toggle>'+
+              '<span class="efmpr-book__chevron" aria-hidden="true"></span>'+
+              '<span class="efmpr-book__meta">'+
+                '<span class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(title)+'</span>'+
+                (book.blurb?'<span class="efmpr-book__blurb">'+escapeHtml(book.blurb)+'</span>':'')+
+              '</span>'+
+            '</button>'+
             '<a class="efmpr-book__btn" href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download'+
               ' data-book-dl data-book-title="'+escapeHtml(title)+'" aria-label="'+escapeHtml("View or download "+title+" (PDF, opens in a new tab)")+'">'+
               downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
           '</div>'+
-          '<div class="efmfb" data-efmfb-pdf="'+escapeHtml(pdf)+'" data-efmfb-title="'+escapeHtml(title)+'"'+
-            (PDFJS_SRC?' data-efmfb-pdfjs="'+escapeHtml(PDFJS_SRC)+'"':'')+
-            (PDFJS_WORKER?' data-efmfb-pdfjs-worker="'+escapeHtml(PDFJS_WORKER)+'"':'')+
-          '></div>'+
+          '<div class="efmpr-book__body" id="'+id+'" role="region" aria-label="'+escapeHtml(title)+'"'+(open?"":" hidden")+'>'+
+            '<div class="efmfb" data-efmfb-pdf="'+escapeHtml(pdf)+'" data-efmfb-title="'+escapeHtml(title)+'"'+
+              (PDFJS_SRC?' data-efmfb-pdfjs="'+escapeHtml(PDFJS_SRC)+'"':'')+
+              (PDFJS_WORKER?' data-efmfb-pdfjs-worker="'+escapeHtml(PDFJS_WORKER)+'"':'')+
+            '></div>'+
+          '</div>'+
         '</div>';
     }
 
@@ -538,11 +564,41 @@
   function renderProgramBook(panelEl, books){
     bookList=books||[];
     bookFrames=[];
+    bookSeq=0;
     panelEl.innerHTML = bookList.map(bookCardHtml).join("");
     [].slice.call(panelEl.querySelectorAll(".efmpr-book")).forEach(function(card, i){
       wireBookCard(card, bookList[i]);
     });
+    wireBookToggles(panelEl);
     if(FAILOVER) listenForHandshakes();
+  }
+
+  /* Open/close a book. Mounting is deferred until a book is actually opened, so a book the
+     reader never expands never downloads its PDF or rasterises a single page. */
+  function wireBookToggles(panelEl){
+    [].slice.call(panelEl.querySelectorAll("[data-book-toggle]")).forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var card=btn.closest("[data-book-panel]");
+        var body=card.querySelector(".efmpr-book__body");
+        var open=btn.getAttribute("aria-expanded")==="true";
+
+        if(open){
+          btn.setAttribute("aria-expanded","false");
+          card.classList.remove("is-open");
+          body.hidden=true;
+        } else {
+          btn.setAttribute("aria-expanded","true");
+          card.classList.add("is-open");
+          body.hidden=false;
+          mountBooksIn(body);            /* first open = the PDF finally loads */
+        }
+      });
+    });
+  }
+
+  function mountBooksIn(root){
+    if(!OWN_FLIPBOOK || !window.EFMFlipbook || !root) return;
+    window.EFMFlipbook.mountAll(root);
   }
 
   /* A protected-embed flipbook calls out to the parent repeatedly, waiting for an answer
@@ -575,9 +631,17 @@
          should not pay for a PDF engine they will not look at.
        - any remaining FlippingBook iframe is probed and then given a src. */
   function loadBookFrame(){
+    /* Mount only the books that are actually OPEN. A collapsed book stays unmounted, so it
+       costs nothing until the reader asks for it. */
     if(OWN_FLIPBOOK && window.EFMFlipbook){
       var panel=panels && panels.programbook;
-      if(panel) window.EFMFlipbook.mountAll(panel);
+      if(panel){
+        [].slice.call(panel.querySelectorAll(".efmpr-book__body:not([hidden])")).forEach(mountBooksIn);
+        /* a book rendered without the collapsible wrapper (there should be none) */
+        [].slice.call(panel.querySelectorAll(".efmfb")).forEach(function(n){
+          if(!n.closest(".efmpr-book__body")) window.EFMFlipbook.mount(n);
+        });
+      }
     }
 
     bookFrames.slice().forEach(function(f){

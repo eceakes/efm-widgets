@@ -129,6 +129,50 @@
    would dangle. Drop it, unless a "flip through it online" line follows and needs it. */
 #efm-programs .efmpr-book--dl .efmpr-book__head{ border-bottom:0; }
 #efm-programs .efmpr-book--dl .efmpr-book__fallback{ text-align:left; padding:0 22px 16px; }
+
+/* ---- collapsible books ----
+   The reader picks which book to open. A closed book has not downloaded its PDF, so the
+   head must read as a control, not a label. */
+#efm-programs .efmpr-book--collapsible:not(.is-open) .efmpr-book__head{ border-bottom:0; }
+
+#efm-programs .efmpr-book__toggle{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex:1 1 auto;
+  min-width:0;
+  padding:0;
+  background:none;
+  border:0;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+  color:inherit;
+}
+#efm-programs .efmpr-book__toggle:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:4px; border-radius:8px; }
+#efm-programs .efmpr-book__toggle .efmpr-book__meta{ display:block; min-width:0; }
+#efm-programs .efmpr-book__toggle .efmpr-book__title{ display:block; }
+#efm-programs .efmpr-book__toggle .efmpr-book__blurb{ display:block; }
+
+#efm-programs .efmpr-book__chevron{
+  flex:0 0 auto;
+  width:11px; height:11px;
+  border-right:2px solid var(--efmpr-ink);
+  border-bottom:2px solid var(--efmpr-ink);
+  transform:rotate(-45deg);          /* closed: points right */
+  transition:transform .2s ease;
+  margin-left:2px;
+}
+#efm-programs .efmpr-book--collapsible.is-open .efmpr-book__chevron{
+  transform:rotate(45deg);           /* open: points down */
+}
+#efm-programs .efmpr-book__toggle:hover .efmpr-book__title{ color:var(--efmpr-hover); }
+
+#efm-programs .efmpr-book__body[hidden]{ display:none; }
+
+@media (prefers-reduced-motion:reduce){
+  #efm-programs .efmpr-book__chevron{ transition:none; }
+}
 #efm-programs .efmpr-book__title{ font-family:var(--efmpr-name-font); color:var(--efmpr-ink); font-size:20px; line-height:1.2; }
 #efm-programs .efmpr-book__blurb{ color:var(--efmpr-role); font-size:14px; margin-top:3px; }
 #efm-programs .efmpr-book__btn{ display:inline-flex; align-items:center; gap:8px; font-family:var(--efmpr-name-font); font-size:15px; color:#fff!important; background:var(--efmpr-ink); text-decoration:none!important; padding:10px 20px; border-radius:999px; transition:background .18s ease; }
