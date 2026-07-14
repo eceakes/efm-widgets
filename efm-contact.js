@@ -78,13 +78,19 @@
 
   /* ---------- "ways to help" row: giving + newsletter, side by side ---------- */
 
-  /* Points at OUR /donate page, not straight at Fundraise Up. That is what the site's
-     HEADER nav does, and /donate is the designed giving experience (tiers, named funds,
-     monthly toggle). The FOOTER's Give Today jumps directly to
-     ahrpferd.donorsupport.co, which skips all of that; do not copy the footer here.
-     A relative path stays in the same tab; set a full https url instead and it will open
-     in a new tab automatically. "" hides the whole card. */
-  var DONATE_URL   = "/donate";
+  /* /donations, NOT /donate. The site has BOTH, and they are not the same page:
+       /donations  carries the efm-donate WIDGET: the designed giving experience, with
+                   tiers, named funds and the monthly toggle. This is the real one.
+       /donate     is the OLD page: a heading, one paragraph, and a bare "Donate here >"
+                   text link straight to Fundraise Up. No widget.
+     Verified on the live site 2026-07-14 (only /donations contains id="efm-donate").
+
+     Do NOT "fix" this back to /donate on the strength of the header nav pointing there.
+     The header nav is itself pointing at the wrong page; see the note in the README.
+
+     A relative path stays in the same tab; a full https url would open in a new tab
+     instead. "" hides the whole card. */
+  var DONATE_URL   = "/donations";
   var DONATE_TITLE = "Support the festival";
   var DONATE_COPY  = "Your gift keeps great music accessible in Greensboro and opens the door for young artists.";
   var DONATE_LABEL = "Give Today";
