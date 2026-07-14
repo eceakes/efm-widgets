@@ -1,0 +1,204 @@
+/* EFM Flipbook: our own page-flipping PDF viewer. No FlippingBook, no third party.
+   Scoped under .efmfb (prefix efmfb).
+
+   Prefix check: efmfb collides with nothing (efmp / efmfp / efmf / efmfl / efme / efmpr /
+   efmsc / efmt / efmd / efmg / efmn / efmc). Note efmf IS a prefix of efmfb, so a global
+   find/replace on "efmf" would hit this: scope replacements to a file. Same trap the repo
+   already documents for efmf/efmfl.
+
+   Renders PDF pages to <canvas> via PDF.js and flips them with a CSS 3D transform. The
+   whole thing is served from our own origin, so nothing here can be deleted, locked behind
+   a privacy setting, or blocked by the campus wifi. */
+
+.efmfb{
+  --efmfb-ink:#0E178E;
+  --efmfb-hover:#4E63D6;
+  --efmfb-role:#5b6473;
+  --efmfb-rule:#e4e6ef;
+  --efmfb-soft:#f4f6fc;
+  --efmfb-page:#ffffff;
+  --efmfb-name-font:"arbeit-semi-bold","Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --efmfb-body-font:"Source Sans Pro",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+
+  box-sizing:border-box;
+  font-family:var(--efmfb-body-font);
+  background:var(--efmfb-soft);
+  border:1px solid var(--efmfb-rule);
+  border-radius:14px;
+  overflow:hidden;
+}
+.efmfb *, .efmfb *::before, .efmfb *::after{ box-sizing:border-box; }
+.efmfb-sr-only{
+  position:absolute!important; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
+
+/* ---- the book stage ---- */
+.efmfb__stage{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px 16px;
+  min-height:320px;
+  perspective:2400px;              /* the 3D depth the page turn is seen through */
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(14,23,142,.06), transparent 60%),
+    var(--efmfb-soft);
+}
+
+.efmfb__book{
+  position:relative;
+  display:flex;
+  transform-style:preserve-3d;
+  box-shadow:0 18px 50px rgba(9,12,38,.22);
+}
+
+/* a page is a canvas in a white sheet */
+.efmfb__sheet{
+  position:relative;
+  background:var(--efmfb-page);
+  overflow:hidden;
+}
+.efmfb__sheet canvas{ display:block; width:100%; height:100%; }
+
+/* the gutter shadow, so a two-page spread reads as a bound book and not two rectangles */
+.efmfb__book--spread .efmfb__sheet--left::after,
+.efmfb__book--spread .efmfb__sheet--right::after{
+  content:""; position:absolute; top:0; bottom:0; width:26px; pointer-events:none;
+}
+.efmfb__book--spread .efmfb__sheet--left::after{
+  right:0; background:linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,.14));
+}
+.efmfb__book--spread .efmfb__sheet--right::after{
+  left:0; background:linear-gradient(to left, rgba(0,0,0,0), rgba(0,0,0,.14));
+}
+
+/* ---- the flipping leaf ----
+   It sits on top of the static spread. Its FRONT is the page you are leaving and its BACK
+   is the page you are turning to, so one rotation reveals the next page exactly the way a
+   real sheet does. */
+.efmfb__leaf{
+  position:absolute;
+  top:0;
+  transform-style:preserve-3d;
+  transition:transform .62s cubic-bezier(.28,.72,.32,1);
+  will-change:transform;
+  z-index:3;
+}
+.efmfb__leaf[hidden]{ display:none; }
+.efmfb__leaf--fwd{ transform-origin:left center; }
+.efmfb__leaf--back{ transform-origin:right center; }
+.efmfb__leaf.is-turning.efmfb__leaf--fwd{ transform:rotateY(-180deg); }
+.efmfb__leaf.is-turning.efmfb__leaf--back{ transform:rotateY(180deg); }
+
+.efmfb__face{
+  position:absolute; inset:0;
+  background:var(--efmfb-page);
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+  overflow:hidden;
+  box-shadow:0 10px 30px rgba(9,12,38,.18);
+}
+.efmfb__face canvas{ display:block; width:100%; height:100%; }
+.efmfb__face--back{ transform:rotateY(180deg); }
+
+/* ---- the selectable text layer, sitting invisibly over the canvas ----
+   This is what a FlippingBook embed can never give you: real text a screen reader can
+   read, a visitor can select and copy, and Ctrl+F can find. The glyphs are transparent
+   (the canvas underneath is what you SEE); these spans exist to be selected and read.
+   Only built when the PDF actually contains text. */
+.efmfb__text{
+  position:absolute; inset:0;
+  overflow:hidden;
+  line-height:1;
+  opacity:1;
+  z-index:2;
+  -webkit-user-select:text; user-select:text;
+}
+.efmfb__text > span{
+  position:absolute;
+  color:transparent;
+  white-space:pre;
+  transform-origin:0 0;
+  cursor:text;
+}
+.efmfb__text ::selection{ background:rgba(78,99,214,.32); }
+
+/* ---- fullscreen ---- */
+.efmfb--fs{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  background:#0c0e18;
+  border-radius:0;
+  border:0;
+}
+.efmfb--fs .efmfb__stage{ flex:1 1 auto; background:transparent; }
+.efmfb--fs .efmfb__bar{ background:#111524; border-top-color:#252a3d; }
+.efmfb--fs .efmfb__btn{ background:#1a1f33; border-color:#2c3350; color:#e7e9f5 !important; }
+.efmfb--fs .efmfb__btn--primary{ background:var(--efmfb-hover); border-color:var(--efmfb-hover); color:#fff !important; }
+.efmfb--fs .efmfb__count{ color:#9aa3c4; }
+
+/* ---- controls ---- */
+.efmfb__bar{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  flex-wrap:wrap;
+  padding:12px 16px;
+  background:#fff;
+  border-top:1px solid var(--efmfb-rule);
+}
+.efmfb__btn{
+  display:inline-flex; align-items:center; gap:7px;
+  min-height:40px; padding:8px 16px;
+  font-family:var(--efmfb-name-font); font-size:14.5px;
+  color:var(--efmfb-ink) !important;
+  background:#fff;
+  border:1px solid var(--efmfb-rule);
+  border-radius:999px;
+  cursor:pointer;
+  text-decoration:none !important;
+  transition:border-color .16s ease, background .16s ease;
+}
+.efmfb__btn:hover:not([disabled]){ border-color:var(--efmfb-hover); background:var(--efmfb-soft); }
+.efmfb__btn:focus-visible{ outline:2px solid var(--efmfb-hover); outline-offset:2px; }
+.efmfb__btn[disabled]{ opacity:.4; cursor:default; }
+.efmfb__btn--primary{
+  color:#fff !important; background:var(--efmfb-ink); border-color:var(--efmfb-ink);
+}
+.efmfb__btn--primary:hover:not([disabled]){ background:var(--efmfb-hover); border-color:var(--efmfb-hover); }
+
+.efmfb__count{
+  font-family:var(--efmfb-name-font);
+  font-size:14px;
+  color:var(--efmfb-role);
+  min-width:9ch;
+  text-align:center;
+}
+
+/* ---- loading / error ---- */
+.efmfb__msg{
+  display:flex; align-items:center; justify-content:center;
+  gap:10px;
+  min-height:300px;
+  padding:24px;
+  color:var(--efmfb-role);
+  font-size:15px;
+  text-align:center;
+}
+.efmfb__spinner{
+  width:18px; height:18px; flex:0 0 auto;
+  border:2px solid var(--efmfb-rule);
+  border-top-color:var(--efmfb-ink);
+  border-radius:50%;
+  animation:efmfb-spin .8s linear infinite;
+}
+@keyframes efmfb-spin{ to{ transform:rotate(360deg); } }
+
+@media (prefers-reduced-motion:reduce){
+  .efmfb__leaf{ transition:none; }
+  .efmfb__spinner{ animation:none; }
+}

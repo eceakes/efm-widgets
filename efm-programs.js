@@ -382,6 +382,19 @@
      embed code (their docs are explicit that whitelisting a domain is NOT enough), and a
      public program book has nothing to protect.
      ============================================================ */
+  /* ---- OUR OWN FLIPBOOK (efm-flipbook.js) ----
+     true  = render books with our own PDF.js viewer. No FlippingBook, no subscription.
+     false = fall back to the FlippingBook iframe path below.
+     Any book that has a PDF-URL uses ours; the FlippingBook path survives only for a book
+     with a FlipBook-URL and no PDF.
+
+     PDF.js MUST be served from Duda, not a public CDN: the Guilford campus wifi blocks
+     cdn.jsdelivr.net, and a viewer that dies on campus is no better than the embed we are
+     replacing. Leave these blank and efm-flipbook falls back to its own CDN default. */
+  var OWN_FLIPBOOK  = true;
+  var PDFJS_SRC     = "";   /* e.g. https://irp.cdn-website.com/1e6f3c7e/files/uploaded/pdf-<hash>.min.js */
+  var PDFJS_WORKER  = "";   /* e.g. .../pdf.worker-<hash>.min.js */
+
   var FAILOVER = true;
   var HANDSHAKES_BEFORE_FAILOVER = 2;   /* never act on a single message: require the retry */
   var PROBE_TIMEOUT_MS = 6000;
@@ -438,9 +451,32 @@
     var dl=pdf||embed;
     if(!dl) return "";                                  /* nothing to point at: skip it */
 
+    var title=book.title||"Program Book";
+
+    /* OUR OWN FLIPBOOK, not FlippingBook.
+       If the book has a PDF and is meant to be featured, render it with efm-flipbook:
+       PDF.js + a real CSS 3D page turn, from our own origin. No third party to ask
+       permission from, nothing to be deleted out from under us, nothing for the campus
+       wifi to block, and no subscription. The FlippingBook iframe path below is kept only
+       for a book that has a FlipBook-URL and NO PDF, which should not happen again. */
+    if(pdf && !book.download && OWN_FLIPBOOK){
+      return '<div class="efmpr-book">'+
+          '<div class="efmpr-book__head">'+
+            '<div class="efmpr-book__meta"><div class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(title)+'</div>'+
+              (book.blurb?'<div class="efmpr-book__blurb">'+escapeHtml(book.blurb)+'</div>':'')+'</div>'+
+            '<a class="efmpr-book__btn" href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download'+
+              ' data-book-dl data-book-title="'+escapeHtml(title)+'" aria-label="'+escapeHtml("View or download "+title+" (PDF, opens in a new tab)")+'">'+
+              downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
+          '</div>'+
+          '<div class="efmfb" data-efmfb-pdf="'+escapeHtml(pdf)+'" data-efmfb-title="'+escapeHtml(title)+'"'+
+            (PDFJS_SRC?' data-efmfb-pdfjs="'+escapeHtml(PDFJS_SRC)+'"':'')+
+            (PDFJS_WORKER?' data-efmfb-pdfjs-worker="'+escapeHtml(PDFJS_WORKER)+'"':'')+
+          '></div>'+
+        '</div>';
+    }
+
     /* download:true renders the compact row even when an embed exists (see the config). */
     var showFlip = !!embed && !book.download;
-    var title=book.title||"Program Book";
 
     var btnLabel = pdf ? "View / Download (PDF)" : "Open the program book";
     var btnAria  = escapeHtml(pdf
@@ -532,9 +568,18 @@
     });
   }
 
-  /* Lazy-load, on tab activate. Each flipbook is probed BEFORE it is given a src, so a
-     deleted or unreachable book never gets rendered as a broken iframe at all. */
+  /* Lazy-load, on tab activate. Two things happen here, and BOTH are deliberately deferred
+     until someone actually opens the Program Book tab:
+       - our own flipbook mounts, which is what pulls in PDF.js (~478 KB gzipped). Most
+         visitors come to /programs for the concert programs and never open this tab; they
+         should not pay for a PDF engine they will not look at.
+       - any remaining FlippingBook iframe is probed and then given a src. */
   function loadBookFrame(){
+    if(OWN_FLIPBOOK && window.EFMFlipbook){
+      var panel=panels && panels.programbook;
+      if(panel) window.EFMFlipbook.mountAll(panel);
+    }
+
     bookFrames.slice().forEach(function(f){
       if(f.getAttribute("src")) return;
       var s=f.getAttribute("data-src"); if(!s) return;
