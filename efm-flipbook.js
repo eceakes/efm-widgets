@@ -54,6 +54,8 @@
   var RENDER_SCALE_CAP = 2;      /* cap devicePixelRatio: an 11x17 page at 3x is enormous */
   var MAX_CANVAS_PX    = 4096;   /* iOS Safari refuses to allocate canvases much beyond this */
   var CACHE_MAX_PAGES  = 8;      /* the 62 MB book is 11x17: keeping every page is a memory leak */
+  var MAX_ZOOM         = 4;      /* how far in you can zoom to read fine print */
+  var ZOOM_STEP        = 1.5;    /* per click of the + / - buttons */
 
   var libPromise=null;
 
@@ -115,6 +117,7 @@
     this.cache={};                 /* pageNo -> canvas */
     this.pending={};               /* pageNo -> in-flight render, so we never render twice */
     this.lru=[];
+    this.zoom=1;                   /* 1 = fit; up to MAX_ZOOM, re-rendered crisp at each step */
     this.hasText=false;            /* set after we look: an image-only PDF has none */
     this.busy=false;
     this.spread=false;
@@ -229,8 +232,8 @@
     }
   };
 
-  /* How big one page should be on screen, given the container and the PDF's aspect ratio. */
-  Flipbook.prototype.sheetSize=function(){
+  /* The FIT size: one page at zoom 1, bounded by the container and the viewport height. */
+  Flipbook.prototype.fitSize=function(){
     var avail=Math.max(280, this.host.clientWidth-32);
     var maxH=Math.max(320, Math.min(window.innerHeight*0.72, 900));
     var ratio=this.pageH/this.pageW;
@@ -239,6 +242,15 @@
     var h = Math.round(w*ratio);
     if(h>maxH){ h=Math.round(maxH); w=Math.round(h/ratio); }
     return { w:w, h:h };
+  };
+
+  /* The DISPLAY size: fit * zoom. Everything (canvas render, page elements, text layer)
+     uses this, so zooming RE-RENDERS the page bigger and crisp rather than stretching a
+     fixed bitmap, which is the whole point: browser zoom just enlarges a blurry image, this
+     draws the page at the new size. */
+  Flipbook.prototype.sheetSize=function(){
+    var f=this.fitSize();
+    return { w:Math.round(f.w*this.zoom), h:Math.round(f.h*this.zoom) };
   };
 
   Flipbook.prototype.build=function(){
@@ -277,6 +289,21 @@
     this.bar.appendChild(this.count);
     this.bar.appendChild(this.nextBtn);
 
+    /* Zoom. The site nav is real text and scales with browser zoom, but a program page is a
+       canvas at a fixed resolution, so browser zoom only blurs it. These controls RE-RENDER
+       the page at the new size, so it stays sharp, and let the reader pan a zoomed page. */
+    this.zoomOutBtn=el("button","efmfb__btn",{ type:"button", "aria-label":"Zoom out" });
+    this.zoomOutBtn.innerHTML='<span aria-hidden="true">&minus;</span>';
+    this.zoomLabel=el("button","efmfb__btn efmfb__zoomlabel",{ type:"button", "aria-label":"Reset zoom", title:"Reset zoom" });
+    this.zoomInBtn=el("button","efmfb__btn",{ type:"button", "aria-label":"Zoom in" });
+    this.zoomInBtn.innerHTML='<span aria-hidden="true">+</span>';
+    this.zoomOutBtn.addEventListener("click", function(){ self.zoomBy(1/ZOOM_STEP); });
+    this.zoomInBtn.addEventListener("click", function(){ self.zoomBy(ZOOM_STEP); });
+    this.zoomLabel.addEventListener("click", function(){ self.setZoom(1); });
+    this.bar.appendChild(this.zoomOutBtn);
+    this.bar.appendChild(this.zoomLabel);
+    this.bar.appendChild(this.zoomInBtn);
+
     /* Fullscreen, but only offer it if the browser will actually do it: a button that
        does nothing is worse than no button. iOS Safari on iPhone has no element
        fullscreen, so this correctly hides itself there. */
@@ -289,8 +316,9 @@
         var on = document.fullscreenElement===self.host;
         self.fsBtn.textContent = on ? "Exit fullscreen" : "Fullscreen";
         self.host.classList.toggle("efmfb--fs", on);
+        self.zoom=1;                     /* fit to the new frame; a carried-over zoom is disorienting */
         self.cache={}; self.lru=[];      /* the page is a different size now: re-rasterise */
-        self.layout(); self.paint();
+        self.applyZoomState(); self.layout(); self.paint(); self.updateZoomUI();
       });
     }
 
@@ -310,27 +338,127 @@
       else if(e.key==="ArrowLeft"||e.key==="PageUp"){ e.preventDefault(); self.turn(-1); }
       else if(e.key==="Home"){ e.preventDefault(); self.goto(0); }
       else if(e.key==="End"){ e.preventDefault(); self.goto(self.lastIndex()); }
+      else if(e.key==="+"||e.key==="="){ e.preventDefault(); self.zoomBy(ZOOM_STEP); }
+      else if(e.key==="-"||e.key==="_"){ e.preventDefault(); self.zoomBy(1/ZOOM_STEP); }
+      else if(e.key==="0"){ e.preventDefault(); self.setZoom(1); }
     });
 
-    /* touch: a swipe turns the page */
-    var x0=null;
-    this.stage.addEventListener("touchstart", function(e){ x0=e.touches[0].clientX; }, {passive:true});
-    this.stage.addEventListener("touchend", function(e){
-      if(x0===null) return;
-      var dx=e.changedTouches[0].clientX-x0; x0=null;
-      if(Math.abs(dx)>45) self.turn(dx<0?1:-1);
-    }, {passive:true});
+    this.wireInput();
+    this.applyZoomState();
+    this.updateZoomUI();
 
     var t=null;
     this._onResize=function(){ clearTimeout(t); t=setTimeout(function(){
       var wantSpread = self.host.clientWidth>=SPREAD_MIN_WIDTH && self.pageCount>1;
+      self.zoom=1;                         /* the container changed size: reset to fit */
       self.cache={};                       /* size changed: the rasterised pages are stale */
-      if(wantSpread!==self.spread){ self.build(); } else { self.layout(); self.paint(); }
+      if(wantSpread!==self.spread){ self.build(); } else { self.applyZoomState(); self.layout(); self.paint(); self.updateZoomUI(); }
     },180); };
     window.addEventListener("resize", this._onResize);
 
     this.layout();
     this.paint();
+  };
+
+  /* ---- zoom ---- */
+  Flipbook.prototype.zoomBy=function(factor){ this.setZoom(this.zoom*factor); };
+  Flipbook.prototype.setZoom=function(z){
+    z=Math.max(1, Math.min(MAX_ZOOM, z));
+    if(Math.abs(z-this.zoom)<0.001) return;
+    if(this.busy) return;                         /* not mid page-turn */
+
+    /* keep the CENTRE of what you are looking at fixed as the page grows/shrinks */
+    var st=this.stage, prevW=this.book?this.book.offsetWidth:0, prevH=this.book?this.book.offsetHeight:0;
+    var cx=(st.scrollLeft+st.clientWidth/2), cy=(st.scrollTop+st.clientHeight/2);
+    var fx=prevW?cx/prevW:0.5, fy=prevH?cy/prevH:0.5;
+
+    this.zoom=z;
+    this.cache={}; this.lru=[];                   /* re-render every visible page at the new size */
+    this.applyZoomState();
+    this.layout();
+    this.paint();
+    this.updateZoomUI();
+
+    var self=this;
+    /* recentre after the new sizes are in the DOM */
+    window.requestAnimationFrame(function(){
+      var nw=self.book.offsetWidth, nh=self.book.offsetHeight;
+      st.scrollLeft=Math.max(0, fx*nw - st.clientWidth/2);
+      st.scrollTop =Math.max(0, fy*nh - st.clientHeight/2);
+    });
+  };
+  Flipbook.prototype.applyZoomState=function(){
+    var zoomed=this.zoom>1.001;
+    this.host.classList.toggle("efmfb--zoomed", zoomed);
+    /* a zoomed page is a pannable surface; unzoomed it is a book you flip, so let vertical
+       page-scroll through but claim horizontal for our own gestures */
+    this.stage.style.touchAction = zoomed ? "none" : "pan-y";
+  };
+  Flipbook.prototype.updateZoomUI=function(){
+    if(this.zoomLabel) this.zoomLabel.textContent=Math.round(this.zoom*100)+"%";
+    if(this.zoomInBtn)  this.zoomInBtn.disabled  = this.zoom>=MAX_ZOOM-0.001;
+    if(this.zoomOutBtn) this.zoomOutBtn.disabled = this.zoom<=1.001;
+    /* turning pages while zoomed in is disorienting; nudge back to fit to flip */
+    var zoomed=this.zoom>1.001;
+    if(this.prevBtn) this.prevBtn.disabled = zoomed || this.index<=0;
+    if(this.nextBtn) this.nextBtn.disabled = zoomed || this.index>=this.lastIndex();
+  };
+
+  /* ---- pointer / touch / wheel input ---- */
+  Flipbook.prototype.wireInput=function(){
+    var self=this, st=this.stage;
+
+    /* MOUSE DRAG to pan when zoomed */
+    var dragging=false, sx=0, sy=0, sl=0, stp=0;
+    st.addEventListener("mousedown", function(e){
+      if(self.zoom<=1.001) return;
+      dragging=true; sx=e.clientX; sy=e.clientY; sl=st.scrollLeft; stp=st.scrollTop;
+      st.classList.add("is-grabbing"); e.preventDefault();
+    });
+    window.addEventListener("mousemove", function(e){
+      if(!dragging) return;
+      st.scrollLeft=sl-(e.clientX-sx); st.scrollTop=stp-(e.clientY-sy);
+    });
+    window.addEventListener("mouseup", function(){ dragging=false; st.classList.remove("is-grabbing"); });
+
+    /* CTRL/CMD + WHEEL to zoom (this is also what a trackpad pinch sends) */
+    st.addEventListener("wheel", function(e){
+      if(!(e.ctrlKey||e.metaKey)) return;
+      e.preventDefault();
+      self.zoomBy(e.deltaY<0 ? 1.12 : 1/1.12);
+    }, {passive:false});
+
+    /* TOUCH: 1 finger = swipe-to-turn (at fit) or pan (zoomed); 2 fingers = pinch-zoom */
+    var t0x=null, t0y=null, tsl=0, tst=0, pinchStart=0, pinchZoom0=1;
+    function dist(t){ var dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+
+    st.addEventListener("touchstart", function(e){
+      if(e.touches.length===2){
+        pinchStart=dist(e.touches); pinchZoom0=self.zoom; t0x=null;
+      } else if(e.touches.length===1){
+        t0x=e.touches[0].clientX; t0y=e.touches[0].clientY; tsl=st.scrollLeft; tst=st.scrollTop;
+      }
+    }, {passive:true});
+
+    st.addEventListener("touchmove", function(e){
+      if(e.touches.length===2 && pinchStart){
+        e.preventDefault();
+        self.setZoom(pinchZoom0 * (dist(e.touches)/pinchStart));
+      } else if(e.touches.length===1 && t0x!==null && self.zoom>1.001){
+        e.preventDefault();                       /* pan the zoomed page */
+        st.scrollLeft=tsl-(e.touches[0].clientX-t0x);
+        st.scrollTop =tst-(e.touches[0].clientY-t0y);
+      }
+    }, {passive:false});
+
+    st.addEventListener("touchend", function(e){
+      if(t0x!==null && self.zoom<=1.001 && e.changedTouches.length){
+        var dx=e.changedTouches[0].clientX-t0x;
+        if(Math.abs(dx)>45) self.turn(dx<0?1:-1); /* swipe turns only when not zoomed */
+      }
+      if(e.touches.length<2) pinchStart=0;
+      if(e.touches.length===0) t0x=null;
+    }, {passive:true});
   };
 
   Flipbook.prototype.lastIndex=function(){
@@ -368,13 +496,15 @@
       ? "Pages "+leftNo+"–"+rightNo+" of "+this.pageCount
       : "Page "+leftNo+" of "+this.pageCount;
 
-    this.prevBtn.disabled = this.index<=0;
-    this.nextBtn.disabled = this.index>=this.lastIndex();
+    this.updateZoomUI();          /* prev/next reflect both page position AND zoom state */
 
-    /* warm the neighbours so the next turn is instant */
-    var step=this.spread?2:1;
-    this.renderPage(leftNo+step); this.renderPage(leftNo+step+1);
-    this.renderPage(leftNo-step);
+    /* warm the neighbours so the next turn is instant (only at fit: a zoomed page is huge
+       and you cannot turn while zoomed anyway) */
+    if(this.zoom<=1.001){
+      var step=this.spread?2:1;
+      this.renderPage(leftNo+step); this.renderPage(leftNo+step+1);
+      this.renderPage(leftNo-step);
+    }
   };
 
   /* An invisible, selectable text layer positioned over the canvas. This is the thing a

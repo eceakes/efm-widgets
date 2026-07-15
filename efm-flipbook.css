@@ -47,6 +47,19 @@
     var(--efmfb-soft);
 }
 
+/* When zoomed in, the page is bigger than the stage, so the stage becomes the pannable
+   viewport. `safe center` keeps the page centred while it fits and stops flexbox from
+   clipping the top/left once it overflows (the classic centered-overflow bug). */
+.efmfb--zoomed .efmfb__stage{
+  overflow:auto;
+  justify-content:safe center;
+  align-items:safe center;
+  cursor:grab;
+  -webkit-overflow-scrolling:touch;
+}
+.efmfb--zoomed .efmfb__stage.is-grabbing{ cursor:grabbing; }
+.efmfb--zoomed .efmfb__leaf{ display:none; }   /* no page-turn while zoomed */
+
 .efmfb__book{
   position:relative;
   display:flex;
@@ -166,6 +179,11 @@
 .efmfb__btn:hover:not([disabled]){ border-color:var(--efmfb-hover); background:var(--efmfb-soft); }
 .efmfb__btn:focus-visible{ outline:2px solid var(--efmfb-hover); outline-offset:2px; }
 .efmfb__btn[disabled]{ opacity:.4; cursor:default; }
+
+/* the +/- zoom buttons are compact; the label between them shows the current % and resets
+   on click, and is wide enough that "100%".."400%" does not make the bar jump */
+.efmfb__zoomlabel{ min-width:4.5em; justify-content:center; font-variant-numeric:tabular-nums; }
+
 .efmfb__btn--primary{
   color:#fff !important; background:var(--efmfb-ink); border-color:var(--efmfb-ink);
 }
