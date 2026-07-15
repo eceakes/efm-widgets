@@ -482,15 +482,21 @@
       return '<div class="efmpr-book efmpr-book--collapsible'+(open?" is-open":"")+'" data-book-panel>'+
           '<div class="efmpr-book__head">'+
             '<button type="button" class="efmpr-book__toggle" aria-expanded="'+(open?"true":"false")+'" aria-controls="'+id+'" data-book-toggle>'+
-              '<span class="efmpr-book__chevron" aria-hidden="true"></span>'+
               '<span class="efmpr-book__meta">'+
                 '<span class="efmpr-book__title" role="heading" aria-level="3">'+escapeHtml(title)+'</span>'+
                 (book.blurb?'<span class="efmpr-book__blurb">'+escapeHtml(book.blurb)+'</span>':'')+
               '</span>'+
+              /* Explicit affordance. The word changes with state (CSS, off aria-expanded)
+                 and the chevron rotates, so the row unmistakably reads as expand/collapse.
+                 A bare grey box gave no such signal, which is what confused readers. */
+              '<span class="efmpr-book__expand" aria-hidden="true">'+
+                '<span class="efmpr-book__expand-txt"></span>'+
+                '<span class="efmpr-book__chevron"></span>'+
+              '</span>'+
             '</button>'+
             '<a class="efmpr-book__btn" href="'+escapeHtml(pdf)+'" target="_blank" rel="noopener noreferrer" download'+
-              ' data-book-dl data-book-title="'+escapeHtml(title)+'" aria-label="'+escapeHtml("View or download "+title+" (PDF, opens in a new tab)")+'">'+
-              downloadIconSvg()+'<span>View / Download (PDF)</span></a>'+
+              ' data-book-dl data-book-title="'+escapeHtml(title)+'" aria-label="'+escapeHtml("Download "+title+" (PDF, opens in a new tab)")+'">'+
+              downloadIconSvg()+'<span>Download PDF</span></a>'+
           '</div>'+
           '<div class="efmpr-book__body" id="'+id+'" role="region" aria-label="'+escapeHtml(title)+'"'+(open?"":" hidden")+'>'+
             '<div class="efmfb" data-efmfb-pdf="'+escapeHtml(pdf)+'" data-efmfb-title="'+escapeHtml(title)+'"'+

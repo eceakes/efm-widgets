@@ -131,47 +131,86 @@
 #efm-programs .efmpr-book--dl .efmpr-book__fallback{ text-align:left; padding:0 22px 16px; }
 
 /* ---- collapsible books ----
-   The reader picks which book to open. A closed book has not downloaded its PDF, so the
-   head must read as a control, not a label. */
-#efm-programs .efmpr-book--collapsible:not(.is-open) .efmpr-book__head{ border-bottom:0; }
+   The reader picks which book to open, so the whole header row must read as a control:
+   a clear hover state, a rotating chevron, and a "Show / Hide" word. The old version was a
+   bare <button> that the browser painted default grey and gave no click affordance, which
+   is exactly the "grey haze you would not think to click" problem. */
+#efm-programs .efmpr-book--collapsible{ overflow:hidden; }
+#efm-programs .efmpr-book--collapsible .efmpr-book__head{ padding:0; gap:0; border-bottom:0; }
+#efm-programs .efmpr-book--collapsible.is-open .efmpr-book__head{ border-bottom:1px solid var(--efmpr-rule); }
 
+/* the whole title area is the toggle, and the whole thing tints on hover */
 #efm-programs .efmpr-book__toggle{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:16px;
   flex:1 1 auto;
   min-width:0;
-  padding:0;
-  background:none;
-  border:0;
+  margin:0;
+  padding:18px 22px;
+  background:transparent !important;   /* !important: beat Duda's + the browser's default button grey */
+  border:0 !important;
+  box-shadow:none !important;
   text-align:left;
   cursor:pointer;
   font:inherit;
   color:inherit;
+  -webkit-appearance:none; appearance:none;
+  transition:background-color .16s ease;
 }
-#efm-programs .efmpr-book__toggle:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:4px; border-radius:8px; }
-#efm-programs .efmpr-book__toggle .efmpr-book__meta{ display:block; min-width:0; }
-#efm-programs .efmpr-book__toggle .efmpr-book__title{ display:block; }
+#efm-programs .efmpr-book__toggle:hover{ background:var(--efmpr-soft) !important; }
+#efm-programs .efmpr-book__toggle:focus-visible{ outline:2px solid var(--efmpr-hover); outline-offset:-3px; }
+
+#efm-programs .efmpr-book__toggle .efmpr-book__meta{ display:block; flex:1 1 auto; min-width:0; }
+#efm-programs .efmpr-book__toggle .efmpr-book__title{ display:block; transition:color .16s ease; }
 #efm-programs .efmpr-book__toggle .efmpr-book__blurb{ display:block; }
+#efm-programs .efmpr-book__toggle:hover .efmpr-book__title{ color:var(--efmpr-hover); }
+
+/* the Show/Hide affordance: a ghost pill with a word and a chevron */
+#efm-programs .efmpr-book__expand{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 13px;
+  border:1px solid var(--efmpr-rule);
+  border-radius:999px;
+  background:#fff;
+  font-family:var(--efmpr-name-font);
+  font-size:13px;
+  letter-spacing:.02em;
+  color:var(--efmpr-ink);
+  transition:border-color .16s ease, background .16s ease;
+}
+#efm-programs .efmpr-book__toggle:hover .efmpr-book__expand{ border-color:var(--efmpr-ink); background:#fff; }
+
+#efm-programs .efmpr-book__expand-txt::after{ content:"Show"; }
+#efm-programs .efmpr-book__toggle[aria-expanded="true"] .efmpr-book__expand-txt::after{ content:"Hide"; }
 
 #efm-programs .efmpr-book__chevron{
-  flex:0 0 auto;
-  width:11px; height:11px;
-  border-right:2px solid var(--efmpr-ink);
-  border-bottom:2px solid var(--efmpr-ink);
-  transform:rotate(-45deg);          /* closed: points right */
+  width:9px; height:9px;
+  border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor;
+  transform:rotate(45deg) translate(-1px,-1px);   /* closed: points down (arrow to open) */
   transition:transform .2s ease;
-  margin-left:2px;
 }
-#efm-programs .efmpr-book--collapsible.is-open .efmpr-book__chevron{
-  transform:rotate(45deg);           /* open: points down */
+#efm-programs .efmpr-book__toggle[aria-expanded="true"] .efmpr-book__chevron{
+  transform:rotate(-135deg) translate(-1px,-1px); /* open: points up */
 }
-#efm-programs .efmpr-book__toggle:hover .efmpr-book__title{ color:var(--efmpr-hover); }
 
 #efm-programs .efmpr-book__body[hidden]{ display:none; }
 
+/* the download button keeps a little breathing room from the toggle in the collapsible head */
+#efm-programs .efmpr-book--collapsible .efmpr-book__btn{ margin:0 18px; flex:0 0 auto; }
+@container efmpr (max-width:560px){
+  #efm-programs .efmpr-book--collapsible .efmpr-book__head{ flex-wrap:wrap; }
+  #efm-programs .efmpr-book--collapsible .efmpr-book__btn{ margin:0 22px 18px; }
+}
+
 @media (prefers-reduced-motion:reduce){
-  #efm-programs .efmpr-book__chevron{ transition:none; }
+  #efm-programs .efmpr-book__chevron,
+  #efm-programs .efmpr-book__toggle,
+  #efm-programs .efmpr-book__title{ transition:none; }
 }
 #efm-programs .efmpr-book__title{ font-family:var(--efmpr-name-font); color:var(--efmpr-ink); font-size:20px; line-height:1.2; }
 #efm-programs .efmpr-book__blurb{ color:var(--efmpr-role); font-size:14px; margin-top:3px; }
