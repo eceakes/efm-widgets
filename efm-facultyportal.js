@@ -52,6 +52,14 @@
   var MC_PUB = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQg7mhQsWCaOdsg1k_z-TkSHRqNDTuAQE7NEXr6xzCBR-psxMoQGExmVlINpF-xu_3FIgbE4qSK1aAJ";
   var MC_CSV = MC_PUB + "/pub?single=true&output=csv&gid=";
   var MC_PUBHTML = MC_PUB + "/pubhtml";
+  // "News" tab (Master Calendar workbook): "Title | URL | Details | Location | Release?".
+  // Surfaced as the "News & Updates" pill under General Information (same tab + pill in
+  // the student portal). Location gates the audience (faculty-only / student-only / both
+  // / disabled) via audienceShows(); Release? "Yes" publishes the row. Fetched
+  // INDEPENDENTLY of the blob (see withNews), so it works the instant the embed ships,
+  // before the distiller emits it. Resolved by NAME (gid blank until the tab exists).
+  var NEWS_TAB = "News";
+  var NEWS_GID = "";   // set to the tab's gid once known (fast path); name-resolves meanwhile
   var MC_TABS = {
     EFO:         { name: "EFO", gid: "1438770792" },
     ECP:         { name: "ECP", gid: "518713173" },
@@ -186,6 +194,7 @@
     // matched by heading text.
     { id: "info", label: "General Information", subs: [
       { label: "Dining", kind: "dining" },
+      { label: "News & Updates", kind: "news" },
       { label: "College Fair", kind: "collegeFair" },   // self-retiring: build() drops it when the sheet section is gone
       { label: "Around Campus", kind: "aroundCampus" },
       { label: "Health Services", kind: "health" },
@@ -488,6 +497,7 @@
   var studentPeople = [];  // [{name, last, instrument, role, phone, email, haystack}] from StudentContact (fellows removed)
   var diningLines = [];    // raw lines from Master Calendar General Information (dining)
   var infoRows = [];       // full rows from Faculty-Portal "General-Information" tab (dress code + library documents + ...)
+  var newsItems = [];      // [{ title, url, details, location, released }] from the Master Calendar "News" tab (News & Updates pill)
   var announcements = [];  // {text,dateRaw,key,logic,type,audience} from the Master Calendar "Announcements" tab
   var lessons = [];        // [{ instrument, people:[{name, room}] }] from the Master Calendar "Faculty Lesson Locations" tab
   var atData = null;       // Alexander Technique tab -> { people:[{name,location,details,contact,phone,website,photo,calendly}], about } (renderAlexander)
@@ -819,6 +829,67 @@
     html += '</div>';
     list.innerHTML = html;
     announce(items.length + (items.length === 1 ? " concert program" : " concert programs") + " shown.");
+  }
+
+  // Parse the "News" tab into [{title, url, details, location, released}]. Shape is
+  // "Title | URL | Details | Location | Release?". Header matched by name (Title + URL/
+  // Link lock the column order; Details/Location/Release resolved by name too, falling
+  // back to cols 2/3/4). Rows with no title AND no url are dropped; audience (Location)
+  // and released (Release?) gating happens in renderNews, so the same parsed list can be
+  // filtered per portal. Identical to the student portal's parser.
+  function parseNews(rows) {
+    if (!rows || !rows.length) return [];
+    var ti = 0, ui = 1, di = 2, loi = 3, ri = 4, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      var t = lc.indexOf("title");
+      var u = lc.indexOf("url"); if (u === -1) u = lc.indexOf("link");
+      if (t !== -1 && u !== -1) {
+        ti = t; ui = u;
+        var d = lc.indexOf("details"); if (d === -1) d = lc.indexOf("description");
+        var lo = lc.indexOf("location"); if (lo === -1) lo = lc.indexOf("audience");
+        var r = lc.indexOf("release?"); if (r === -1) r = lc.indexOf("release"); if (r === -1) r = lc.indexOf("released");
+        if (d !== -1) di = d; if (lo !== -1) loi = lo; if (r !== -1) ri = r;
+        start = h + 1; break;
+      }
+    }
+    var out = [];
+    for (var rr = start; rr < rows.length; rr++) {
+      var row = rows[rr] || [];
+      var title = clean(row[ti]), url = safeUrl(row[ui]);
+      if (!title && !url) continue;
+      out.push({ title: title, url: url, details: clean(row[di]), location: clean(row[loi]), released: /^y(es)?$/i.test(clean(row[ri])) });
+    }
+    return out;
+  }
+
+  // General Information -> "News & Updates" pill: released news links as the same
+  // roster-style download cards, inside .efmfp-info (button-safe here, like Concert
+  // Programs). A row shows only when Release? is "Yes" AND audienceShows(Location) passes
+  // for this portal (so student-only rows and "disabled" rows stay out of the faculty
+  // view). Newest first: staff append each new item at the bottom of the sheet.
+  function renderNews() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var visible = newsItems.filter(function (n) { return n.released && audienceShows(n.location); });
+    if (!visible.length) {
+      list.innerHTML = '<div class="efmfp-info"><p>No news to share right now. Check back soon.</p></div>';
+      announce("No news right now.");
+      return;
+    }
+    var items = visible.slice().reverse();   // newest first
+    var html = '<div class="efmfp-info"><div class="efmfp-info__head" role="heading" aria-level="3">News &amp; Updates</div>';
+    items.forEach(function (n) {
+      var isPdf = /\.pdf(\?|#|$)/i.test(n.url);
+      html += '<div class="efmfp-roster__pdf"><div>' +
+          '<div class="efmfp-roster__pdf-name">' + esc(n.title || "Update") + '</div>' +
+          (n.details ? '<div class="efmfp-roster__pdf-meta">' + esc(n.details) + '</div>' : '') + '</div>' +
+        (n.url ? '<a class="efmfp-roster__btn" href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer">' + (isPdf ? "View PDF" : "Read more") + '</a>' : "") +
+        '</div>';
+    });
+    html += '</div>';
+    list.innerHTML = html;
+    announce(visible.length + (visible.length === 1 ? " update" : " updates") + " shown.");
   }
 
   // The roster-style "awesome download button", reused for Library Documents.
@@ -2022,6 +2093,7 @@
     else if (k === "aroundCampus") renderAroundCampus();
     else if (k === "health") renderHealth();
     else if (k === "collegeFair") renderCollegeFair();
+    else if (k === "news") renderNews();
     else if (k === "tickets") renderTickets();
     else if (k === "programs") renderPrograms();
     else if (k === "infoTab") renderInfoTab(sub);
@@ -2819,6 +2891,7 @@
     // info text: the Faculty-Portal General-Information tab (full rows). diningLines (the
     // master-calendar side) is set earlier, above the nav filters, for the College Fair gate.
     infoRows = data.info || [];
+    newsItems = parseNews(data.news);
     lessons = parseLessons(data.lessons);
     atData = parseAlexander(data.alexander);
     announcements = data.announcements ? parseAnnouncements(data.announcements) : [];
@@ -3014,6 +3087,7 @@
       studentChamber: mc["Student-Chamber-Rosters"] || null,
       generalInfo: mc["General Information"] || null,
       announcements: mc["Announcements"] || null,
+      news: mc["News"] || null,
       master: mc["Master Calendar"] || null,
       legend: mc["Legend"] || null,
       placement: mc["Placement Auditions"] || null,
@@ -3028,16 +3102,46 @@
     };
   }
 
-  // Blob-first, with a live fallback to the direct per-tab fetch path.
-  function startFetches() {
-    if (!BLOB_ENABLED) return startFetchesDirect();
-    return readDistilledBlob().then(function (blob) {
-      var data = blobToData(blob);
-      if (data.master && data.master.length) return data;   // core calendar present
-      throw new Error("blob missing master calendar");
-    }).catch(function () {
-      return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
+  // Fetch just the "News" tab (Master Calendar): known gid first if one is set (none is
+  // yet), otherwise resolve by NAME from the published directory. All on docs.google.com
+  // (campus-safe). Returns rows, or null on any failure.
+  function fetchNewsTab() {
+    var first = NEWS_GID
+      ? loadFirst([MC_CSV + NEWS_GID]).then(function (r) { return r && r.length ? r : null; })
+      : Promise.resolve(null);
+    return first.then(function (r) {
+      if (r) return r;
+      return resolveDir(MC_PUBHTML).then(function (dir) {
+        var gid = dir && dir[NEWS_TAB];
+        return gid ? loadFirst([MC_CSV + gid]).then(function (r2) { return r2 && r2.length ? r2 : null; }) : null;
+      }, function () { return null; });
     });
+  }
+  // Ensure data.news is populated: use the blob's copy if present, else fetch the tab
+  // standalone, so the News & Updates pill works the moment the embed ships (before the
+  // distiller emits the tab) and costs nothing once the blob carries it.
+  function withNews(data) {
+    if (!data) return Promise.resolve(data);
+    if (data.news && data.news.length) return Promise.resolve(data);
+    return fetchNewsTab().then(function (rows) { data.news = rows; return data; }, function () { return data; });
+  }
+
+  // Blob-first, with a live fallback to the direct per-tab fetch path. Either way,
+  // withNews backfills the News tab if it wasn't in the source data.
+  function startFetches() {
+    var base;
+    if (!BLOB_ENABLED) {
+      base = startFetchesDirect();
+    } else {
+      base = readDistilledBlob().then(function (blob) {
+        var data = blobToData(blob);
+        if (data.master && data.master.length) return data;   // core calendar present
+        throw new Error("blob missing master calendar");
+      }).catch(function () {
+        return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
+      });
+    }
+    return base.then(withNews);
   }
 
   // ---- live auto-refresh ------------------------------------------------
@@ -3054,12 +3158,14 @@
     readDistilledBlob().then(function (blob) {
       var data = blobToData(blob);
       if (!data.master || !data.master.length) return;   // guard a bad/partial read
-      var s; try { s = JSON.stringify(data); } catch (e) { return; }
-      if (s === lastDataStr) return;   // unchanged -> do nothing
-      lastDataStr = s;   // don't re-attempt this exact payload on every 2-minute poll
-      build(data);
-      writeCache(data);   // only persist a payload the renderer actually accepted
-      announce("Portal updated.");
+      return withNews(data).then(function (d) {           // backfill News if the blob lacks it
+        var s; try { s = JSON.stringify(d); } catch (e) { return; }
+        if (s === lastDataStr) return;   // unchanged -> do nothing
+        lastDataStr = s;   // don't re-attempt this exact payload on every 2-minute poll
+        build(d);
+        writeCache(d);   // only persist a payload the renderer actually accepted
+        announce("Portal updated.");
+      });
     }).catch(function () {});   // a failed poll just leaves the current view up
   }
   function startAutoRefresh() {

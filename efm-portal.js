@@ -106,14 +106,27 @@
   var CREW_TAB = "Stage Crew";
   var CREW_GID = "447028267";
 
-  // "Weekly Schedules" tab (in the Master Calendar workbook): "Week label | PDF link".
-  // Surfaced as the prominent Weekly Schedule pill under General Information. It is
+  // "Weekly Schedules" tab (in the Master Calendar workbook): "label | PDF link". The tab
+  // name is unchanged (it is the sheet contract); it now feeds the Master Calendar pill,
+  // a download spot for the current calendar PDF, under General Information. It is
   // fetched INDEPENDENTLY of the distilled blob (see withWeekly), so it works the
   // instant the embed ships, even before the distiller is redeployed to include it in
   // the blob; once the blob carries it, that standalone fetch is skipped. Resolved by
   // NAME (gid is the fast-path fallback) so a sheet rebuild that moves gids won't break it.
   var WEEKLY_TAB = "Weekly Schedules";
   var WEEKLY_GID = "968959946";
+
+  // "News" tab (in the Master Calendar workbook): "Title | URL | Details | Location |
+  // Release?". Surfaced as the "News & Updates" pill under General Information. Each
+  // released row is a link card (newest first, staff append at the bottom). The
+  // Location cell gates the audience (faculty-only / student-only / both / disabled)
+  // via the shared audienceShows() helper; Release? "Yes" publishes the row. Fetched
+  // INDEPENDENTLY of the distilled blob (see withNews), so it works the instant the
+  // embed ships, even before the distiller is redeployed to include it in the blob;
+  // once the blob carries it, that standalone fetch is skipped. Resolved by NAME (the
+  // gid is only a fast-path fallback, left blank until the tab exists).
+  var NEWS_TAB = "News";
+  var NEWS_GID = "";   // set to the tab's gid once known (fast path); name-resolves meanwhile
 
   // Tabs to fetch: key -> sheet tab name + known gid. calendar is required. gid is
   // tried first (fast path, keeps the directory round-trip off the critical path);
@@ -123,7 +136,7 @@
     { key: "legend", tab: TAB_LEGEND, gid: "578774100" },
     { key: "announcements", tab: "Announcements", gid: "1387308195" },
     { key: "generalInfo", tab: "General Information", gid: "1031874194" },
-    // Weekly Schedules: current week's schedule PDF(s). Fetched independently of the
+    // Weekly Schedules: the master calendar PDF(s). Fetched independently of the
     // blob (withWeekly); this entry supplies it on the direct-fetch fallback path too.
     { key: "weekly", tab: "Weekly Schedules", gid: "968959946" },
     { key: "lessons", tab: "Faculty Lesson Locations", gid: "1473494961" },
@@ -167,7 +180,8 @@
   // the SWR cache->fresh double-build never duplicates appended room tabs.
   var NAV_TEMPLATE = [
     { id: "info", label: "General Information", subs: [
-      { label: "Weekly Schedule", kind: "weekly" },
+      { label: "Master Calendar", kind: "weekly" },
+      { label: "News & Updates", kind: "news" },
       { label: "College Fair", kind: "collegeFair" },   // self-retiring: build() drops it when the sheet section is gone
       { label: "Dining", kind: "dining" },
       { label: "Around Campus", kind: "aroundCampus" },
@@ -495,7 +509,8 @@
   var chamberGroup = 0;        // selected chamber group index (3rd-level under the Chamber Music pill)
   var personnelManagers = {};  // ensemble code -> { name, phone } from the Student-Rosters tab's PM block
   var crewDocs = [];           // [{ title, link }] from the Crew Documents (Stage Crew) tab
-  var weeklySchedules = [];    // [{ title, link }] from the Master Calendar "Weekly Schedules" tab (Weekly Schedule pill)
+  var weeklySchedules = [];    // [{ title, link }] from the Master Calendar "Weekly Schedules" tab (Master Calendar pill)
+  var newsItems = [];          // [{ title, url, details, location, released }] from the Master Calendar "News" tab (News & Updates pill)
   var ensDetail = {};          // "dateKey|ENS|clock" -> { details, pdf } joined from the dedicated ESO/GSO tabs
   var programList = [];        // [{ key, date, clock, title, url }] concerts with a published program, from the Event Grid (via the blob)
   var programByDateTime = {};  // "dateKey|clock" -> concert ProgramURL, joined onto calendar rows by date + start time
@@ -1632,42 +1647,44 @@
     return out;
   }
 
-  // General Information -> "Weekly Schedule" pill (the section's first/default pill, so
-  // it is the prominent landing view). The current week (the LAST/bottom-most row, since
-  // each new week is appended at the end of the sheet) shows as a big hero download; any
-  // earlier weeks list below as the same PDF cards the Crew Documents pill uses. Kept OUT
-  // of .efmp-info so the .efmp-info a (ink) rule can't darken the white hero button text.
+  // General Information -> "Master Calendar" pill (the section's first/default pill, so
+  // it is the prominent landing view). A download spot for the current master calendar:
+  // the LAST/bottom-most row (each new posting is appended at the end of the sheet) shows
+  // as a big hero download; any earlier postings list below as the same PDF cards the Crew
+  // Documents pill uses. Kept OUT of .efmp-info so the .efmp-info a (ink) rule can't darken
+  // the white hero button text.
   function renderWeekly() {
     banner.hidden = true; banner.textContent = "";
     status.hidden = true; status.textContent = "";
     var weeks = weeklySchedules.filter(function (w) { return w.title || w.link; });
     if (!weeks.length) {
       list.innerHTML = '<div class="efmp-weekly">' +
-        '<div class="efmp-info__head" role="heading" aria-level="3">Weekly Schedule</div>' +
-        '<p class="efmp-weekly__empty">This week&#8217;s schedule will be posted here as soon as it is ready. Check back before the week begins.</p>' +
+        '<div class="efmp-info__head" role="heading" aria-level="3">Master Calendar</div>' +
+        '<p class="efmp-weekly__empty">The master calendar will be posted here as soon as it is ready. Check back soon.</p>' +
         '</div>';
-      announce("The weekly schedule is not posted yet.");
+      announce("The master calendar is not posted yet.");
       return;
     }
-    var current = weeks[weeks.length - 1];             // newest row = current week
+    var current = weeks[weeks.length - 1];             // newest row = the current posting
     var earlier = weeks.slice(0, weeks.length - 1);
     var isPdf = /\.pdf(\?|#|$)/i.test(current.link);
     var html = '<div class="efmp-weekly">' +
       '<div class="efmp-weekly__hero">' +
-        '<div class="efmp-weekly__eyebrow" role="heading" aria-level="3">This Week&#8217;s Schedule</div>' +
-        '<div class="efmp-weekly__title">' + esc(current.title || "Weekly Schedule") + '</div>' +
+        // The row's own label IS the heading (no eyebrow above it): staff title the row
+        // "Master Calendar", so a hard-coded eyebrow would just say it twice.
+        '<div class="efmp-weekly__title" role="heading" aria-level="3">' + esc(current.title || "Master Calendar") + '</div>' +
         (current.link
-          ? '<a class="efmp-modal__cal efmp-weekly__open" href="' + esc(current.link) + '" target="_blank" rel="noopener noreferrer">Open ' + esc(current.title || "the schedule") + (isPdf ? " (PDF)" : "") + '</a>' +
-            '<p class="efmp-weekly__hint">Opens in a new tab. Save it to your phone so you always have this week&#8217;s plan.</p>'
-          : '<p class="efmp-weekly__hint">The link for this week will appear here shortly.</p>') +
+          ? '<a class="efmp-modal__cal efmp-weekly__open" href="' + esc(current.link) + '" target="_blank" rel="noopener noreferrer">Open ' + esc(current.title || "the master calendar") + (isPdf ? " (PDF)" : "") + '</a>' +
+            '<p class="efmp-weekly__hint">Opens in a new tab. Save it to your phone so you always have the schedule with you.</p>'
+          : '<p class="efmp-weekly__hint">The download link will appear here shortly.</p>') +
       '</div>';
     if (earlier.length) {
-      html += '<div class="efmp-info__head efmp-weekly__earlier-head" role="heading" aria-level="3">Earlier Weeks</div>' +
+      html += '<div class="efmp-info__head efmp-weekly__earlier-head" role="heading" aria-level="3">Earlier Versions</div>' +
         '<div class="efmp-crew-list">';
-      earlier.slice().reverse().forEach(function (w) {   // most recent earlier week first
+      earlier.slice().reverse().forEach(function (w) {   // most recent earlier posting first
         var p = /\.pdf(\?|#|$)/i.test(w.link);
         html += '<div class="efmp-roster__pdf"><div>' +
-            '<div class="efmp-roster__pdf-name">' + esc(w.title || "Weekly Schedule") + '</div>' +
+            '<div class="efmp-roster__pdf-name">' + esc(w.title || "Master Calendar") + '</div>' +
             '<div class="efmp-roster__pdf-meta">' + (w.link ? (p ? "PDF document" : "Document") : "Not posted yet") + '</div></div>' +
           (w.link ? '<a class="efmp-roster__btn" href="' + esc(w.link) + '" target="_blank" rel="noopener noreferrer">View / Download' + (p ? " PDF" : "") + '</a>' : "") +
           '</div>';
@@ -1676,7 +1693,7 @@
     }
     html += '</div>';
     list.innerHTML = html;
-    announce("Weekly schedule shown: " + (current.title || "this week") + ".");
+    announce("Master calendar shown: " + (current.title || "current") + ".");
   }
 
   // Parse the Crew Documents (Stage Crew) tab: "Document Title | Link" -> [{title,link}].
@@ -1727,6 +1744,70 @@
     html += '</div></div>';
     list.innerHTML = html;
     announce(crewDocs.length + (crewDocs.length === 1 ? " crew document" : " crew documents") + " shown.");
+  }
+
+  // Parse the "News" tab into [{title, url, details, location, released}]. Shape is
+  // "Title | URL | Details | Location | Release?". A header row is matched by name
+  // (Title + URL/Link required to lock column order; Details/Location/Release resolved
+  // by name too, falling back to cols 2/3/4). Rows with no title AND no url are dropped;
+  // audience (Location) and released (Release?) gating is applied later, in renderNews,
+  // so the same parsed list can be filtered differently per portal.
+  function parseNews(rows) {
+    if (!rows || !rows.length) return [];
+    var ti = 0, ui = 1, di = 2, loi = 3, ri = 4, start = 0;
+    for (var h = 0; h < rows.length; h++) {
+      var lc = (rows[h] || []).map(function (c) { return clean(c).toLowerCase(); });
+      var t = lc.indexOf("title");
+      var u = lc.indexOf("url"); if (u === -1) u = lc.indexOf("link");
+      if (t !== -1 && u !== -1) {
+        ti = t; ui = u;
+        var d = lc.indexOf("details"); if (d === -1) d = lc.indexOf("description");
+        var lo = lc.indexOf("location"); if (lo === -1) lo = lc.indexOf("audience");
+        var r = lc.indexOf("release?"); if (r === -1) r = lc.indexOf("release"); if (r === -1) r = lc.indexOf("released");
+        if (d !== -1) di = d; if (lo !== -1) loi = lo; if (r !== -1) ri = r;
+        start = h + 1; break;
+      }
+    }
+    var out = [];
+    for (var rr = start; rr < rows.length; rr++) {
+      var row = rows[rr] || [];
+      var title = clean(row[ti]), url = safeUrl(row[ui]);
+      if (!title && !url) continue;
+      out.push({ title: title, url: url, details: clean(row[di]), location: clean(row[loi]), released: /^y(es)?$/i.test(clean(row[ri])) });
+    }
+    return out;
+  }
+
+  // General Information -> "News & Updates" pill: released news links as the same
+  // button-safe download cards the Crew Documents pill uses (kept out of .efmp-info so
+  // the ink link rule can't darken the card buttons). A row shows only when Release? is
+  // "Yes" AND audienceShows(Location) passes for this portal (so faculty-only rows and
+  // "disabled" rows stay out of the student view). Newest first: staff append each new
+  // item at the bottom of the sheet, so the visible list is reversed for display.
+  function renderNews() {
+    banner.hidden = true; banner.textContent = "";
+    status.hidden = true; status.textContent = "";
+    var visible = newsItems.filter(function (n) { return n.released && audienceShows(n.location); });
+    if (!visible.length) {
+      list.innerHTML = '<div class="efmp-info"><p>No news to share right now. Check back soon.</p></div>';
+      announce("No news right now.");
+      return;
+    }
+    var items = visible.slice().reverse();   // newest first
+    var html = '<div class="efmp-crew">' +
+      '<div class="efmp-info__head" role="heading" aria-level="3">News &amp; Updates</div>' +
+      '<div class="efmp-crew-list">';
+    items.forEach(function (n) {
+      var isPdf = /\.pdf(\?|#|$)/i.test(n.url);
+      html += '<div class="efmp-roster__pdf"><div>' +
+          '<div class="efmp-roster__pdf-name">' + esc(n.title || "Update") + '</div>' +
+          (n.details ? '<div class="efmp-roster__pdf-meta">' + esc(n.details) + '</div>' : '') + '</div>' +
+        (n.url ? '<a class="efmp-roster__btn" href="' + esc(n.url) + '" target="_blank" rel="noopener noreferrer">' + (isPdf ? "View PDF" : "Read more") + '</a>' : "") +
+        '</div>';
+    });
+    html += '</div></div>';
+    list.innerHTML = html;
+    announce(visible.length + (visible.length === 1 ? " update" : " updates") + " shown.");
   }
 
   // Calendar -> "Concert Programs" pill: a standalone, date-sorted list of the
@@ -2056,10 +2137,11 @@
     viewEvents = [];
     viewLabel = top.label + ((sub.label && sub.label !== top.label) ? " " + sub.label : "");
     viewFeedKey = (sub.kind === "ensemble" && sub.code && FEED_VIEWS[sub.code]) ? FEED_VIEWS[sub.code] : "";
-    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "health" || sub.kind === "collegeFair" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
+    if (controls) controls.hidden = (sub.kind === "map" || sub.kind === "handbook" || sub.kind === "weekly" || sub.kind === "news" || sub.kind === "sectional" || sub.kind === "infoTab" || sub.kind === "dining" || sub.kind === "aroundCampus" || sub.kind === "health" || sub.kind === "collegeFair" || sub.kind === "people" || sub.kind === "lessons" || sub.kind === "alexander" || sub.kind === "chamber" || sub.kind === "crew" || sub.kind === "programs");   // no search/export on map + info views
     if (sub.kind === "map") renderMap();
     else if (sub.kind === "handbook") renderHandbook();
     else if (sub.kind === "weekly") renderWeekly();
+    else if (sub.kind === "news") renderNews();
     else if (sub.kind === "crew") renderCrew();
     else if (sub.kind === "programs") renderPrograms();
     else if (sub.kind === "sectional") { viewLabel = sectionalEns + " Sectionals"; renderSectional(sectionalEns); }
@@ -2707,6 +2789,7 @@
     personnelManagers = data.rosters ? parsePersonnelManagers(data.rosters) : {};
     crewDocs = parseCrew(data.crew);
     weeklySchedules = parseWeekly(data.weekly);
+    newsItems = parseNews(data.news);
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
@@ -2929,6 +3012,7 @@
       announcements: mc["Announcements"] || null,
       generalInfo: mc["General Information"] || null,
       weekly: mc["Weekly Schedules"] || null,
+      news: mc["News"] || null,
       lessons: mc["Faculty Lesson Locations"] || null,
       staff: mc["Staff List"] || null,
       placement: mc["Placement Auditions"] || null,
@@ -2964,13 +3048,37 @@
   }
   // Ensure data.weekly is populated. If the blob (or the direct-fetch path) already
   // carried "Weekly Schedules", use it; otherwise fetch it standalone and attach it.
-  // This keeps the Weekly Schedule pill working the moment the embed ships, before the
+  // This keeps the Master Calendar pill working the moment the embed ships, before the
   // distiller is redeployed to emit that tab, and costs nothing once it does (the blob
   // supplies it and this extra fetch is skipped). Always resolves (never rejects).
   function withWeekly(data) {
     if (!data) return Promise.resolve(data);
     if (data.weekly && data.weekly.length) return Promise.resolve(data);
     return fetchWeeklyTab().then(function (rows) { data.weekly = rows; return data; }, function () { return data; });
+  }
+
+  // Fetch just the "News" tab (Master Calendar): known gid first if one is set (none is
+  // yet), otherwise resolve by NAME from the published directory. All on docs.google.com
+  // (campus-safe). Returns rows, or null on any failure.
+  function fetchNewsTab() {
+    var first = NEWS_GID
+      ? loadCSV(CSV + "&gid=" + NEWS_GID).then(function (r) { return r && r.length ? r : null; }, function () { return null; })
+      : Promise.resolve(null);
+    return first.then(function (r) {
+      if (r) return r;
+      return resolveTabGids().then(function (map) {
+        var gid = map[NEWS_TAB];
+        return gid ? loadCSV(CSV + "&gid=" + gid).then(function (r2) { return r2 && r2.length ? r2 : null; }, function () { return null; }) : null;
+      }, function () { return null; });
+    });
+  }
+  // Ensure data.news is populated. Mirrors withWeekly: use the blob's copy if present,
+  // else fetch the tab standalone, so the News & Updates pill works the moment the embed
+  // ships (before the distiller emits the tab) and costs nothing once the blob carries it.
+  function withNews(data) {
+    if (!data) return Promise.resolve(data);
+    if (data.news && data.news.length) return Promise.resolve(data);
+    return fetchNewsTab().then(function (rows) { data.news = rows; return data; }, function () { return data; });
   }
 
   // Blob-first, with a live fallback to the direct per-tab fetch path. Either way,
@@ -2988,7 +3096,7 @@
         return startFetchesDirect();   // blob unreachable or incomplete -> live sheets
       });
     }
-    return base.then(withWeekly);
+    return base.then(withWeekly).then(withNews);
   }
 
   // ---- live auto-refresh ------------------------------------------------
@@ -3005,7 +3113,7 @@
     readDistilledBlob().then(function (blob) {
       var data = blobToData(blob);
       if (!data.calendar || !data.calendar.length) return;   // guard a bad/partial read
-      return withWeekly(data).then(function (d) {             // backfill Weekly Schedules if the blob lacks it
+      return withWeekly(data).then(withNews).then(function (d) {   // backfill Weekly Schedules + News if the blob lacks them
         var s; try { s = JSON.stringify(d); } catch (e) { return; }
         if (s === lastDataStr) return;   // unchanged -> do nothing
         lastDataStr = s;   // don't re-attempt this exact payload on every 2-minute poll
