@@ -1929,9 +1929,16 @@
   }
   // Parse "Week 1", "Week 1 (Mozart)" -> { week, qualifier }
   function rosterMeta(title) {
-    var w = clean(title).match(/week\s*0*(\d+)/i);
-    var q = clean(title).match(/\(([^)]+)\)/);
-    return { week: w ? parseInt(w[1], 10) : null, qualifier: q ? q[1].trim() : "" };
+    var t = clean(title);
+    var w = t.match(/week\s*0*(\d+)/i);
+    var q = t.match(/\(([^)]+)\)/);
+    // piece: text after the parenthetical for a piece-specific ESO/GSO roster, e.g.
+    // "Week 5 (ESO) - Enigma Variations" -> piece "Enigma Variations". Separate from
+    // qualifier (the parenthetical, which for ESO/GSO IS the ensemble code and for EFO
+    // is the program name), so existing code + service selection is untouched. Leading
+    // separator (space, hyphen, colon, or a Unicode en/em dash) is stripped.
+    var piece = q ? t.slice(t.indexOf(q[0]) + q[0].length).replace(/^[\s\-:\u2013\u2014]+/, "").trim() : "";
+    return { week: w ? parseInt(w[1], 10) : null, qualifier: q ? q[1].trim() : "", piece: piece };
   }
   // The services belonging to a roster row. ESO/GSO use their own concert-cycle anchors and
   // skip the qualifier filter entirely (their parenthetical names the ENSEMBLE, not a program).
@@ -2876,16 +2883,19 @@
       .map(function (o) { return { label: o.title, roster: o }; });
     // Unified per-ensemble week pills: EFO from the Faculty-Portal Rosters tab
     // (above); ESO/GSO from the shared Master Calendar Student-Rosters tab, where
-    // each title "Week N (ESO|GSO)" names its ensemble in the parenthetical.
+    // each title "Week N (ESO|GSO)" names its ensemble in the parenthetical, optionally
+    // followed by "- Piece" for a piece-specific roster. The pill label carries the piece
+    // so several Week-N rosters (e.g. Week 5 Enigma Variations vs Concerto Comps) read
+    // distinctly instead of all showing "Week 5"; mirrors the EFO "Week N (Program)" pills.
     ensWeeks = { EFO: calendarWeeks, ESO: [], GSO: [] };
     (data.studentRosters ? parseRosters(data.studentRosters) : [])
       .filter(function (o) { return releaseState(o.release) !== "none"; })
       .forEach(function (o) {
         var m = rosterMeta(o.title), code = clean(m.qualifier).toUpperCase();
-        if ((code === "ESO" || code === "GSO") && m.week != null) ensWeeks[code].push({ label: "Week " + m.week, roster: o });
+        if ((code === "ESO" || code === "GSO") && m.week != null) ensWeeks[code].push({ label: m.piece ? ("Week " + m.week + " (" + m.piece + ")") : ("Week " + m.week), roster: o });
       });
     ["ESO", "GSO"].forEach(function (code) {
-      ensWeeks[code].sort(function (a, b) { return rosterMeta(a.roster.title).week - rosterMeta(b.roster.title).week; });
+      ensWeeks[code].sort(function (a, b) { return rosterMeta(a.roster.title).week - rosterMeta(b.roster.title).week; });   // ties keep sheet order (stable sort), so staff control piece ordering by row order
     });
     if (weekSel != null && weekSel >= calendarWeeks.length) weekSel = null;
     // info text: the Faculty-Portal General-Information tab (full rows). diningLines (the

@@ -687,7 +687,7 @@
   function weeksFor(sub) {
     if (!sub || !sub.weeks || !sub.code) return [];
     return rosterWeeks.filter(function (w) { return w.code === sub.code; })
-      .sort(function (a, b) { return (a.week - b.week) || ((a.qualifier ? 1 : 0) - (b.qualifier ? 1 : 0)); });
+      .sort(function (a, b) { return (a.week - b.week) || ((a.qualifier ? 1 : 0) - (b.qualifier ? 1 : 0)); });   // ties keep sheet order (stable sort), so staff control piece ordering by row order
   }
 
   function renderNav() {
@@ -2551,13 +2551,20 @@
     }
     return out;
   }
-  // "Week 1 (ESO)" -> { week: 1, code: "ESO" }. The parenthetical names the ensemble.
+  // "Week 1 (ESO)" -> { week: 1, code: "ESO", qualifier: "" }. The parenthetical names the
+  // ensemble. A piece-specific roster adds the piece after it, e.g. "Week 5 (ESO) - Enigma
+  // Variations" -> { week: 5, code: "ESO", qualifier: "Enigma Variations" }, so the same
+  // week can carry several delineated rosters (Concerto Comps, Enigma Variations, ...).
   function rosterMeta(title) {
-    var w = clean(title).match(/week\s*0*(\d+)/i);
-    var q = clean(title).match(/\(([^)]+)\)/);
+    var t = clean(title);
+    var w = t.match(/week\s*0*(\d+)/i);
+    var q = t.match(/\(([^)]+)\)/);
     var code = "";
     if (q) { var u = q[1].trim().toUpperCase(); if (u === "ESO" || u === "GSO") code = u; }
-    return { week: w ? parseInt(w[1], 10) : null, code: code };
+    // piece keyword: whatever follows the "(CODE)" parenthetical, minus a leading separator
+    // (space, hyphen, colon, or a Unicode en/em dash). Empty for a plain "Week N (CODE)" row.
+    var qualifier = q ? t.slice(t.indexOf(q[0]) + q[0].length).replace(/^[\s\-:\u2013\u2014]+/, "").trim() : "";
+    return { week: w ? parseInt(w[1], 10) : null, code: code, qualifier: qualifier };
   }
   // EFO rosters live in the Faculty-Portal "Rosters" tab and are program-qualified
   // ("Week 1 (Mozart)"), so the parenthetical is a PROGRAM, not an ensemble code.
@@ -2793,11 +2800,14 @@
 
     // Student-Rosters tab -> the released roster weeks, surfaced as a third-level
     // nav under ESO/GSO Schedule (renderNav -> weeksFor). Each title is
-    // "Week N (ESO|GSO)"; rosterMeta pulls the ensemble + week.
+    // "Week N (ESO|GSO)" (plus an optional "- Piece" for piece-specific rosters);
+    // rosterMeta pulls the ensemble, week, and piece qualifier. The pill label carries
+    // the piece so several Week-N rosters (e.g. Week 5 Enigma Variations vs Concerto
+    // Comps) are distinguishable instead of all reading "Week 5"; mirrors the EFO format.
     rostersAll = data.rosters ? parseRosters(data.rosters) : [];
     rosterWeeks = rostersAll
       .filter(function (o) { return releaseState(o.release) === "all"; })
-      .map(function (o) { var m = rosterMeta(o.title); return { code: m.code, week: m.week, title: o.title, link: o.link }; })
+      .map(function (o) { var m = rosterMeta(o.title); return { code: m.code, week: m.week, qualifier: m.qualifier, label: m.qualifier ? ("Week " + m.week + " (" + m.qualifier + ")") : ("Week " + m.week), title: o.title, link: o.link }; })
       .filter(function (s) { return s.code && s.week != null; });
     // EFO roster weeks come from the Faculty-Portal "Rosters" tab (program-qualified, e.g.
     // "Week 1 (Mozart)"), not the Master Calendar Student-Rosters tab. Merge them into
